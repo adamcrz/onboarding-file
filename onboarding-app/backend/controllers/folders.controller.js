@@ -1,4 +1,6 @@
-// controllers/folders.controller.js
+// backend/controllers/folders.controller.js
+
+const nextcloudService = require("../services/nextcloud.service");
 
 let folders = [
   {
@@ -27,16 +29,54 @@ let folders = [
   }
 ];
 
-// GET all mandates
 exports.getFolders = (req, res) => {
   res.json(folders);
 };
 
-// GET by category (trust, foundation, etc.)
 exports.getFoldersByType = (req, res) => {
   const { type } = req.params;
-
-  const result = folders.filter(f => f.type === type);
-
+  const result = folders.filter((f) => f.type === type);
   res.json(result);
+};
+
+exports.createMandateFolder = async (req, res) => {
+  try {
+    const { id, name, type } = req.body;
+
+    if (!id || !name || !type) {
+      return res.status(400).json({
+        success: false,
+        message: "id, name and type are required"
+      });
+    }
+
+    const folderPath = `mandates/${type}/${id}-${name.replace(/\s+/g, "_")}`;
+
+    await nextcloudService.createFolder("mandates");
+    await nextcloudService.createFolder(`mandates/${type}`);
+    const result = await nextcloudService.createFolder(folderPath);
+
+    const newFolder = {
+      id,
+      name,
+      type,
+      risk: "Pending",
+      path: folderPath
+    };
+
+    folders.push(newFolder);
+
+    res.json({
+      success: true,
+      message: "Mandate folder created",
+      local: newFolder,
+      nextcloud: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to create mandate folder",
+      error: error.message
+    });
+  }
 };

@@ -4,5 +4,6 @@ const controller = require("../controllers/folders.controller");
 
 router.get("/", controller.getFolders);
 router.get("/type/:type", controller.getFoldersByType);
+router.post("/", controller.createMandateFolder);
 
 module.exports = router;
