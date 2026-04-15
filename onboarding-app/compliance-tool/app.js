@@ -22,12 +22,14 @@ const State = {
       status: 'under-review', rm: 'Sarah Mitchell', created: '2026-03-12',
       progress: 65, country: 'United Kingdom', industry: 'Manufacturing',
       documents: [
-        { id: 'D001', name: 'Certificate of Incorporation', type: 'Corporate Doc', status: 'approved', uploadedBy: 'RM', date: '2026-03-12', size: '2.1 MB', required: true },
-        { id: 'D002', name: 'Memorandum & Articles of Association', type: 'Corporate Doc', status: 'approved', uploadedBy: 'RM', date: '2026-03-12', size: '1.8 MB', required: true },
-        { id: 'D003', name: 'Board Resolution', type: 'Corporate Doc', status: 'pending', uploadedBy: 'RM', date: '2026-03-15', size: '0.9 MB', required: true },
-        { id: 'D004', name: 'Director Passport - John Smith', type: 'ID Document', status: 'approved', uploadedBy: 'Client', date: '2026-03-14', size: '1.2 MB', required: true },
-        { id: 'D005', name: 'UBO Declaration', type: 'AML Doc', status: 'info-requested', uploadedBy: 'Client', date: '2026-03-16', size: '0.4 MB', required: true },
-        { id: 'D006', name: 'Latest Audited Accounts', type: 'Financial', status: 'draft', uploadedBy: '-', date: '-', size: '-', required: true },
+        { id: 'D001', name: 'Power of Attorney (Vollmacht)', type: 'Bank Document', status: 'approved', uploadedBy: 'Compliance', templateAvailable: true, signedVersion: true, date: '2026-03-12', size: '2.1 MB', required: true },
+        { id: 'D002', name: 'Client Categorisation (FIDLEG)', type: 'Template', status: 'approved', uploadedBy: 'Client', templateAvailable: true, signedVersion: true, date: '2026-03-13', size: '1.8 MB', required: true },
+        { id: 'D003', name: 'KYC Form', type: 'Template', status: 'pending', uploadedBy: 'Client', templateAvailable: true, signedVersion: false, date: '2026-03-15', size: '0.9 MB', required: true },
+        { id: 'D004', name: 'Form A/T/K/S — Ownership Structure', type: 'Template', status: 'pending', uploadedBy: '-', templateAvailable: true, signedVersion: false, date: '-', size: '-', required: true },
+        { id: 'DAML', name: 'Investment Profile', type: 'Template', status: 'approved', uploadedBy: 'Client', templateAvailable: true, signedVersion: true, date: '2026-03-14', size: '1.2 MB', required: true },
+        { id: 'D005', name: 'Advisory / Asset Management Agreement', type: 'Template', status: 'info-requested', uploadedBy: 'Client', templateAvailable: true, signedVersion: false, date: '2026-03-16', size: '0.4 MB', required: true, missingNote: 'Signature missing on page 3 — see Appendix B' },
+        { id: 'D006', name: 'Mandate Risk Profile', type: 'Template', status: 'draft', uploadedBy: '-', templateAvailable: true, signedVersion: false, date: '-', size: '-', required: true },
+        { id: 'D007i', name: 'Director Passport — John Smith', type: 'ID Document', status: 'approved', uploadedBy: 'Client', templateAvailable: false, signedVersion: false, date: '2026-03-14', size: '1.2 MB', required: true },
       ],
       auditTrail: [
         { action: 'Case created', user: 'Sarah Mitchell (RM)', time: '2026-03-12 09:14', type: 'created' },
@@ -134,9 +136,9 @@ const State = {
 const ROLES = {
   bank: {
     label: 'Bank Admin',
-    description: 'Administrator',
+    description: 'Custodian Bank',
     initial: 'B',
-    badge: 'Bank Admin',
+    badge: 'Bank',
     nav: [
       { section: 'Overview' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
@@ -151,16 +153,16 @@ const ROLES = {
   },
   compliance: {
     label: 'Compliance Officer',
-    description: 'Compliance',
+    description: 'Compliance Dept.',
     initial: 'C',
     badge: 'Compliance',
     nav: [
       { section: 'Review Queue' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
-      { id: 'review-queue', label: 'Review Queue', icon: checklistIcon(), badge: '3' },
+      { id: 'review-queue', label: 'Review Queue', icon: checklistIcon(), badge: '2' },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
       { section: 'Tools' },
-      { id: 'documents', label: 'Documents', icon: fileIcon() },
+      { id: 'documents', label: 'Document Templates', icon: fileIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { id: 'risk', label: 'Risk Ratings', icon: shieldIcon() },
     ]
@@ -173,7 +175,7 @@ const ROLES = {
     nav: [
       { section: 'My Clients' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
-      { id: 'clients', label: 'My Clients', icon: usersIcon(), badge: '3' },
+      { id: 'clients', label: 'My Clients', icon: usersIcon(), badge: '2' },
       { id: 'new-client', label: 'New Onboarding', icon: plusIcon() },
       { section: 'Documents' },
       { id: 'documents', label: 'Documents', icon: fileIcon() },
@@ -188,10 +190,24 @@ const ROLES = {
     nav: [
       { section: 'My Application' },
       { id: 'dashboard', label: 'Application Status', icon: homeIcon() },
-      { id: 'kyc-form', label: 'KYC Form', icon: formIcon() },
-      { id: 'documents', label: 'Upload Documents', icon: fileIcon() },
+      { id: 'kyc-form', label: 'KYC Self-Declaration', icon: formIcon() },
+      { id: 'documents', label: 'Documents', icon: fileIcon() },
       { section: 'Support' },
       { id: 'audit', label: 'Activity', icon: auditIcon() },
+    ]
+  },
+  assetmanager: {
+    label: 'Asset Manager',
+    description: 'Asset Management',
+    initial: 'A',
+    badge: 'Asset Mgr',
+    nav: [
+      { section: 'Overview' },
+      { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
+      { id: 'clients', label: 'Client Cases', icon: usersIcon() },
+      { section: 'Data' },
+      { id: 'documents', label: 'Documents', icon: fileIcon() },
+      { id: 'audit', label: 'Activity Log', icon: auditIcon() },
     ]
   }
 };
@@ -484,43 +500,81 @@ function statCard(color, value, label, change, positive, icon) {
 function renderComplianceDashboard() {
   const content = document.getElementById('page-content');
   const pending = State.clients.filter(c => c.status === 'under-review' || c.status === 'pending');
+  const readyForExport = State.clients.filter(c => c.status === 'approved');
 
   content.innerHTML = `
     <div class="page-header">
       <h1>Compliance Dashboard</h1>
-      <p>Review queue and case management</p>
+      <p>Review queue, document templates, and Assetmax data export</p>
     </div>
     <div class="stats-grid">
       ${statCard('#f59e0b', pending.length, 'Awaiting Review', '', false, checklistIcon())}
       ${statCard('#10b981', '1', 'Approved This Month', '', true, checkIcon())}
       ${statCard('#ef4444', '1', 'Rejected', '', false, xIcon())}
-      ${statCard('#ef4444', '3', 'Docs Expiring (30d)', '', false, alertIcon())}
+      ${statCard('#06b6d4', readyForExport.length, 'Ready for Assetmax Export', '', false, `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`)}
     </div>
     <div class="info-box warning">
       <p><strong>⚠ Action Required:</strong> ${pending.length} case(s) are awaiting compliance review. Please review and action them to avoid delays.</p>
     </div>
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Review Queue (${pending.length} cases)</div>
-        <button class="btn-primary btn-sm" onclick="navigateTo('review-queue')">Open Queue</button>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Review Queue (${pending.length} cases)</div>
+          <button class="btn-primary btn-sm" onclick="navigateTo('review-queue')">Open Queue</button>
+        </div>
+        <div>
+          ${pending.map(c => `
+            <div class="client-row" onclick="openClientDetail('${c.id}')">
+              <div class="client-avatar" style="background:${clientGradient(c.type)}">${c.name[0]}</div>
+              <div class="client-info">
+                <div class="client-name">${c.name}</div>
+                <div class="client-type">${c.type} · Risk: <span class="risk-${c.risk.toLowerCase()}">${c.risk}</span> · RM: ${c.rm}</div>
+              </div>
+              <div class="client-meta">
+                <span class="status-badge status-${c.status}">${statusLabel(c.status)}</span>
+                <div class="client-date">${c.created}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div>
-      <div>
-        ${pending.map(c => `
-          <div class="client-row" onclick="openClientDetail('${c.id}')">
-            <div class="client-avatar" style="background:${clientGradient(c.type)}">${c.name[0]}</div>
-            <div class="client-info">
-              <div class="client-name">${c.name}</div>
-              <div class="client-type">${c.type} · Risk: <span class="risk-${c.risk.toLowerCase()}">${c.risk}</span> · RM: ${c.rm}</div>
-            </div>
-            <div class="client-meta">
-              <span class="status-badge status-${c.status}">${statusLabel(c.status)}</span>
-              <div class="client-date">${c.created}</div>
-            </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Assetmax Export</div>
+            <div class="card-subtitle">Export validated KYC data to Excel for Assetmax upload</div>
           </div>
-        `).join('')}
+        </div>
+        <div class="card-body">
+          <div class="info-box success">
+            <p>Only completed and approved KYC datasets can be exported. All exports are logged in the audit trail.</p>
+          </div>
+          ${readyForExport.map(c => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border-subtle);">
+              <div>
+                <div style="font-size:13px;font-weight:500;">${c.name}</div>
+                <div style="font-size:11.5px;color:var(--text-secondary);">Approved ${c.created} · ${c.type}</div>
+              </div>
+              <button class="btn-secondary btn-sm" onclick="exportToAssetmax('${c.id}')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export .xlsx
+              </button>
+            </div>
+          `).join('')}
+          ${readyForExport.length === 0 ? `<p style="font-size:13px;color:var(--text-muted);">No approved cases ready for export yet.</p>` : ''}
+        </div>
       </div>
     </div>
   `;
+}
+
+function exportToAssetmax(clientId) {
+  const c = State.clients.find(c => c.id === clientId);
+  if (!c) return;
+  c.auditTrail.push({ action: 'KYC data exported to Assetmax (.xlsx)', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'submitted' });
+  showToast('success', `${c.name} — KYC data exported to Excel for Assetmax upload.`);
 }
 
 /* --- RM Dashboard --- */
@@ -1005,39 +1059,60 @@ function screeningBadge(label, val) {
 function renderClientDocsTab(client) {
   const canUpload = State.currentRole === 'rm' || State.currentRole === 'client';
   const canReview = State.currentRole === 'compliance';
+  const isClient = State.currentRole === 'client';
 
   return `
     <div class="card">
       <div class="card-header">
-        <div class="card-title">Required Documents</div>
-        ${canUpload ? `<button class="btn-primary btn-sm" onclick="showUploadModal()">+ Upload Document</button>` : ''}
+        <div>
+          <div class="card-title">Document Package</div>
+          <div class="card-subtitle">Templates provided by Compliance · Download, sign physically, scan &amp; re-upload</div>
+        </div>
+        ${canUpload ? `<button class="btn-primary btn-sm" onclick="triggerFileInput()">+ Upload Signed Doc</button>` : ''}
       </div>
-      <div class="card-body" style="padding-top:12px;">
+      ${isClient ? `
+        <div style="padding:0 22px 16px;">
+          <div class="info-box">
+            <p>📋 <strong>How it works:</strong> (1) Download the blank template &rarr; (2) Print &amp; sign by hand &rarr; (3) Scan to PDF &rarr; (4) Upload here. Electronic signatures are <strong>not</strong> accepted.</p>
+          </div>
+        </div>
+      ` : ''}
+      <div class="card-body" style="padding-top:4px;">
         ${client.documents.length === 0 ? `
-          <div class="upload-zone" onclick="showUploadModal()">
+          <div class="upload-zone" onclick="triggerFileInput()">
             <div class="upload-zone-icon">📄</div>
-            <div class="upload-zone-text">No documents uploaded yet</div>
-            <div class="upload-zone-sub">Click to upload your first document</div>
+            <div class="upload-zone-text">No documents yet</div>
+            <div class="upload-zone-sub">Compliance will upload document templates to get started</div>
           </div>
         ` : client.documents.map(d => `
-          <div class="doc-item">
+          <div class="doc-item" style="${d.missingNote ? 'border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.03);' : ''}">
             <div class="doc-icon" style="background:${docIconColor(d.type)}22;color:${docIconColor(d.type)}">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
             </div>
             <div class="doc-info">
               <div class="doc-name">${d.name}</div>
-              <div class="doc-meta">${d.type} · Uploaded by ${d.uploadedBy} ${d.date !== '-' ? `on ${d.date}` : '--'} ${d.size !== '-' ? `· ${d.size}` : ''}</div>
+              <div class="doc-meta">
+                ${d.type}
+                ${d.templateAvailable ? `&nbsp;·&nbsp;<span style="color:var(--accent-indigo);font-weight:500;">Template available</span>` : ''}
+                ${d.signedVersion ? `&nbsp;·&nbsp;<span style="color:var(--accent-green);font-weight:500;">✓ Signed version received</span>` : ''}
+                ${d.date !== '-' ? ` · Uploaded ${d.date}` : ''} ${d.size !== '-' ? `· ${d.size}` : ''}
+              </div>
+              ${d.missingNote ? `<div style="font-size:11.5px;color:var(--status-info-requested);margin-top:5px;">⚠&nbsp;${d.missingNote}</div>` : ''}
             </div>
             <div class="doc-actions">
               <span class="status-badge status-${d.status}">${statusLabel(d.status)}</span>
+              ${d.templateAvailable && canUpload ? `<button class="btn-secondary btn-xs" onclick="downloadTemplate('${d.id}')">${downloadIcon()} Template</button>` : ''}
               ${d.date !== '-' ? `<button class="btn-icon" title="View" onclick="viewDoc('${d.id}')">${eyeIcon()}</button>` : ''}
-              ${d.date !== '-' ? `<button class="btn-icon" title="Download" onclick="downloadDoc('${d.id}')">${downloadIcon()}</button>` : ''}
+              ${d.signedVersion || d.date !== '-' ? `<button class="btn-icon" title="Download" onclick="downloadDoc('${d.id}')">${downloadIcon()}</button>` : ''}
               ${canReview && d.status === 'pending' ? `
                 <button class="btn-success btn-xs" onclick="approveDoc('${client.id}','${d.id}')">Approve</button>
                 <button class="btn-danger btn-xs" onclick="requestDocInfo('${client.id}','${d.id}')">Request Info</button>
               ` : ''}
+              ${canReview && d.status === 'approved' && d.type !== 'ID Document' ? `
+                <button class="btn-secondary btn-xs" onclick="uploadToAssetmax('${d.id}')">→ Assetmax</button>
+              ` : ''}
               ${canUpload && (d.status === 'draft' || d.status === 'info-requested') ? `
-                <button class="btn-primary btn-xs" onclick="showUploadModal('${d.id}')">Upload</button>
+                <button class="btn-primary btn-xs" onclick="triggerFileInput()">Upload Signed</button>
               ` : ''}
             </div>
           </div>
@@ -1047,14 +1122,14 @@ function renderClientDocsTab(client) {
 
     ${canUpload ? `
       <div class="card">
-        <div class="card-header"><div class="card-title">Upload New Document</div></div>
+        <div class="card-header"><div class="card-title">Upload Signed Document</div></div>
         <div class="card-body">
           <div class="upload-zone" id="upload-zone" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)" onclick="triggerFileInput()">
             <div style="font-size:36px;margin-bottom:12px;">🗂️</div>
-            <div class="upload-zone-text">Drag & drop files here or click to browse</div>
-            <div class="upload-zone-sub">PDF, JPG, PNG up to 20MB per file</div>
+            <div class="upload-zone-text">Drag &amp; drop signed PDF here or click to browse</div>
+            <div class="upload-zone-sub">Upload the scanned, physically-signed version · PDF only · max 20MB</div>
           </div>
-          <input type="file" id="file-input" style="display:none;" onchange="handleFileSelect(event)" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+          <input type="file" id="file-input" style="display:none;" onchange="handleFileSelect(event)" multiple accept=".pdf,.jpg,.jpeg,.png" />
         </div>
       </div>
     ` : ''}
@@ -1080,6 +1155,14 @@ function renderClientAuditTab(client) {
       </div>
     </div>
   `;
+}
+
+function downloadTemplate(docId) {
+  showToast('info', 'Template downloaded. Please print, sign and scan before re-uploading.');
+}
+
+function uploadToAssetmax(docId) {
+  showToast('success', 'Document forwarded to Assetmax successfully.');
 }
 
 function approveClientFromDetail(id) {
@@ -1491,11 +1574,21 @@ function renderNewClient() {
 }
 
 function defaultDocChecklist() {
-  const docs = ['Certificate of Incorporation', 'Memorandum & Articles of Association', 'Board Resolution', 'UBO Declaration', 'Director(s) Passport(s)', 'Proof of Address (Company)', 'Latest Audited Financial Statements', 'Source of Funds Declaration'];
+  const docs = [
+    'Power of Attorney (Vollmacht)',
+    'Client Categorisation (FIDLEG)',
+    'Investment Profile',
+    'Risk Profile Questionnaire',
+    'Mandate Risk Profile',
+    'KYC Form',
+    'Form A/T/K/S — Ownership Structure',
+    'Advisory / Asset Management Agreement',
+    'ID Document (Passport or National ID)',
+  ];
   return docs.map(d => `
     <div class="checkbox-group">
-      <input type="checkbox" id="doc-${d.replace(/\s/g,'_')}" checked />
-      <label for="doc-${d.replace(/\s/g,'_')}">${d}</label>
+      <input type="checkbox" id="doc-${d.replace(/[\s/()]/g,'_')}" checked />
+      <label for="doc-${d.replace(/[\s/()]/g,'_')}">${d}</label>
     </div>
   `).join('');
 }
@@ -1513,12 +1606,12 @@ function renderKycForm() {
 
   content.innerHTML = `
     <div class="page-header">
-      <h1>KYC Application Form</h1>
-      <p>Complete your Know Your Customer information. All fields marked * are mandatory.</p>
+      <h1>KYC Self-Declaration Form</h1>
+      <p>Complete all sections carefully. All fields marked * are mandatory. This form is collected in accordance with AML/KYC regulations.</p>
     </div>
 
     <div class="info-box">
-      <p>This information is collected in accordance with Anti-Money Laundering (AML) regulations and our compliance obligations. Your data is kept strictly confidential.</p>
+      <p>Your information is processed strictly for compliance purposes and kept confidential. You will be asked to sign this form physically and upload a scanned copy.</p>
     </div>
 
     <div class="card">
@@ -1534,12 +1627,34 @@ function renderKycForm() {
               </select>
             </div>
             <div class="form-group">
-              <label>First Name *</label>
+              <label>First Name(s) *</label>
               <input type="text" value="John" placeholder="First name" />
             </div>
             <div class="form-group">
               <label>Last Name *</label>
               <input type="text" value="Smith" placeholder="Last name" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Maiden Name (if applicable)</label>
+              <input type="text" placeholder="Previous surname" />
+            </div>
+            <div class="form-group">
+              <label>Full Name as per Passport *</label>
+              <input type="text" value="John Robert Smith" placeholder="Exactly as on passport" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Gender</label>
+              <select>
+                <option selected>Male</option><option>Female</option><option>Other / Prefer not to say</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Place of Birth</label>
+              <input type="text" placeholder="City, Country" />
             </div>
           </div>
           <div class="form-row">
@@ -1732,9 +1847,251 @@ function renderKycForm() {
           </div>
         </div>
 
-        <!-- Section 6: PEP & Sanctions -->
+        <!-- Section 6: Contact Details -->
         <div class="kyc-form-section">
-          <div class="kyc-section-title">6. PEP & Regulatory Declarations</div>
+          <div class="kyc-section-title">6. Contact Details</div>
+          <div class="form-row three">
+            <div class="form-group">
+              <label>Phone (Private)</label>
+              <input type="tel" placeholder="+44 20 7000 0001" />
+            </div>
+            <div class="form-group">
+              <label>Phone (Mobile) *</label>
+              <input type="tel" placeholder="+44 7700 900000" />
+            </div>
+            <div class="form-group">
+              <label>Phone (Business)</label>
+              <input type="tel" placeholder="+44 20 7000 0002" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Email Address *</label>
+              <input type="email" value="john.smith@acmecorp.co.uk" />
+            </div>
+            <div class="form-group">
+              <label>Preferred Communication Channel</label>
+              <select>
+                <option selected>Email</option>
+                <option>Post</option>
+                <option>Phone</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Correspondence Language</label>
+              <select>
+                <option selected>English</option>
+                <option>German</option>
+                <option>French</option>
+                <option>Italian</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Correspondence Address (if different)</label>
+              <input type="text" placeholder="Leave blank if same as residential" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 7: Family & Related Persons -->
+        <div class="kyc-form-section">
+          <div class="kyc-section-title">7. Family &amp; Related Persons</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Marital Status</label>
+              <select>
+                <option>Single</option>
+                <option selected>Married</option>
+                <option>Divorced</option>
+                <option>Widowed</option>
+                <option>Civil Partnership</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Number of Dependent Children</label>
+              <input type="number" value="2" min="0" max="20" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Spouse / Partner Full Name</label>
+              <input type="text" placeholder="Full name as per ID" />
+            </div>
+            <div class="form-group">
+              <label>Spouse / Partner Nationality</label>
+              <input type="text" placeholder="Nationality" />
+            </div>
+          </div>
+          <div class="form-row single">
+            <div class="form-group">
+              <label>Close Associated Persons (PEP exposure)</label>
+              <textarea rows="2" placeholder="List any close associates or family members who are or have been politically exposed persons..."></textarea>
+              <small>Include name, relationship, and nature of political exposure if applicable</small>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Description of Relationship with Client</label>
+              <input type="text" placeholder="e.g. Direct client, referred by..." />
+            </div>
+            <div class="form-group">
+              <label>Personal Contact Confirmed (Date &amp; Place)</label>
+              <input type="text" placeholder="e.g. London, 2026-03-14" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 8: Financial Situation -->
+        <div class="kyc-form-section">
+          <div class="kyc-section-title">8. Financial Situation</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Annual Net Income *</label>
+              <select>
+                <option>Under £50,000</option>
+                <option>£50,000 – £150,000</option>
+                <option>£150,000 – £500,000</option>
+                <option selected>£500,000 – £1,000,000</option>
+                <option>Over £1,000,000</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Additional Income Sources</label>
+              <input type="text" placeholder="Dividends, rental income, etc." />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Estimated Annual Living Expenses</label>
+              <select>
+                <option>Under £30,000</option>
+                <option selected>£30,000 – £100,000</option>
+                <option>£100,000 – £250,000</option>
+                <option>Over £250,000</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Planned Major Expenditures</label>
+              <input type="text" placeholder="e.g. property purchase, education" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Number of Financial Dependents</label>
+              <input type="number" value="2" min="0" />
+            </div>
+            <div class="form-group">
+              <label>Outstanding Liabilities / Loans</label>
+              <input type="text" placeholder="Mortgage, loans, etc." />
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 9: Source of Wealth & Assets -->
+        <div class="kyc-form-section">
+          <div class="kyc-section-title">9. Source of Wealth &amp; Assets</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Primary Origin of Wealth *</label>
+              <select>
+                <option selected>Business income / Salary</option>
+                <option>Sale of business</option>
+                <option>Sale of property / assets</option>
+                <option>Inheritance / Gift</option>
+                <option>Investment returns</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Total Net Assets (Range) *</label>
+              <select>
+                <option>Under CHF 500,000</option>
+                <option>CHF 500K – 1M</option>
+                <option selected>CHF 1M – 5M</option>
+                <option>CHF 5M – 20M</option>
+                <option>Over CHF 20M</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row single">
+            <div class="form-group">
+              <label>Source of Wealth — Detailed Description *</label>
+              <textarea rows="3" placeholder="Describe in detail the origin of your wealth...">Income derived from Acme Corporation Ltd, a UK manufacturing company incorporated in 2015. Profit distributions and director salary accumulated over multiple years of business operation.</textarea>
+            </div>
+          </div>
+          <div style="margin-bottom:16px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">Asset Breakdown (Approximate)</div>
+            <div class="form-row three">
+              <div class="form-group">
+                <label>Cash / Liquid Assets</label>
+                <input type="text" placeholder="e.g. £500,000" />
+              </div>
+              <div class="form-group">
+                <label>Real Estate</label>
+                <input type="text" placeholder="e.g. £1,200,000" />
+              </div>
+              <div class="form-group">
+                <label>Private Equity / Business</label>
+                <input type="text" placeholder="e.g. £3,000,000" />
+              </div>
+            </div>
+            <div class="form-row three">
+              <div class="form-group">
+                <label>Listed Securities</label>
+                <input type="text" placeholder="e.g. £200,000" />
+              </div>
+              <div class="form-group">
+                <label>Pension / Retirement</label>
+                <input type="text" placeholder="e.g. £400,000" />
+              </div>
+              <div class="form-group">
+                <label>Other Holdings</label>
+                <input type="text" placeholder="e.g. art, collectibles" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 10: Education & Career -->
+        <div class="kyc-form-section">
+          <div class="kyc-section-title">10. Education &amp; Career Background</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Highest Education Level</label>
+              <select>
+                <option>Secondary / A-Levels</option>
+                <option>Bachelor's Degree</option>
+                <option selected>Master's Degree / MBA</option>
+                <option>Doctoral Degree (PhD)</option>
+                <option>Professional Qualification (CFA, CA, etc.)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Field of Study</label>
+              <input type="text" placeholder="e.g. Engineering, Finance" />
+            </div>
+          </div>
+          <div class="form-row single">
+            <div class="form-group">
+              <label>Career Milestones &amp; Additional Background</label>
+              <textarea rows="3" placeholder="Brief career summary, significant roles, or relevant background..."></textarea>
+              <small>Optional — helps us understand your professional context</small>
+            </div>
+          </div>
+          <div class="form-row single">
+            <div class="form-group">
+              <label>General Remarks / Additional Information</label>
+              <textarea rows="2" placeholder="Any other information you consider relevant..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 11: PEP & Sanctions -->
+        <div class="kyc-form-section">
+          <div class="kyc-section-title">11. PEP &amp; Regulatory Declarations</div>
           <div class="info-box">
             <p>A Politically Exposed Person (PEP) is someone who holds or has held a prominent public position. Please answer all questions honestly.</p>
           </div>
