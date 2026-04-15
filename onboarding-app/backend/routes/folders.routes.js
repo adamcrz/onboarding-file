@@ -1,8 +1,8 @@
 const express = require("express");
-const { postCreateFolder } = require("./controllers/folders.controller");
-
 const router = express.Router();
+const controller = require("../controllers/folders.controller");
 
-router.post("/", postCreateFolder);
+router.get("/", controller.getFolders);
+router.get("/type/:type", controller.getFoldersByType);
 
 module.exports = router;
