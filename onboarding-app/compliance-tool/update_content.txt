@@ -1,0 +1,713 @@
+﻿=== PAGE 1 ===
+ComplianceOS Software Update Document
+Prepared for product, design, and engineering review
+April 15, 2026
+Contents
+1 Document Purpose 3
+2 Software Update Summary 3
+2.1 Requested Changes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+3 UI Update Instructions 3
+3.1 Login Screen . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+3.2 Implementation Notes for Frontend . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+4 Review Queue Redesign 4
+4.1 New Review Queue Structure . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+4.2 Proposed Review Queue Layout . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+4.3 Mandate-Level Review Queue Examples . . . . . . . . . . . . . . . . . . . . . . . 6
+4.3.1 Foundations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+4.3.2 Trusts . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4.3.3 Private Clients . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4.3.4 Companies . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+5 Pending Documents UI Rule 8
+5.1 Recommended Card Pattern . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+6 Risk Ratings Update 9
+6.1 Objective . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+6.2 Mandate Risk Questionnaire Integration . . . . . . . . . . . . . . . . . . . . . . . 9
+6.3 Mandate Risk Questionnaire Template . . . . . . . . . . . . . . . . . . . . . . . . 9
+6.4 Suggested Risk Scoring Logic . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+7 KYC Questionnaire Integration 10
+7.1 Objective . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+7.2 KYC Questionnaire Template for Natural Persons . . . . . . . . . . . . . . . . . 10
+8 Data Model Recommendations 12
+8.1 Suggested Backend Objects . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+8.2 Suggested Fields . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+9 Acceptance Criteria 13
+1
+
+=== PAGE 2 ===
+ComplianceOS Software Update Specification 2
+10 Screenshots 13
+10.1 Current Login Screen . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+10.2 Navigation Sidebar . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+10.3 Current Review Queue . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16
+10.4 Current Risk Ratings View . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+10.5 Alternative Risk Ratings Capture . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+11 Developer Handover Notes 20
+12 Additional Critical Requirements 20
+12.1 Document Categories Must Be Clearly Separated . . . . . . . . . . . . . . . . . . 20
+12.1.1 Blank Documents . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20
+12.1.2 Signed Documents . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21
+12.1.3 UI Requirement . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21
+12.2 Compliance View Requirements . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21
+12.3 Relationship Manager View Requirements . . . . . . . . . . . . . . . . . . . . . . 22
+12.3.1 Relationship Manager Screen Content . . . . . . . . . . . . . . . . . . . . 22
+12.3.2 Example KYC Correction Table . . . . . . . . . . . . . . . . . . . . . . . 22
+12.4 Client Login and Client Type Selection . . . . . . . . . . . . . . . . . . . . . . . . 22
+12.4.1 Client Type Purpose . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+12.5 Client Interface Requirements . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+12.5.1 Client Document Experience . . . . . . . . . . . . . . . . . . . . . . . . . 23
+12.5.2 Required Client Workflow . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+12.5.3 Client Upload Instructions. . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+12.5.4 Client Upload Sections . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+12.6 Document Status Model . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+12.7 Important Product Logic . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+
+=== PAGE 3 ===
+ComplianceOS Software Update Specification 3
+1 Document Purpose
+ThisdocumentdefinestherequestedUIandworkflowupdatesforComplianceOS.Itisintended
+for product managers, designers, frontend developers, backend developers, and QA reviewers.
+The scope of this update covers:
+ÔÇó login screen role changes
+ÔÇó compliance wording update
+ÔÇó review queue redesign by client category
+ÔÇó mandate-level review tracking
+ÔÇó pending-document visibility with page references
+ÔÇó risk rating enhancement with mandate-risk questionnaire
+ÔÇó KYC questionnaire integration for natural persons
+2 Software Update Summary
+2.1 Requested Changes
+Area Requested Update
+Login screen Remove the roles Bank and Asset Manager. Keep Compliance,
+Relationship Manager, and Client.
+Security footer Replacecurrentfootertextwith: SHAcryptographyProtected
+by 256-bit TLS encryption.
+Compliance label Remove extra punctuation and display the Compliance role label
+cleanly without a semicolon.
+Review Queue Split the queue into separate categories: Foundations, Trusts,
+Private Clients, and Companies.
+Mandates Show review queue entries for each mandate inside its category.
+Pending documents Display pending items in orange and include the page number
+where the issue appears. Dummy variables are acceptable for now.
+Risk Ratings Add a structured questionnaire section based on the mandate-risk
+form.
+KYC Add a structured questionnaire section based on the KYC form for
+natural persons.
+3 UI Update Instructions
+3.1 Login Screen
+Current change request
+ÔÇó remove Bank
+ÔÇó remove Asset Manager
+ÔÇó replace security note with SHA cryptography Protected by 256-bit TLS encryption
+ÔÇó remove unwanted punctuation in the Compliance label
+
+=== PAGE 4 ===
+ComplianceOS Software Update Specification 4
+Target role set
+ÔÇó Compliance
+ÔÇó Relationship Manager
+ÔÇó Client
+Functional note
+The login page should still support a role-based demo selector. The removed roles must not
+appear in the UI, in seed/demo data, or in role-selection logic.
+3.2 Implementation Notes for Frontend
+Frontend Tasks
+1. Delete the role tiles for Bank and Asset Manager.
+2. Reflow the remaining role cards into a balanced 2-column layout or a stacked layout
+on smaller screens.
+3. Update the footer copy to:
+SHA cryptography Protected by 256-bit TLS encryption
+4. Remove any semicolon or trailing punctuation from the Compliance label and header
+badge.
+5. Verify that removed roles are not selectable through URL params, local storage, or
+mock JSON.
+4 Review Queue Redesign
+4.1 New Review Queue Structure
+The review queue must no longer appear as one flat list. It should be split into four business
+categories:
+ÔÇó Foundations
+ÔÇó Trusts
+ÔÇó Private Clients
+ÔÇó Companies
+Each category must contain one or more mandates. Each mandate card should show:
+ÔÇó mandate name
+ÔÇó client type
+ÔÇó jurisdiction
+ÔÇó risk level
+ÔÇó responsible relationship manager
+
+=== PAGE 5 ===
+ComplianceOS Software Update Specification 5
+ÔÇó document progress
+ÔÇó pending document items with page references
+ÔÇó action buttons: Full Review, Approve, Reject, Request Info
+4.2 Proposed Review Queue Layout
+Category Mandate Country RM Risk Status
+Foundations Global Ventures Foun- Netherlands J. Smith High 2 pending docs
+dation Mandate A
+Foundations Blue River Education Switzerland M. Keller Medium 1 pending doc
+Foundation Mandate
+B
+Trusts Thornton Family CaymanIs- A. Green High 3 pending docs
+Trust Mandate A lands
+Trusts Heritage Legacy Trust Jersey L. Brown Medium 2 pending docs
+Mandate B
+Private Clients Chen Wei Personal Singapore Michael Tor- Low 1 pending doc
+Mandate res
+Private Clients Von Wedemeyer Fam- Spain Sarah Medium 2 pending docs
+ily Mandate Mitchell
+Companies Acme Corporation United Sarah Medium 4 pending docs
+Treasury Mandate Kingdom Mitchell
+Companies Meridian Holdings United Daniel Roth Low 1 pending doc
+LLC Mandate States
+
+=== PAGE 6 ===
+ComplianceOS Software Update Specification 6
+4.3 Mandate-Level Review Queue Examples
+4.3.1 Foundations
+Mandate Pending Page Priority Status
+Item
+Global Ventures Foundation Mandate A Sourcpe. {FOUND_PAGE_01} High Pending
+of
+funds
+nar-
+ra-
+tive
+in-
+com-
+plete
+Global Ventures Foundation Mandate A Trustpe.e{FOUND_PAGE_02} Medium Pending
+iden-
+ti-
+fi-
+ca-
+tion
+doc-
+u-
+ment
+miss-
+ing
+Blue River Education Foundation Mandate B Benepfi.ci{aFlOUND_PAGE_03} Medium Pending
+con-
+trol
+chart
+miss-
+ing
+
+=== PAGE 7 ===
+ComplianceOS Software Update Specification 7
+4.3.2 Trusts
+Mandate Pending Page Priority Status
+Item
+Thornton Family Trust Mandate A Settlorp. {TRUST_PAGE_01} High Pending
+wealth
+ori-
+gin
+not
+doc-
+u-
+mented
+Thornton Family Trust Mandate A Protectpo.r{TRUST_PAGE_02} High Pending
+KYC
+pass-
+port
+copy
+miss-
+ing
+Heritage Legacy Trust Mandate B Trust p. {TRUST_PAGE_03} Medium Pending
+deed
+an-
+nex
+not
+up-
+loaded
+4.3.3 Private Clients
+Mandate Pending Page Priority Status
+Item
+Chen Wei Personal Mandate Tax domi- p. {PC_PAGE_01} Medium Pending
+cile evi-
+dence not
+attached
+Von Wedemeyer Family Mandate Wealth p. {PC_PAGE_02} High Pending
+origin
+detail
+requires
+clarifica-
+tion
+
+=== PAGE 8 ===
+ComplianceOS Software Update Specification 8
+4.3.4 Companies
+Mandate Pending Page Priority Status
+Item
+Acme Corporation Treasury Mandate Latest p. {CO_PAGE_01} Medium Pending
+cer-
+tifi-
+cate
+of in-
+cor-
+po-
+ra-
+tion
+miss-
+ing
+Acme Corporation Treasury Mandate UBO p. {CO_PAGE_02} High Pending
+dec-
+lara-
+tion
+in-
+com-
+plete
+Acme Corporation Treasury Mandate Sanctionps. {CO_PAGE_03} Medium Pending
+screen-
+ing
+at-
+tach-
+ment
+miss-
+ing
+Meridian Holdings LLC Mandate Commerpc.ia{lCO_PAGE_04} Low Pending
+reg-
+ister
+ex-
+tract
+out-
+dated
+5 Pending Documents UI Rule
+Pending document items must be visually highlighted in orange. Each pending item should
+display:
+ÔÇó document name
+ÔÇó issue summary
+ÔÇó page reference
+ÔÇó due date placeholder
+ÔÇó responsible party
+
+=== PAGE 9 ===
+ComplianceOS Software Update Specification 9
+5.1 Recommended Card Pattern
+Pending Document Example
+Document: Source of Wealth Declaration
+Issue: Signature field incomplete
+Page: {PAGE_07}
+Due Date: {DUE_DATE}
+Owner: {RELATIONSHIP_MANAGER}
+6 Risk Ratings Update
+6.1 Objective
+The Risk Ratings page should move from a static matrix into a working assessment module. It
+should retain the high-level client matrix while adding questionnaire-driven scoring logic.
+6.2 Mandate Risk Questionnaire Integration
+The following questionnaire is based on the structure of the uploaded mandate-risk form. It
+includes mandate profile, purpose, assets contributed, expected AUM, source of assets, service
+complexity, account activity, cash-flow profile, new money potential, authorized persons, and
+structural complexity fields from the form :contentReference[oaicite:2]index=2.
+6.3 Mandate Risk Questionnaire Template
+# Question Response Placeholder
+1a Mandate profile {MANDATE_PROFILE}
+1b Comments on mandate profile {MANDATE_PROFILE_COMMENTS}
+2 Description of mandate purpose {MANDATE_PURPOSE}
+3 Comments on contact {CONTACT_COMMENTS}
+4a Currency and range of contributed assets {ASSET_RANGE}
+4b Amount of contributed assets {ASSET_AMOUNT}
+5 Expected assets under management after 2 years {EXPECTED_AUM}
+6a Country where assets were generated {SOURCE_COUNTRY}
+6b How were the assets generated {SOURCE_DESCRIPTION}
+6c Industry {INDUSTRY}
+6d If other, specify industry {OTHER_INDUSTRY}
+6e Type of asset delivery or transfer {ASSET_TRANSFER_TYPE}
+7 Type of requested services and products {SERVICES_PRODUCTS}
+8a Planned number of transactions in next 12 months {TX_COUNT}
+8b Description of counterparties, countries, currencies, {TX_DESCRIPTION}
+amounts, type, periodicity, purpose
+9a Currency and category of expected inflows and out- {FLOW_CATEGORY}
+flows
+9b Amount of inflows and outflows over 30 days {FLOW_AMOUNT}
+9c Comments on inflows and outflows {FLOW_COMMENTS}
+9d Country of origin of frequent payments {PAYMENT_ORIGIN}
+9e Destination country of frequent payments {PAYMENT_DESTINATION}
+10a New money potential category {NEW_MONEY_CATEGORY}
+10b New money potential amount {NEW_MONEY_AMOUNT}
+
+=== PAGE 10 ===
+ComplianceOS Software Update Specification 10
+10c New money potential comments {NEW_MONEY_COMMENTS}
+11a Relationship between mandate holder and beneficial {RELATIONSHIP_DETAIL}
+owners or authorized persons
+11b Comments on further persons {OTHER_PERSONS_COMMENTS}
+12 Complexity of structures used {STRUCTURE_COMPLEXITY}
+12a Detailed explanation of complex structure {STRUCTURE_DETAIL}
+13 Compliance officer risk classification comment {RISK_COMMENT}
+14 Compliance officer comments {CO_COMMENTS}
+15 Compliance officer sign-off place and date {CO_SIGNOFF}
+16 Management comments {MGMT_COMMENTS}
+17 Management sign-off place and date {MGMT_SIGNOFF}
+6.4 Suggested Risk Scoring Logic
+ÔÇó Low risk: domestic or transparent structures, low transaction activity, simple ownership,
+no exposure flags
+ÔÇó Medium risk: cross-border activity, moderate complexity, higher transaction flows, more
+involved ownership chain
+ÔÇó High risk: trusts, foundations, opaque structures, PEP links, high cash movement, sanc-
+tioned or high-risk jurisdictions
+7 KYC Questionnaire Integration
+7.1 Objective
+The KYC workflow should include all relevant natural-person fields from the uploaded KYC
+questionnaire, including identity, exposure, address, family, employment, income, wealth origin,
+and signatures :contentReference[oaicite:3]index=3.
+7.2 KYC Questionnaire Template for Natural Persons
+# Question Response Placeholder
+A1 Profile quality {PROFILE_QUALITY}
+A2 Profile comments {PROFILE_COMMENTS}
+A3 Title {TITLE}
+A4 First name(s) {FIRST_NAME}
+A5 Last name {LAST_NAME}
+A6 Maiden name {MAIDEN_NAME}
+A7 Full name as per passport {FULL_PASSPORT_NAME}
+A8 Gender {GENDER}
+A9 Date of birth {DOB}
+A10 Country of birth {COUNTRY_OF_BIRTH}
+A11 Nationality {NATIONALITY}
+A12 Second nationality {SECOND_NATIONALITY}
+A13 Third nationality {THIRD_NATIONALITY}
+A14 Additional nationalities {OTHER_NATIONALITIES}
+A15 Legal residence {LEGAL_RESIDENCE}
+A16 Second legal residence {SECOND_LEGAL_RESIDENCE}
+A17 Tax domicile {TAX_DOMICILE}
+
+=== PAGE 11 ===
+ComplianceOS Software Update Specification 11
+A18 Tax confirmation {TAX_CONFIRMATION}
+A19 Correspondence language {CORR_LANGUAGE}
+A20 Description of prior relationship {RELATIONSHIP_DESCRIPTION}
+A21 Known since {KNOWN_SINCE}
+A22 Acquisition comment {ACQUISITION_COMMENT}
+A23 Personal contact {PERSONAL_CONTACT}
+A24 If yes, place and date of contact {CONTACT_PLACE_DATE}
+A25 Exposure category {EXPOSURE_CATEGORY}
+A26 Exposure comment {EXPOSURE_COMMENT}
+A27 US person status {US_PERSON}
+A28 Type of ID document {ID_TYPE}
+A29 If other ID, specify {ID_OTHER}
+A30 Copy authenticity confirmation {COPY_AUTH}
+A31 Private phone number {PHONE_PRIVATE}
+A32 Mobile {MOBILE}
+A33 Office phone {PHONE_OFFICE}
+A34 Other phone {PHONE_OTHER}
+A35 Fax {FAX}
+A36 Email {EMAIL}
+A37 Preferred communication channel {COMM_CHANNEL}
+A38 Held mail instruction {HELD_MAIL}
+A39 Correspondence address type {ADDRESS_TYPE}
+A40 Residence street and number {RES_STREET}
+A41 Residence city {RES_CITY}
+A42 Residence country {RES_COUNTRY}
+A43 Residence postal code {RES_ZIP}
+A44 Second address street and number {SECOND_STREET}
+A45 Second address city {SECOND_CITY}
+A46 Second address country {SECOND_COUNTRY}
+A47 Second address postal code {SECOND_ZIP}
+A48 Correspondence street and number {CORR_STREET}
+A49 Correspondence city {CORR_CITY}
+A50 Correspondence country {CORR_COUNTRY}
+A51 Correspondence postal code {CORR_ZIP}
+A52 Additional contact person {ADDITIONAL_CONTACT}
+A53 Contact comment {CONTACT_COMMENT}
+A54 Relationship to corporate insider {CORP_INSIDER_REL}
+A55 Is person a corporate insider {CORP_INSIDER}
+A56 If yes, listed companies concerned {LISTED_COMPANIES}
+A57 Marital status {MARITAL_STATUS}
+A58 Family situation description {FAMILY_DESCRIPTION}
+A59 Spouse details {SPOUSE_DETAILS}
+A60 Children details {CHILDREN_DETAILS}
+A61 Closely associated exposed persons {ASSOCIATED_PEOPLE}
+A62 Exposure details of associated persons {ASSOCIATED_DETAILS}
+A63 Employment situation {EMPLOYMENT_STATUS}
+A64 Industry of current or last employer {EMPLOYER_INDUSTRY}
+A65 If other industry, specify {EMPLOYER_INDUSTRY_OTHER}
+A66 Profession {PROFESSION}
+A67 Employer {EMPLOYER}
+A68 Place of business activity {BUSINESS_PLACE}
+
+=== PAGE 12 ===
+ComplianceOS Software Update Specification 12
+A69 Self-employed details {SELF_EMPLOYED_DETAILS}
+A70 Company name, address, website {COMPANY_DETAILS}
+A71 Is company personally known {COMPANY_KNOWN}
+A72 Additional employment information {EMPLOYMENT_COMMENTS}
+A73 Income currency {INCOME_CURRENCY}
+A74 Average annual net income {NET_INCOME}
+A75 Other regular income {OTHER_INCOME}
+A76 Main source of regular income {MAIN_INCOME_SOURCE}
+A77 Income comments {INCOME_COMMENTS}
+A78 Expense currency {EXPENSE_CURRENCY}
+A79 Living costs per year {LIVING_COSTS}
+A80 Planned annual expenses {PLANNED_EXPENSES}
+A81 Financial dependants {DEPENDANTS}
+A82 Expected dependant expenses {DEPENDANT_EXPENSES}
+A83 Expense comments {EXPENSE_COMMENTS}
+A84 How wealth was accumulated {WEALTH_CREATION}
+A85 Detailed source of wealth {SOURCE_OF_WEALTH}
+A86 Asset currency {ASSET_CURRENCY}
+A87 Net total wealth {NET_WEALTH}
+A88 Bankable assets {BANKABLE_ASSETS}
+A89 Life insurance value {LIFE_INSURANCE}
+A90 Real estate value {REAL_ESTATE}
+A91 Own company / private equity value {PRIVATE_EQUITY}
+A92 Commercial assets {COMMERCIAL_ASSETS}
+A93 Participations in other companies {OTHER_PARTICIPATIONS}
+A94 If yes, which companies {PARTICIPATION_DETAILS}
+A95 Other assets such as jewelry or art {OTHER_ASSETS}
+A96 Clarification of other assets {OTHER_ASSETS_DETAILS}
+A97 Liabilities {LIABILITIES}
+A98 Comments on wealth and composition {WEALTH_COMMENTS}
+A99 Education and career milestones {CAREER_MILESTONES}
+A100 General comments {GENERAL_COMMENTS}
+A101 Place and date {PLACE_DATE}
+A102 Client advisor name and signature {ADVISOR_SIGNATURE}
+8 Data Model Recommendations
+8.1 Suggested Backend Objects
+ÔÇó ClientCategory
+ÔÇó Mandate
+ÔÇó ReviewItem
+ÔÇó PendingDocument
+ÔÇó MandateRiskAnswer
+ÔÇó KYCAnswer
+ÔÇó RiskScore
+
+=== PAGE 13 ===
+ComplianceOS Software Update Specification 13
+8.2 Suggested Fields
+Minimal Mandate Object
+{
+"id": "mandate_001",
+"category": "Companies",
+"clientName": "Acme Corporation",
+"mandateName": "Treasury Mandate",
+"country": "United Kingdom",
+"riskLevel": "Medium",
+"relationshipManager": "Sarah Mitchell",
+"documentsApproved": 4,
+"documentsTotal": 8,
+"pendingDocuments": [
+{
+"name": "UBO Declaration",
+"issue": "Incomplete section",
+"page": "{CO_PAGE_02}",
+"status": "Pending"
+}
+]
+}
+9 Acceptance Criteria
+1. Login page no longer shows Bank or Asset Manager.
+2. Security footer displays the updated SHA/TLS text exactly.
+3. Compliance label has no stray punctuation.
+4. Review Queue is grouped into Foundations, Trusts, Private Clients, and Companies.
+5. Each category contains mandate-level entries.
+6. Pending document items appear in orange and show page references.
+7. Risk Ratings includes mandate-risk questionnaire fields.
+8. KYC flow includes the full natural-person questionnaire structure.
+9. Dummy placeholders can be replaced later by production variables.
+10 Screenshots
+Upload your screenshots to Overleaf and rename them exactly as follows:
+ÔÇó ui-login.png
+ÔÇó ui-sidebar.png
+ÔÇó ui-review-queue.png
+ÔÇó ui-risk-ratings-1.png
+ÔÇó ui-risk-ratings-2.png
+
+=== PAGE 14 ===
+ComplianceOS Software Update Specification 14
+10.1 Current Login Screen
+Figure 1: Current login screen before requested role and footer updates
+
+=== PAGE 15 ===
+ComplianceOS Software Update Specification 15
+10.2 Navigation Sidebar
+Figure 2: ComplianceOS sidebar navigation
+
+=== PAGE 16 ===
+ComplianceOS Software Update Specification 16
+10.3 Current Review Queue
+Figure 3: Current review queue view
+
+=== PAGE 17 ===
+ComplianceOS Software Update Specification 17
+
+=== PAGE 18 ===
+ComplianceOS Software Update Specification 18
+10.4 Current Risk Ratings View
+Figure 4: Current risk ratings page
+
+=== PAGE 19 ===
+ComplianceOS Software Update Specification 19
+10.5 Alternative Risk Ratings Capture
+ui-risk-ratings-2.png
+Figure 5: Additional risk ratings screenshot
+
+=== PAGE 20 ===
+ComplianceOS Software Update Specification 20
+11 Developer Handover Notes
+Handover
+This document is designed as a functional specification for the next sprint.
+Recommended implementation order:
+1. update login roles and compliance wording
+2. redesign review queue categories
+3. add mandate-level pending document objects
+4. add page-reference display for pending items
+5. implement mandate risk questionnaire
+6. implement KYC questionnaire
+7. connect questionnaire answers to risk scoring
+pls add some other things hat are very important pls seperate blank and signe dfile
+scatgeories in the doicument s ffor both compliance and clients and also the rela-
+tionship manager part ,ust omnly have the id and the kyc whihc must bve corrected
+and the client login must alls chosse between Trust foundation or Priavte person or
+comapnyandalsothecleintinerfacemustjushavethewholecontractasonedicuemnt
+receieved and then have the otpion do upload scanned and sign document swith those
+isntriuctions
+12 Additional Critical Requirements
+This section adds important workflow and access-control requirements for Compliance, Rela-
+tionship Manager, and Client users.
+12.1 Document Categories Must Be Clearly Separated
+The document area must separate files into the following categories:
+1. Blank documents
+2. Signed documents
+This separation must exist for:
+1. Compliance users
+2. Relationship Manager users
+3. Client users
+12.1.1 Blank Documents
+Blank documents are templates or unsigned versions of required forms and contracts. These
+are the files that the client receives for review, completion, printing, signing, or scanning.
+Examples:
+ÔÇó KYC form
+
+=== PAGE 21 ===
+ComplianceOS Software Update Specification 21
+ÔÇó mandate agreement
+ÔÇó declaration forms
+ÔÇó beneficial owner forms
+ÔÇó source of wealth forms
+12.1.2 Signed Documents
+Signed documents are uploaded completed versions of the blank documents. These are the
+scanned and signed files returned by the client.
+Examples:
+ÔÇó signed KYC form
+ÔÇó signed mandate agreement
+ÔÇó signed declarations
+ÔÇó scanned passport copies
+ÔÇó signed source of wealth statements
+12.1.3 UI Requirement
+Each user role must see document sections grouped like this:
+Documents
+ÔÇó Blank Documents
+ÔÇó Signed Documents
+Pending items should still be highlighted in orange and should show a page reference where
+correction is needed.
+12.2 Compliance View Requirements
+The Compliance user must have access to:
+ÔÇó all blank documents
+ÔÇó all signed documents
+ÔÇó all pending corrections
+ÔÇó page-level comments
+ÔÇó mandate risk questionnaire
+ÔÇó KYC questionnaire
+ÔÇó approval, rejection, and request-for-information actions
+Compliance should be able to review whether a document is:
+ÔÇó complete
+ÔÇó incomplete
+
+=== PAGE 22 ===
+ComplianceOS Software Update Specification 22
+ÔÇó signed
+ÔÇó unsigned
+ÔÇó pending correction
+ÔÇó approved
+12.3 Relationship Manager View Requirements
+The Relationship Manager interface must be simplified.
+It should only contain:
+ÔÇó client or mandate ID
+ÔÇó KYC items that must be corrected
+The Relationship Manager should not have the full compliance review workspace. The
+purposeofthisviewistohelptheRelationshipManagerquicklyidentifywhatmustbecorrected
+and follow up with the client.
+12.3.1 Relationship Manager Screen Content
+The Relationship Manager screen should show:
+ÔÇó Mandate ID
+ÔÇó Client name
+ÔÇó KYC correction status
+ÔÇó list of missing or incorrect KYC items
+ÔÇó page reference for each issue
+ÔÇó status: pending / corrected / resubmitted
+12.3.2 Example KYC Correction Table
+Mandate ID KYC Issue Page Status
+M-2026-001 Passport copy unclear p. {KYC_PAGE_01} Pending
+M-2026-001 Tax domicile evidence missing p. {KYC_PAGE_02} Pending
+M-2026-001 Source of wealth explanation incomplete p. {KYC_PAGE_03} Pending
+12.4 Client Login and Client Type Selection
+The client login must allow the client to choose the relevant client type before entering the
+onboarding workflow.
+The available client types must be:
+1. Trust
+2. Foundation
+3. Private Person
+4. Company
+This replaces the earlier role-style logic for the client side. The client is always a client user,
+but must choose the correct onboarding category.
+
+=== PAGE 23 ===
+ComplianceOS Software Update Specification 23
+12.4.1 Client Type Purpose
+The selected client type determines:
+ÔÇó which contract package is shown
+ÔÇó which KYC questions are shown
+ÔÇó which mandate-risk questions are shown
+ÔÇó which supporting documents are requested
+12.5 Client Interface Requirements
+The client interface must be much simpler than the Compliance interface.
+The client should not see multiple fragmented compliance documents. Instead, the client
+should receive the full contract package as one document.
+12.5.1 Client Document Experience
+The client interface must show:
+ÔÇó one full contract package as a single received document
+ÔÇó instructions to review the full package
+ÔÇó instructions to print, sign, and scan where required
+ÔÇó an upload area for scanned and signed files
+12.5.2 Required Client Workflow
+The client workflow should be:
+1. Select client type: Trust, Foundation, Private Person, or Company
+2. Open and review the full contract package
+3. Follow the signing instructions
+4. Upload scanned and signed documents
+5. Submit documents for review
+12.5.3 Client Upload Instructions
+The client-facing upload page should contain clear instructions such as:
+Instructions for Client Upload
+Please review the full contract package carefully.
+Print all pages that require a signature.
+Sign where indicated.
+Scan the signed pages clearly.
+Upload the scanned and signed documents in PDF format.
+Make sure all pages are complete and readable before submission.
+
+=== PAGE 24 ===
+ComplianceOS Software Update Specification 24
+12.5.4 Client Upload Sections
+The client upload screen should contain:
+ÔÇó Received Contract Package
+ÔÇó Upload Signed Documents
+ÔÇó Submission Status
+12.6 Document Status Model
+For all roles, documents should support the following statuses:
+ÔÇó Blank
+ÔÇó Sent to Client
+ÔÇó Received
+ÔÇó Signed
+ÔÇó Pending Correction
+ÔÇó Corrected
+ÔÇó Approved
+ÔÇó Rejected
+12.7 Important Product Logic
+The system should enforce these principles:
+1. Compliance sees the full review process.
+2. Relationship Managers only see the mandate ID and KYC corrections to follow up.
+3. Clients only see the contract package, upload instructions, and signed-upload area.
+4. Clients must choose whether they are a Trust, Foundation, Private Person, or Company.
+5. Documents must always be separated into Blank and Signed categories.
+
