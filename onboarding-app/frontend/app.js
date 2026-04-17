@@ -224,6 +224,7 @@ const ROLES = {
       { id: 'review-queue', label: 'Review Queue', icon: checklistIcon(), badge: '8' },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
       { section: 'Tools' },
+      { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
       { id: 'documents', label: 'Document Templates', icon: fileIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { id: 'risk', label: 'Risk Ratings', icon: shieldIcon() },
@@ -439,6 +440,7 @@ function navigateTo(page) {
   const titles = {
     dashboard: 'Dashboard',
     clients: State.currentRole === 'compliance' ? 'All Cases' : 'My Clients',
+    'contract-building': 'Contract Building',
     documents: 'Documents',
     audit: 'Audit Trail',
     analytics: 'Analytics',
@@ -459,6 +461,7 @@ function navigateTo(page) {
 
   switch(page) {
     case 'dashboard': renderDashboard(); break;
+    case 'contract-building': renderContractBuilding(); break;
     case 'clients': renderClients(); break;
     case 'documents': renderDocuments(); break;
     case 'audit': renderAuditPage(); break;
@@ -1520,7 +1523,25 @@ function renderAuditPage() {
     </div>
   `;
 }
-
+/* ============================================================
+   PAGE: CONTRACT BUILDING
+   ============================================================ */
+function renderContractBuilding() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>Contract Building</h1>
+      <p>Configure and generate client contracts (Backend integration pending)</p>
+    </div>
+    <div class="card">
+      <div class="card-body" style="text-align: center; padding: 80px 20px; color: var(--text-muted);">
+        <div style="font-size: 48px; margin-bottom: 16px;">🏗️</div>
+        <h3 style="color: var(--text-primary); margin-bottom: 8px;">Coming Soon</h3>
+        <p>This module will connect to the backend to dynamically build and manage contracts.</p>
+      </div>
+    </div>
+  `;
+}
 /* ============================================================
    PAGE: REVIEW QUEUE (Compliance only)
    ============================================================ */
@@ -1577,20 +1598,27 @@ function renderReviewQueue() {
               ${m.pendingDocs.length > 0 ? `
                 <div style="font-size:12px;font-weight:700;color:var(--accent-orange);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">⚠ Pending Items (${m.pendingDocs.length})</div>
                 ${m.pendingDocs.map(pd => `
-                  <div style="padding:12px 14px;background:rgba(249,115,22,0.06);border:1px solid rgba(249,115,22,0.25);border-radius:var(--radius-md);margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;">
+                  <div style="padding:12px 14px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center;">
+                    
                     <div>
-                      <div style="font-size:13.5px;font-weight:600;color:var(--text-primary);margin-bottom:3px;">${pd.name}</div>
-                      <div style="font-size:12px;color:var(--text-secondary);">${pd.issue}</div>
-                      <div style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;">
-                        <span style="font-size:11.5px;color:var(--accent-orange);">📄 ${pd.page}</span>
+                      <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">${pd.name}</div>
+                      <div style="display:flex;gap:12px;flex-wrap:wrap;">
                         <span style="font-size:11.5px;color:var(--text-muted);">Owner: ${pd.owner}</span>
                         <span style="font-size:11.5px;color:var(--text-muted);">Due: ${pd.dueDate || '{DUE_DATE}'}</span>
                       </div>
                     </div>
-                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-                      <span class="status-badge" style="background:rgba(249,115,22,0.12);color:var(--accent-orange);">● Pending</span>
-                      <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:${pd.priority==='High'?'rgba(239,68,68,0.1)':pd.priority==='Medium'?'rgba(245,158,11,0.1)':'rgba(107,114,128,0.1)'};color:${pd.priority==='High'?'var(--accent-red)':pd.priority==='Medium'?'var(--status-pending)':'var(--text-muted)'};">${pd.priority}</span>
+
+                    <div style="display:flex;flex-direction:column;gap:8px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);padding:12px 16px;border-radius:var(--radius-sm);min-width: 320px;">
+                      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+                        <span style="font-size:13px;font-weight:700;color:var(--accent-red);line-height:1.3;">⚠ ${pd.issue}</span>
+                        <div style="display:flex;gap:6px;flex-shrink:0;">
+                          <span class="status-badge" style="background:rgba(249,115,22,0.12);color:var(--accent-orange);">● Pending</span>
+                          <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:${pd.priority==='High'?'rgba(239,68,68,0.1)':pd.priority==='Medium'?'rgba(245,158,11,0.1)':'rgba(107,114,128,0.1)'};color:${pd.priority==='High'?'var(--accent-red)':pd.priority==='Medium'?'var(--status-pending)':'var(--text-muted)'};">${pd.priority}</span>
+                        </div>
+                      </div>
+                      <span style="font-size:12px;font-weight:600;color:var(--accent-red);">📄 Location: ${pd.page}</span>
                     </div>
+
                   </div>
                 `).join('')}
               ` : `<div style="font-size:13px;color:var(--accent-green);">✓ No pending items</div>`}
