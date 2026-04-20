@@ -1,24 +1,39 @@
-const express = require("express");
-const cors = require("cors");
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
 
-const healthController = require("./controllers/health.controller");
-
-const folderRoutes = require("./routes/folders.routes");
-const fileRoutes = require("./routes/files.routes");
+dotenv.config();
 
 const app = express();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-app.get("/api/health", healthController.getHealth);
+// Routes
+const healthRoutes = require('./routes/health.routes');
+const foldersRoutes = require('./routes/folders.routes');
+const filesRoutes = require('./routes/files.routes');
 
-// 👇 ADD THESE
-app.use("/api/folders", folderRoutes);
-app.use("/api/files", fileRoutes);
+app.use('/api/health', healthRoutes);
+app.use('/api/folders', foldersRoutes);
+app.use('/api/files', filesRoutes);
 
-const PORT = 5000;
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
 
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: err.message || 'Internal Server Error' });
+});
+
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+module.exports = app;

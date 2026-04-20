@@ -1,9 +1,17 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const controller = require("../controllers/folders.controller");
+const {
+  getAllFolders,
+  getFolderById,
+  createFolder,
+  updateFolder,
+  deleteFolder,
+} = require('../controllers/folders.controller');
 
-router.get("/", controller.getFolders);
-router.get("/type/:type", controller.getFoldersByType);
-router.post("/", controller.createMandateFolder);
+router.get('/', getAllFolders);
+router.get('/:id', getFolderById);
+router.post('/', createFolder);
+router.put('/:id', updateFolder);
+router.delete('/:id', deleteFolder);
 
 module.exports = router;

@@ -1,82 +1,57 @@
-// backend/controllers/folders.controller.js
+const folderService = require('../services/folders.service');
 
-const nextcloudService = require("../services/nextcloud.service");
-
-let folders = [
-  {
-    id: "M-001",
-    name: "Acme Corporation",
-    type: "company",
-    risk: "Medium"
-  },
-  {
-    id: "M-002",
-    name: "Chen Wei",
-    type: "private_person",
-    risk: "Low"
-  },
-  {
-    id: "M-003",
-    name: "Thornton Trust",
-    type: "trust",
-    risk: "High"
-  },
-  {
-    id: "M-004",
-    name: "Global Foundation",
-    type: "foundation",
-    risk: "High"
-  }
-];
-
-exports.getFolders = (req, res) => {
-  res.json(folders);
-};
-
-exports.getFoldersByType = (req, res) => {
-  const { type } = req.params;
-  const result = folders.filter((f) => f.type === type);
-  res.json(result);
-};
-
-exports.createMandateFolder = async (req, res) => {
+// GET /api/folders
+const getAllFolders = async (req, res) => {
   try {
-    const { id, name, type } = req.body;
-
-    if (!id || !name || !type) {
-      return res.status(400).json({
-        success: false,
-        message: "id, name and type are required"
-      });
-    }
-
-    const folderPath = `mandates/${type}/${id}-${name.replace(/\s+/g, "_")}`;
-
-    await nextcloudService.createFolder("mandates");
-    await nextcloudService.createFolder(`mandates/${type}`);
-    const result = await nextcloudService.createFolder(folderPath);
-
-    const newFolder = {
-      id,
-      name,
-      type,
-      risk: "Pending",
-      path: folderPath
-    };
-
-    folders.push(newFolder);
-
-    res.json({
-      success: true,
-      message: "Mandate folder created",
-      local: newFolder,
-      nextcloud: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to create mandate folder",
-      error: error.message
-    });
+    const folders = await folderService.getAllFolders();
+    res.status(200).json(folders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };
+
+// GET /api/folders/:id
+const getFolderById = async (req, res) => {
+  try {
+    const folder = await folderService.getFolderById(req.params.id);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+    res.status(200).json(folder);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/folders
+const createFolder = async (req, res) => {
+  try {
+    const { name, parentId } = req.body;
+    if (!name) return res.status(400).json({ error: 'Folder name is required' });
+    const folder = await folderService.createFolder({ name, parentId });
+    res.status(201).json(folder);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// PUT /api/folders/:id
+const updateFolder = async (req, res) => {
+  try {
+    const folder = await folderService.updateFolder(req.params.id, req.body);
+    if (!folder) return res.status(404).json({ error: 'Folder not found' });
+    res.status(200).json(folder);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// DELETE /api/folders/:id
+const deleteFolder = async (req, res) => {
+  try {
+    await folderService.deleteFolder(req.params.id);
+    res.status(200).json({ message: 'Folder deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { getAllFolders, getFolderById, createFolder, updateFolder, deleteFolder };
