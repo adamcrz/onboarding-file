@@ -148,6 +148,15 @@
   <!-- Toast Notifications -->
   <div class="toast-container" id="toast-container"></div>
 
+  <!-- api.js must load BEFORE app.js -->
+  <script src="api.js"></script>
   <script src="app.js"></script>
+
+  <script>
+    // Kick off backend sync as soon as the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      loadStateFromBackend();
+    });
+  </script>
 </body>
 </html>
