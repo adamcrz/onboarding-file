@@ -3085,5 +3085,5 @@ function formatDate(d) {
    INIT
    ============================================================ */
 document.addEventListener('DOMContentLoaded', () => {
-  // Ready
+   await loadStateFromBackend();
 });
