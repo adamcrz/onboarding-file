@@ -181,12 +181,19 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 }
 
 .login-logo {
-  display: flex; align-items: center; gap: 14px;
+  display: flex; align-items: center; justify-content: center;
   margin-bottom: 36px;
 }
-.logo-icon { flex-shrink: 0; }
-.logo-name { display: block; font-size: 18px; font-weight: 700; color: var(--text-primary); }
-.logo-tagline { display: block; font-size: 11px; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+.company-logo {
+  display: block;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.login-company-logo {
+  width: min(100%, 320px);
+  max-height: 92px;
+}
 
 .login-title { font-size: 26px; margin-bottom: 6px; }
 .login-subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 28px; }
@@ -264,11 +271,22 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
   display: flex; align-items: center; gap: 12px; flex-shrink: 0;
 }
 .sidebar-logo {
-  display: flex; align-items: center; gap: 10px;
-  font-weight: 700; font-size: 15px; color: var(--text-primary);
+  display: flex; align-items: center;
   white-space: nowrap; overflow: hidden;
 }
-.sidebar.collapsed .sidebar-logo span { display: none; }
+
+.sidebar-company-logo {
+  width: 196px;
+  max-height: 48px;
+}
+
+.sidebar.collapsed .sidebar-company-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: cover;
+  object-position: left center;
+  border-radius: 6px;
+}
 
 .sidebar-nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
 

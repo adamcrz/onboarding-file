@@ -48,10 +48,9 @@ On the login screen, select a role before clicking **Sign In** to experience eac
 
 | Role | User | What They See |
 |------|------|---------------|
-| **Bank Admin** | Bank Administrator | Full dashboard, all clients, analytics, settings |
-| **Compliance Officer** | Compliance Team | Review queue, approve/reject cases, risk ratings, audit logs |
-| **Relationship Manager** | Sarah Mitchell | My clients only, new onboarding wizard, document management |
-| **Client** | John Smith (Acme Corp) | Application status, KYC form, document uploads |
+| **Compliance Officer** | Compliance Team | Review queue by category, mandate actions, risk ratings, audit logs |
+| **Relationship Manager** | Sarah Mitchell | Simplified KYC corrections follow-up and client coordination view |
+| **Client** | John Smith (Acme Corp) | Client type selection, contract package, signed document upload |
 
 ---
 
@@ -63,7 +62,6 @@ On the login screen, select a role before clicking **Sign In** to experience eac
 - Persistent role badge in the top bar throughout the session
 
 ### 📊 Role-Adaptive Dashboards
-- **Bank:** KPI stat cards (total clients, under review, approved, rejected, pending docs, expiring docs), recent activity feed, per-client progress bars, document status summary
 - **Compliance:** Action-required alerts, review queue preview, key metrics
 - **RM:** My clients progress, quick access to start new onboarding
 - **Client:** 5-step application tracker, progress bar, document checklist, recent activity
