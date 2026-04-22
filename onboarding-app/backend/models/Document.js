@@ -16,5 +16,8 @@ const documentSchema = new mongoose.Schema({
   filePath:         { type: String }, // for real file uploads later
 }, { timestamps: true });
 
+
+// ← Export BOTH the schema and the model
 module.exports = mongoose.model('Document', documentSchema);
+module.exports.documentSchema = documentSchema; // ← ADD THIS LINE
 
