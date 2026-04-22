@@ -857,4 +857,74 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .font-bold { font-weight: 700; }
 .font-medium { font-weight: 500; }
 .w-full { width: 100%; }
+
+/* ============================================================
+   AUTH PANEL — tabs, divider, link button
+   ============================================================ */
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  margin-bottom: 24px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  font-family: var(--e-global-typography-primary-font-family), sans-serif;
+}
+
+.auth-tab:hover:not(.active) {
+  background: var(--border-subtle);
+}
+
+.auth-tab.active {
+  background: var(--accent-purple);
+  color: #fff;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.auth-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-purple-light);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--transition-fast);
+}
+
+.auth-link-btn:hover {
+  color: var(--accent-purple);
+}
 .hidden { display: none !important; }

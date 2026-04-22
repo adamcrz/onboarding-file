@@ -280,6 +280,208 @@ function xIcon()       { return `<svg width="14" height="14" viewBox="0 0 24 24"
 function alertIcon()   { return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`; }
 
 /* ============================================================
+   AUTH PANEL — state machine for the login card
+   ============================================================ */
+const AuthState = { panel: 'login', pendingEmail: '', resetToken: '' };
+
+function setAuthPanel(panel) {
+  AuthState.panel = panel;
+  renderAuthPanel();
+}
+
+function renderAuthPanel() {
+  const el = document.getElementById('auth-panel');
+  if (!el) return;
+  const map = {
+    'login':           loginFormHTML,
+    'register':        registerFormHTML,
+    'verify-pending':  verifyPendingHTML,
+    'forgot-password': forgotPasswordHTML,
+    'reset-sent':      resetSentHTML,
+    'reset-password':  resetPasswordFormHTML,
+  };
+  el.innerHTML = (map[AuthState.panel] || loginFormHTML)();
+}
+
+/* --- HTML generators -------------------------------------------------- */
+
+function loginFormHTML() {
+  return `
+    <div class="auth-tabs">
+      <button class="auth-tab active"  onclick="setAuthPanel('login')">Sign In</button>
+      <button class="auth-tab"         onclick="setAuthPanel('register')">Create Account</button>
+    </div>
+
+    <h1 class="login-title">Welcome back</h1>
+    <p class="login-subtitle">Sign in to your compliance portal</p>
+
+    <div class="form-group">
+      <label for="login-email">Email</label>
+      <input type="email" id="login-email" placeholder="you@institution.com"
+             autocomplete="email" onkeydown="if(event.key==='Enter')login()" />
+    </div>
+    <div class="form-group">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <label for="login-password" style="margin:0;">Password</label>
+        <button class="auth-link-btn" onclick="setAuthPanel('forgot-password')">Forgot password?</button>
+      </div>
+      <input type="password" id="login-password" placeholder="••••••••"
+             autocomplete="current-password" onkeydown="if(event.key==='Enter')login()" />
+    </div>
+
+    <button class="btn-primary btn-full" id="login-btn" onclick="login()">
+      Sign In
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+
+    <div class="auth-divider"><span>or quick demo access</span></div>
+
+    <div class="role-selector">
+      <p class="role-label">Select a role then click Sign In above</p>
+      <div class="role-grid" style="grid-template-columns:1fr 1fr 1fr;">
+        <button class="role-btn active" data-role="compliance" onclick="selectRole(this,'compliance')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          Compliance
+        </button>
+        <button class="role-btn" data-role="rm" onclick="selectRole(this,'rm')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          Rel. Manager
+        </button>
+        <button class="role-btn" data-role="client" onclick="selectRole(this,'client')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+          Client
+        </button>
+      </div>
+    </div>
+
+    <p class="login-footer">SHA cryptography &nbsp;·&nbsp; Protected by 256-bit TLS encryption</p>
+  `;
+}
+
+function registerFormHTML() {
+  return `
+    <div class="auth-tabs">
+      <button class="auth-tab"         onclick="setAuthPanel('login')">Sign In</button>
+      <button class="auth-tab active"  onclick="setAuthPanel('register')">Create Account</button>
+    </div>
+
+    <h1 class="login-title">Create account</h1>
+    <p class="login-subtitle">Join your compliance portal</p>
+
+    <div class="form-group">
+      <label for="reg-name">Full Name *</label>
+      <input type="text" id="reg-name" placeholder="Your full name" autocomplete="name" />
+    </div>
+    <div class="form-group">
+      <label for="reg-email">Email *</label>
+      <input type="email" id="reg-email" placeholder="you@institution.com" autocomplete="email" />
+    </div>
+    <div class="form-group">
+      <label for="reg-password">Password *</label>
+      <input type="password" id="reg-password" placeholder="At least 8 characters" autocomplete="new-password" />
+    </div>
+    <div class="form-group">
+      <label for="reg-confirm">Confirm Password *</label>
+      <input type="password" id="reg-confirm" placeholder="Repeat password"
+             autocomplete="new-password" onkeydown="if(event.key==='Enter')register()" />
+    </div>
+    <div class="form-group">
+      <label for="reg-role">Role</label>
+      <select id="reg-role">
+        <option value="client">Client</option>
+        <option value="rm">Relationship Manager</option>
+        <option value="compliance">Compliance Officer</option>
+      </select>
+    </div>
+
+    <button class="btn-primary btn-full" id="register-btn" onclick="register()">
+      Create Account
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+
+    <p class="login-footer">SHA cryptography &nbsp;·&nbsp; Protected by 256-bit TLS encryption</p>
+  `;
+}
+
+function verifyPendingHTML() {
+  return `
+    <div style="text-align:center;padding:20px 0 8px;">
+      <div style="font-size:52px;margin-bottom:14px;">📧</div>
+      <h1 class="login-title" style="font-size:20px;">Check your email</h1>
+      <p class="login-subtitle">We sent a verification link to</p>
+      <p style="font-weight:700;color:var(--accent-purple);font-size:14px;margin:6px 0 20px;">${AuthState.pendingEmail}</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.6;">
+        Click the link in the email to activate your account.<br>
+        Check your spam folder if you don't see it within a few minutes.
+      </p>
+      <button class="btn-secondary btn-full" id="resend-btn" onclick="resendVerification()">
+        Resend verification email
+      </button>
+      <button class="auth-link-btn" style="display:block;margin-top:16px;width:100%;text-align:center;"
+              onclick="setAuthPanel('login')">← Back to sign in</button>
+    </div>
+  `;
+}
+
+function forgotPasswordHTML() {
+  return `
+    <button class="auth-link-btn" style="display:block;margin-bottom:20px;"
+            onclick="setAuthPanel('login')">← Back to sign in</button>
+    <h1 class="login-title" style="font-size:20px;">Reset password</h1>
+    <p class="login-subtitle">Enter your email and we'll send you a reset link.</p>
+
+    <div class="form-group" style="margin-top:20px;">
+      <label for="forgot-email">Email</label>
+      <input type="email" id="forgot-email" placeholder="you@institution.com"
+             autocomplete="email" onkeydown="if(event.key==='Enter')forgotPassword()" />
+    </div>
+
+    <button class="btn-primary btn-full" id="forgot-btn" onclick="forgotPassword()">
+      Send Reset Link
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+  `;
+}
+
+function resetSentHTML() {
+  return `
+    <div style="text-align:center;padding:20px 0 8px;">
+      <div style="font-size:52px;margin-bottom:14px;">✉️</div>
+      <h1 class="login-title" style="font-size:20px;">Reset link sent</h1>
+      <p class="login-subtitle">
+        If that email is registered you'll receive a reset link shortly.<br>
+        Check your spam folder too.
+      </p>
+      <button class="btn-secondary btn-full" style="margin-top:28px;"
+              onclick="setAuthPanel('login')">Back to sign in</button>
+    </div>
+  `;
+}
+
+function resetPasswordFormHTML() {
+  return `
+    <h1 class="login-title" style="font-size:20px;">Set new password</h1>
+    <p class="login-subtitle">Enter your new password below.</p>
+
+    <div class="form-group" style="margin-top:20px;">
+      <label for="reset-new">New Password *</label>
+      <input type="password" id="reset-new" placeholder="At least 8 characters"
+             autocomplete="new-password" />
+    </div>
+    <div class="form-group">
+      <label for="reset-confirm">Confirm New Password *</label>
+      <input type="password" id="reset-confirm" placeholder="Repeat new password"
+             autocomplete="new-password" onkeydown="if(event.key==='Enter')doResetPassword()" />
+    </div>
+
+    <button class="btn-primary btn-full" id="reset-btn" onclick="doResetPassword()">
+      Set New Password
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20,6 9,17 4,12"/></svg>
+    </button>
+  `;
+}
+
+/* ============================================================
    AUTH
    ============================================================ */
 function enterApp(role) {
@@ -294,9 +496,9 @@ function enterApp(role) {
 }
 
 async function login() {
-  const email    = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-password').value;
-  const role     = State.currentRole;
+  const email    = (document.getElementById('login-email')?.value || '').trim();
+  const password = document.getElementById('login-password')?.value || '';
+  const demoRole = State.currentRole;
   const btn      = document.getElementById('login-btn');
 
   if (!email || !password) {
@@ -304,8 +506,7 @@ async function login() {
     return;
   }
 
-  btn.disabled = true;
-  btn.textContent = 'Signing in…';
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
 
   try {
     const controller = new AbortController();
@@ -319,20 +520,42 @@ async function login() {
     clearTimeout(timeout);
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Login failed');
+
+    if (res.status === 403 && data.code === 'EMAIL_NOT_VERIFIED') {
+      AuthState.pendingEmail = data.email || email;
+      setAuthPanel('verify-pending');
+      return;
+    }
+
+    if (!res.ok) {
+      showToast('error', data.error || 'Login failed.');
+      resetLoginBtn();
+      return;
+    }
 
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
-    enterApp(role);
+    enterApp(data.user.role);
 
   } catch (err) {
-    if (err.name === 'AbortError' || err.message.includes('fetch') || err.message.includes('NetworkError') || err.message.includes('Failed to fetch')) {
-      enterApp(role);
+    const isNetwork = err.name === 'AbortError'
+      || err.message.includes('Failed to fetch')
+      || err.message.includes('NetworkError')
+      || err.message.includes('fetch');
+    if (isNetwork) {
+      enterApp(demoRole); // demo / offline fallback
     } else {
       showToast('error', err.message);
-      btn.disabled = false;
-      btn.innerHTML = 'Sign In <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+      resetLoginBtn();
     }
+  }
+}
+
+function resetLoginBtn() {
+  const btn = document.getElementById('login-btn');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = 'Sign In <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
   }
 }
 
@@ -341,16 +564,148 @@ function logout() {
   localStorage.removeItem('user');
   document.getElementById('main-screen').classList.remove('active');
   document.getElementById('login-screen').classList.add('active');
+  setAuthPanel('login');
 }
 
-// Role button selection on login
-document.querySelectorAll('.role-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    State.currentRole = btn.dataset.role;
-  });
-});
+async function register() {
+  const name     = (document.getElementById('reg-name')?.value || '').trim();
+  const email    = (document.getElementById('reg-email')?.value || '').trim();
+  const password = document.getElementById('reg-password')?.value || '';
+  const confirm  = document.getElementById('reg-confirm')?.value  || '';
+  const role     = document.getElementById('reg-role')?.value     || 'client';
+  const btn      = document.getElementById('register-btn');
+
+  if (!name || !email || !password) {
+    showToast('warning', 'Please fill in all required fields.');
+    return;
+  }
+  if (password.length < 8) {
+    showToast('warning', 'Password must be at least 8 characters.');
+    return;
+  }
+  if (password !== confirm) {
+    showToast('error', 'Passwords do not match.');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
+
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5000);
+    const res  = await fetch('http://localhost:5000/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, role }),
+      signal: controller.signal,
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast('error', data.error || 'Registration failed.');
+      if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
+      return;
+    }
+
+    AuthState.pendingEmail = data.email || email;
+    setAuthPanel('verify-pending');
+
+  } catch (err) {
+    showToast('error', 'Could not reach the server. Please check the backend is running.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
+  }
+}
+
+async function resendVerification() {
+  const btn = document.getElementById('resend-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const res  = await fetch('http://localhost:5000/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: AuthState.pendingEmail }),
+    });
+    const data = await res.json();
+    showToast(res.ok ? 'success' : 'error', data.message || data.error);
+  } catch (_) {
+    showToast('error', 'Could not reach the server.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Resend verification email'; }
+  }
+}
+
+async function forgotPassword() {
+  const email = (document.getElementById('forgot-email')?.value || '').trim();
+  const btn   = document.getElementById('forgot-btn');
+  if (!email) { showToast('warning', 'Please enter your email.'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    await fetch('http://localhost:5000/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    setAuthPanel('reset-sent');
+  } catch (_) {
+    showToast('error', 'Could not reach the server.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
+  }
+}
+
+async function doResetPassword() {
+  const password = document.getElementById('reset-new')?.value     || '';
+  const confirm  = document.getElementById('reset-confirm')?.value || '';
+  const btn      = document.getElementById('reset-btn');
+
+  if (password.length < 8) { showToast('warning', 'Password must be at least 8 characters.'); return; }
+  if (password !== confirm) { showToast('error', 'Passwords do not match.'); return; }
+  if (!AuthState.resetToken) { showToast('error', 'Missing reset token.'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const res  = await fetch(`http://localhost:5000/api/auth/reset-password/${AuthState.resetToken}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast('error', data.error || 'Reset failed.'); if (btn) { btn.disabled = false; btn.textContent = 'Set New Password'; } return; }
+
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    AuthState.resetToken = '';
+    showToast('success', 'Password updated! Signing you in…');
+    setTimeout(() => enterApp(data.user.role), 1000);
+  } catch (_) {
+    showToast('error', 'Could not reach the server.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Set New Password'; }
+  }
+}
+
+async function handleEmailVerification(token) {
+  try {
+    const res  = await fetch(`http://localhost:5000/api/auth/verify-email/${token}`);
+    const data = await res.json();
+    if (res.ok) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      showToast('success', 'Email verified! Welcome to ComplianceOS.');
+      setTimeout(() => enterApp(data.user.role), 800);
+    } else {
+      showToast('error', data.error || 'Verification failed.');
+      setAuthPanel('login');
+    }
+  } catch (_) {
+    showToast('error', 'Could not reach the server to verify email.');
+    setAuthPanel('login');
+  }
+}
+
+function selectRole(el, role) {
+  document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  State.currentRole = role;
+}
 
 /* ============================================================
    SHELL SETUP
@@ -3173,5 +3528,20 @@ async function loadStateFromBackend() {
    INIT
    ============================================================ */
 document.addEventListener('DOMContentLoaded', async () => {
+  const params     = new URLSearchParams(window.location.search);
+  const verifyTok  = params.get('verify');
+  const resetTok   = params.get('reset');
+
+  if (verifyTok) {
+    renderAuthPanel(); // show login card shell first so toasts have a backdrop
+    handleEmailVerification(verifyTok);
+  } else if (resetTok) {
+    AuthState.resetToken = resetTok;
+    AuthState.panel      = 'reset-password';
+    renderAuthPanel();
+  } else {
+    renderAuthPanel();
+  }
+
   await loadStateFromBackend();
 });
