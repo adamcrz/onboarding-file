@@ -37,25 +37,22 @@ const ApiHealth = {
    CLIENTS  (maps to /api/folders in your backend)
    Rename your backend route to /api/clients for clarity — see note below
    ============================================================ */
+// AFTER ✅
 const ApiClients = {
-  getAll:    ()       => apiFetch('GET',    '/folders'),
-  getById:   (id)     => apiFetch('GET',    `/folders/${id}`),
-  create:    (data)   => apiFetch('POST',   '/folders', data),
-  update:    (id, d)  => apiFetch('PUT',    `/folders/${id}`, d),
-  remove:    (id)     => apiFetch('DELETE', `/folders/${id}`),
+  getAll:   () => apiFetch('GET', '/clients'),
+  getById:  (id) => apiFetch('GET', `/clients/${id}`),
+  create:   (data) => apiFetch('POST', '/clients', data),
+  update:   (id, d) => apiFetch('PUT', `/clients/${id}`, d),
+  remove:   (id) => apiFetch('DELETE', `/clients/${id}`),
 };
 
-/* ============================================================
-   DOCUMENTS  (maps to /api/files in your backend)
-   ============================================================ */
 const ApiDocuments = {
-  getAll:    ()       => apiFetch('GET',    '/files'),
-  getById:   (id)     => apiFetch('GET',    `/files/${id}`),
-  create:    (data)   => apiFetch('POST',   '/files', data),
-  update:    (id, d)  => apiFetch('PUT',    `/files/${id}`, d),
-  remove:    (id)     => apiFetch('DELETE', `/files/${id}`),
+  getAll:   () => apiFetch('GET', '/documents'),
+  getById:  (id) => apiFetch('GET', `/documents/${id}`),
+  create:   (data) => apiFetch('POST', '/documents', data),
+  update:   (id, d) => apiFetch('PUT', `/documents/${id}`, d),
+  remove:   (id) => apiFetch('DELETE', `/documents/${id}`),
 };
-
 /* ============================================================
    SYNC HELPERS
    These push State changes to the backend automatically.
