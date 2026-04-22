@@ -1,6 +1,16 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+
+// Add this to server.js after your existing routes
+const filesRoutes = require('./routes/files.routes');
+const foldersRoutes = require('./routes/folders.routes');
+const healthRoutes = require('./routes/health.routes');
+
+app.use('/api/health', healthRoutes);
+app.use('/api/files', filesRoutes);
+app.use('/api/folders', foldersRoutes);
+
 require("dotenv").config();
 
 const clientsRoutes = require("./routes/clients.routes");
