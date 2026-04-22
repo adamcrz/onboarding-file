@@ -20,6 +20,7 @@ const clientSchema = new mongoose.Schema({
   industry:   { type: String },
   documents:  [documentSchema],
   auditTrail: [auditSchema],
+  documents: [documentSchema],
   kyc:        { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
