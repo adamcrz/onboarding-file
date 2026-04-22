@@ -1,20 +1,11 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+require('dotenv').config();
 
-// Add this to server.js after your existing routes
-const filesRoutes = require('./routes/files.routes');
-const foldersRoutes = require('./routes/folders.routes');
-const healthRoutes = require('./routes/health.routes');
-
-app.use('/api/health', healthRoutes);
-app.use('/api/files', filesRoutes);
-app.use('/api/folders', foldersRoutes);
-
-require("dotenv").config();
-
-const clientsRoutes = require("./routes/clients.routes");
-const documentsRoutes = require("./routes/documents.routes");
+const clientsRoutes   = require('./routes/clients.routes');
+const documentsRoutes = require('./routes/documents.routes');
+const authRoutes      = require('./routes/auth.routes');
 
 const app = express();
 
@@ -23,18 +14,19 @@ app.use(express.json());
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch((err) => console.error('MongoDB connection error:', err));
 
-app.get("/", (req, res) => {
-  res.send("Backend is running");
-});
+// Routes
+app.use('/api/auth',      authRoutes);
+app.use('/api/clients',   clientsRoutes);
+app.use('/api/documents', documentsRoutes);
 
-app.use("/api/clients", clientsRoutes);
-app.use("/api/documents", documentsRoutes);
+// Health check
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
+  res.status(404).json({ error: 'Route not found' });
 });
 
 const PORT = process.env.PORT || 5000;
