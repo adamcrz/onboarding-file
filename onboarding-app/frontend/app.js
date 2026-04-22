@@ -282,19 +282,57 @@ function alertIcon()   { return `<svg width="14" height="14" viewBox="0 0 24 24"
 /* ============================================================
    AUTH
    ============================================================ */
-function login() {
-  const role = State.currentRole;
-  document.getElementById('login-screen').classList.remove('active');
-  document.getElementById('main-screen').classList.add('active');
-  setupRoleUI(role);
-  if (role === 'client' && !State.clientType) {
-    navigateTo('client-contract');
+// REPLACE WITH:
+async function login() {
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const role     = State.currentRole;
+  const btn      = document.getElementById('login-btn');
+
+  if (!email || !password) {
+    showToast('warning', 'Please enter your email and password.');
     return;
   }
-  navigateTo('dashboard');
-}
 
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+
+  try {
+    const res = await fetch('http://localhost:5000/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+
+    // Store token and user
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+
+    // Switch to main app
+    document.getElementById('login-screen').classList.remove('active');
+    document.getElementById('main-screen').classList.add('active');
+    setupRoleUI(role);
+
+    if (role === 'client' && !State.clientType) {
+      navigateTo('client-contract');
+      return;
+    }
+    navigateTo('dashboard');
+
+  } catch (err) {
+    showToast('error', err.message);
+    btn.disabled = false;
+    btn.innerHTML = 'Sign In <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+  }
+}
+// REPLACE WITH:
 function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
   document.getElementById('main-screen').classList.remove('active');
   document.getElementById('login-screen').classList.add('active');
 }
@@ -3084,6 +3122,7 @@ function formatDate(d) {
 /* ============================================================
    INIT
    ============================================================ */
-document.addEventListener('DOMContentLoaded', () => {
-   await loadStateFromBackend();
+// REPLACE WITH:
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadStateFromBackend();
 });

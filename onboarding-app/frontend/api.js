@@ -10,10 +10,11 @@ async function apiFetch(method, path, body) {
     const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE}${path}`, {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      },
+      // REPLACE WITH:
+    headers: {
+  'Content-Type': 'application/json',
+  ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {}),
+    },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
@@ -39,19 +40,19 @@ const ApiAuth = {
   me:       ()     => apiFetch('GET',  '/auth/me'),
 };
 
-// Fixed endpoints
+// REPLACE WITH:
 const ApiClients = {
-  getAll:  ()        => apiFetch('GET',    '/clients'),
-  getById: (id)      => apiFetch('GET',    `/clients/${id}`),
-  create:  (data)    => apiFetch('POST',   '/clients', data),
-  update:  (id, d)   => apiFetch('PUT',    `/clients/${id}`, d),
-  remove:  (id)      => apiFetch('DELETE', `/clients/${id}`),
+  getAll:    ()       => apiFetch('GET',    '/clients'),
+  getById:   (id)     => apiFetch('GET',    `/clients/${id}`),
+  create:    (data)   => apiFetch('POST',   '/clients', data),
+  update:    (id, d)  => apiFetch('PUT',    `/clients/${id}`, d),
+  remove:    (id)     => apiFetch('DELETE', `/clients/${id}`),
 };
 
 const ApiDocuments = {
-  getAll:  ()        => apiFetch('GET',    '/documents'),
-  getById: (id)      => apiFetch('GET',    `/documents/${id}`),
-  create:  (data)    => apiFetch('POST',   '/documents', data),
-  update:  (id, d)   => apiFetch('PUT',    `/documents/${id}`, d),
-  remove:  (id)      => apiFetch('DELETE', `/documents/${id}`),
+  getAll:    ()       => apiFetch('GET',    '/documents'),
+  getById:   (id)     => apiFetch('GET',    `/documents/${id}`),
+  create:    (data)   => apiFetch('POST',   '/documents', data),
+  update:    (id, d)  => apiFetch('PUT',    `/documents/${id}`, d),
+  remove:    (id)     => apiFetch('DELETE', `/documents/${id}`),
 };
