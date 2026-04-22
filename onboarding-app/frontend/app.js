@@ -989,6 +989,16 @@ function approveClient(id) {
   showToast('success', `${c.name} has been approved.`);
   renderClients();
 }
+// your routes above...
+
+app.use((err, req, res, next) => {
+  console.error('ERROR:', err.stack);
+  res.status(500).json({ error: err.message });
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
 
 function rejectClient(id) {
   const c = State.clients.find(c => c.id === id);
@@ -998,6 +1008,8 @@ function rejectClient(id) {
   showToast('error', `${c.name} has been rejected.`);
   renderClients();
 }
+
+
 
 /* ============================================================
    PAGE: CLIENT DETAIL
