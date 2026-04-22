@@ -1,11 +1,11 @@
 const mongoose = require('mongoose');
-
+const { documentSchema } = require('./Document'); // ← ADD THIS
 
 const auditSchema = new mongoose.Schema({
-  action:  { type: String },
-  user:    { type: String },
-  time:    { type: String },
-  type:    { type: String },
+  action: { type: String },
+  user:   { type: String },
+  time:   { type: String },
+  type:   { type: String },
 });
 
 const clientSchema = new mongoose.Schema({
@@ -18,9 +18,8 @@ const clientSchema = new mongoose.Schema({
   progress:   { type: Number, default: 0 },
   country:    { type: String },
   industry:   { type: String },
-  documents:  [documentSchema],
+  documents:  [documentSchema], // ← only once now
   auditTrail: [auditSchema],
-  documents: [documentSchema],
   kyc:        { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
