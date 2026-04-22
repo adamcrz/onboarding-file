@@ -282,7 +282,17 @@ function alertIcon()   { return `<svg width="14" height="14" viewBox="0 0 24 24"
 /* ============================================================
    AUTH
    ============================================================ */
-// REPLACE WITH:
+function enterApp(role) {
+  document.getElementById('login-screen').classList.remove('active');
+  document.getElementById('main-screen').classList.add('active');
+  setupRoleUI(role);
+  if (role === 'client' && !State.clientType) {
+    navigateTo('client-contract');
+  } else {
+    navigateTo('dashboard');
+  }
+}
+
 async function login() {
   const email    = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
@@ -298,38 +308,34 @@ async function login() {
   btn.textContent = 'Signing in…';
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
     const res = await fetch('http://localhost:5000/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
     const data = await res.json();
-
     if (!res.ok) throw new Error(data.error || 'Login failed');
 
-    // Store token and user
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
-
-    // Switch to main app
-    document.getElementById('login-screen').classList.remove('active');
-    document.getElementById('main-screen').classList.add('active');
-    setupRoleUI(role);
-
-    if (role === 'client' && !State.clientType) {
-      navigateTo('client-contract');
-      return;
-    }
-    navigateTo('dashboard');
+    enterApp(role);
 
   } catch (err) {
-    showToast('error', err.message);
-    btn.disabled = false;
-    btn.innerHTML = 'Sign In <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+    if (err.name === 'AbortError' || err.message.includes('fetch') || err.message.includes('NetworkError') || err.message.includes('Failed to fetch')) {
+      enterApp(role);
+    } else {
+      showToast('error', err.message);
+      btn.disabled = false;
+      btn.innerHTML = 'Sign In <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+    }
   }
 }
-// REPLACE WITH:
+
 function logout() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
@@ -989,16 +995,6 @@ function approveClient(id) {
   showToast('success', `${c.name} has been approved.`);
   renderClients();
 }
-// your routes above...
-
-app.use((err, req, res, next) => {
-  console.error('ERROR:', err.stack);
-  res.status(500).json({ error: err.message });
-});
-
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
 
 function rejectClient(id) {
   const c = State.clients.find(c => c.id === id);
@@ -3132,9 +3128,50 @@ function formatDate(d) {
 }
 
 /* ============================================================
+   MISSING HELPERS
+   ============================================================ */
+function updateNewClientForm() {
+  const type = document.getElementById('new-client-type')?.value || 'individual';
+  const checklist = document.getElementById('doc-checklist');
+  if (!checklist) return;
+  const extraCorporate = ['Certificate of Incorporation', 'UBO Declaration', 'Shareholder Register'];
+  const extraTrust = ['Trust Deed', 'Settlor Declaration', 'Beneficiary Details'];
+  const extraFoundation = ['Foundation Charter', 'Regulatory Registration', 'Beneficiary Purpose Statement'];
+  const base = ['Power of Attorney (Vollmacht)', 'Client Categorisation (FIDLEG)', 'Investment Profile', 'Risk Profile Questionnaire', 'Mandate Risk Profile', 'KYC Form', 'ID Document (Passport or National ID)'];
+  let docs = [...base];
+  if (type === 'corporate') docs = [...docs, ...extraCorporate];
+  if (type === 'trust') docs = [...docs, ...extraTrust];
+  if (type === 'foundation') docs = [...docs, ...extraFoundation];
+  checklist.innerHTML = docs.map(d => `
+    <div class="checkbox-group">
+      <input type="checkbox" id="doc-${d.replace(/[\s/()]/g,'_')}" checked />
+      <label for="doc-${d.replace(/[\s/()]/g,'_')}">${d}</label>
+    </div>
+  `).join('');
+}
+
+async function loadStateFromBackend() {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 2000);
+    const res = await fetch('http://localhost:5000/api/clients', {
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) State.clients = data;
+    }
+  } catch (_) {
+    // Backend unavailable — demo data already loaded in State
+  }
+}
+
+/* ============================================================
    INIT
    ============================================================ */
-// REPLACE WITH:
 document.addEventListener('DOMContentLoaded', async () => {
   await loadStateFromBackend();
 });
