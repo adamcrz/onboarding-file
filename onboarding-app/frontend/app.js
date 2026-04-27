@@ -808,7 +808,7 @@ function getActiveClientForUpload() {
     return State.clients.find(c => c.id === State.selectedClientId) || null;
   }
   if (State.currentRole === 'client') {
-    return State.clients.find(c => c.id === 'C001') || State.clients[0] || null;
+    return State.myClientProfile || State.clients[0] || null;
   }
   return null;
 }
@@ -1124,18 +1124,24 @@ function renderRMDashboard() {
 /* --- Client Dashboard --- */
 function renderClientDashboard() {
   const content = document.getElementById('page-content');
-  const client = State.clients[0]; // C001 = Acme Corp
+  const client = State.myClientProfile || State.clients[0];
   if (!State.clientType) {
     navigateTo('client-contract');
     return;
   }
 
+  const ref      = client.clientId || client.id || '—';
+  const status   = client.status   || 'pending';
+  const progress = client.progress || 0;
+  const docs     = client.documents    || [];
+  const audit    = client.auditTrail   || [];
+
   const steps = [
-    { label: 'KYC Form', status: 'done' },
-    { label: 'Documents', status: 'done' },
-    { label: 'Compliance Review', status: 'active' },
-    { label: 'Decision', status: '' },
-    { label: 'Account Open', status: '' },
+    { label: 'KYC Form',           status: progress >= 20 ? 'done' : progress > 0 ? 'active' : '' },
+    { label: 'Documents',          status: progress >= 40 ? 'done' : progress >= 20 ? 'active' : '' },
+    { label: 'Compliance Review',  status: progress >= 70 ? 'done' : progress >= 40 ? 'active' : '' },
+    { label: 'Decision',           status: progress >= 90 ? 'done' : progress >= 70 ? 'active' : '' },
+    { label: 'Account Open',       status: progress >= 100 ? 'done' : progress >= 90 ? 'active' : '' },
   ];
 
   content.innerHTML = `
@@ -1159,9 +1165,9 @@ function renderClientDashboard() {
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
           <div>
             <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px;">Case Reference</div>
-            <div style="font-size:22px;font-weight:700;">${client.id}</div>
+            <div style="font-size:22px;font-weight:700;">${ref}</div>
           </div>
-          <span class="status-badge status-${client.status}" style="font-size:13px;padding:6px 14px;">${statusLabel(client.status)}</span>
+          <span class="status-badge status-${status}" style="font-size:13px;padding:6px 14px;">${statusLabel(status)}</span>
         </div>
         <div class="step-tracker">
           ${steps.map((s,i) => `
@@ -1174,15 +1180,11 @@ function renderClientDashboard() {
         <div style="margin-top:16px;">
           <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
             <span style="font-size:13px;">Overall progress</span>
-            <span style="font-size:13px;font-weight:600;">${client.progress}%</span>
+            <span style="font-size:13px;font-weight:600;">${progress}%</span>
           </div>
-          <div class="progress-bar-wrap"><div class="progress-bar" style="width:${client.progress}%"></div></div>
+          <div class="progress-bar-wrap"><div class="progress-bar" style="width:${progress}%"></div></div>
         </div>
       </div>
-    </div>
-
-    <div class="info-box warning">
-      <p><strong>Action Required:</strong> Your UBO Declaration needs to be updated. Our compliance team has requested additional information. Please review the document and resubmit.</p>
     </div>
 
     <div class="grid-2">
@@ -1192,31 +1194,35 @@ function renderClientDashboard() {
           <button class="btn-secondary btn-sm" onclick="navigateTo('client-upload')">Manage</button>
         </div>
         <div class="card-body" style="padding-top:12px;">
-          ${client.documents.map(d => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border-subtle);">
-              <span style="font-size:13px;">${d.name}</span>
-              <span class="status-badge status-${d.status}">${statusLabel(d.status)}</span>
-            </div>
-          `).join('')}
+          ${docs.length === 0
+            ? `<p style="font-size:13px;color:var(--text-muted);">No documents uploaded yet.</p>`
+            : docs.map(d => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border-subtle);">
+                  <span style="font-size:13px;">${d.name}</span>
+                  <span class="status-badge status-${d.status}">${statusLabel(d.status)}</span>
+                </div>
+              `).join('')
+          }
         </div>
       </div>
 
       <div class="card">
         <div class="card-header"><div class="card-title">Recent Activity</div></div>
         <div class="card-body" style="padding-top:12px;">
-          <div>
-            ${client.auditTrail.slice(-4).reverse().map(a => `
-              <div class="audit-item">
-                <div class="audit-dot" style="background:${auditColor(a.type)}22;color:${auditColor(a.type)};font-size:10px;">
-                  ${auditEmoji(a.type)}
+          ${audit.length === 0
+            ? `<p style="font-size:13px;color:var(--text-muted);">No activity yet.</p>`
+            : audit.slice(-4).reverse().map(a => `
+                <div class="audit-item">
+                  <div class="audit-dot" style="background:${auditColor(a.type)}22;color:${auditColor(a.type)};font-size:10px;">
+                    ${auditEmoji(a.type)}
+                  </div>
+                  <div class="audit-content">
+                    <div class="audit-description">${a.action}</div>
+                    <div class="audit-meta">${a.user} · ${a.time}</div>
+                  </div>
                 </div>
-                <div class="audit-content">
-                  <div class="audit-description">${a.action}</div>
-                  <div class="audit-meta">${a.user} · ${a.time}</div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
+              `).join('')
+          }
         </div>
       </div>
     </div>
@@ -3509,15 +3515,27 @@ async function loadStateFromBackend() {
   try {
     const token = localStorage.getItem('token');
     if (!token) return;
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 2000);
-    const res = await fetch('http://localhost:5000/api/clients', {
-      headers: { 'Authorization': `Bearer ${token}` },
-      signal: controller.signal,
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) State.clients = data;
+
+    if (user.role === 'client') {
+      const res = await fetch('http://localhost:5000/api/clients/me', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal,
+      });
+      if (res.ok) {
+        State.myClientProfile = await res.json();
+      }
+    } else {
+      const res = await fetch('http://localhost:5000/api/clients', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) State.clients = data;
+      }
     }
   } catch (_) {
     // Backend unavailable — demo data already loaded in State
