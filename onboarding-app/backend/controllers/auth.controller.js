@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const jwt    = require('jsonwebtoken');
 const User   = require('../models/User');
+const Client = require('../models/Client');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email.service');
 
 const SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
@@ -42,6 +43,17 @@ const register = async (req, res) => {
 
     const verificationToken = user.createEmailVerificationToken();
     await user.save();
+
+    if (user.role === 'client') {
+      const clientId = await Client.generateClientId();
+      await Client.create({
+        clientId,
+        userId: user._id,
+        email:  user.email,
+        name:   user.name,
+        status: 'pending',
+      });
+    }
 
     try {
       await sendVerificationEmail(user.email, user.name, verificationToken);

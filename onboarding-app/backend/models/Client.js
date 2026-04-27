@@ -25,6 +25,8 @@ const auditSchema = new mongoose.Schema({
 
 const clientSchema = new mongoose.Schema({
   clientId:   { type: String, required: true, unique: true },
+  userId:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', unique: true, sparse: true },
+  email:      { type: String },
   name:       { type: String, required: true },
   type:       { type: String },
   risk:       { type: String, default: 'Medium' },
@@ -37,5 +39,10 @@ const clientSchema = new mongoose.Schema({
   auditTrail: [auditSchema],
   kyc:        { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
+
+clientSchema.statics.generateClientId = async function () {
+  const count = await this.countDocuments();
+  return `CLT-${String(count + 1).padStart(4, '0')}`;
+};
 
 module.exports = mongoose.model('Client', clientSchema);
