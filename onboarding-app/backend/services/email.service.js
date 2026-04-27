@@ -35,7 +35,7 @@ function brand(body) {
 
 async function sendVerificationEmail(to, name, token) {
   const base = process.env.FRONTEND_URL || 'http://127.0.0.1:5500';
-  const link = `${base}/onboarding-app/frontend/index.html?verify=${token}`;
+  const link = `${base}/frontend/index.html?verify=${token}`;
 
   if (!USE_REAL_EMAIL) {
     console.log('\n────────────────────────────────────────────────────');
@@ -65,7 +65,7 @@ async function sendVerificationEmail(to, name, token) {
 
 async function sendPasswordResetEmail(to, name, token) {
   const base = process.env.FRONTEND_URL || 'http://127.0.0.1:5500';
-  const link = `${base}/onboarding-app/frontend/index.html?reset=${token}`;
+  const link = `${base}/frontend/index.html?reset=${token}`;
 
   if (!USE_REAL_EMAIL) {
     console.log('\n────────────────────────────────────────────────────');
