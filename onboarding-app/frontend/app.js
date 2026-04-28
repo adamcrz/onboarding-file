@@ -484,15 +484,13 @@ function resetPasswordFormHTML() {
 /* ============================================================
    AUTH
    ============================================================ */
-function enterApp(role) {
+async function enterApp(role) {
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('main-screen').classList.add('active');
+  State.currentRole = role;
   setupRoleUI(role);
-  if (role === 'client' && !State.clientType) {
-    navigateTo('client-contract');
-  } else {
-    navigateTo('dashboard');
-  }
+  await loadStateFromBackend();
+  navigateTo('dashboard');
 }
 
 async function login() {
@@ -1125,10 +1123,6 @@ function renderRMDashboard() {
 function renderClientDashboard() {
   const content = document.getElementById('page-content');
   const client = State.myClientProfile || State.clients[0];
-  if (!State.clientType) {
-    navigateTo('client-contract');
-    return;
-  }
 
   const ref      = client.clientId || client.id || '—';
   const status   = client.status   || 'pending';
@@ -3526,6 +3520,9 @@ async function loadStateFromBackend() {
       });
       if (res.ok) {
         State.myClientProfile = await res.json();
+        if (State.myClientProfile.type) {
+          State.clientType = State.myClientProfile.type;
+        }
       }
     } else {
       const res = await fetch('http://localhost:5000/api/clients', {
