@@ -2900,38 +2900,10 @@ function updateKycCorrectionStatus(correctionId, status) {
 function renderClientContract() {
   const content = document.getElementById('page-content');
 
-  if (!State.clientType) {
-    // Show client type selector first
-    content.innerHTML = `
-      <div class="page-header">
-        <h1>Select Your Client Type</h1>
-        <p>Please select the category that best describes your situation. This determines your contract package and KYC questions.</p>
-      </div>
-      <div class="grid-2" style="max-width:680px;margin:0 auto;">
-        ${[
-          { type: 'Trust', icon: '⚖️', desc: 'Family or discretionary trust structure' },
-          { type: 'Foundation', icon: '🏛️', desc: 'Private or charitable foundation' },
-          { type: 'Private Person', icon: '👤', desc: 'Individual natural person' },
-          { type: 'Company', icon: '🏢', desc: 'Corporate, LLC or other legal entity' },
-        ].map(opt => `
-          <div class="card" style="cursor:pointer;transition:all .2s;" onclick="State.clientType='${opt.type}';showToast('success','Client category selected: ${opt.type}.');navigateTo('dashboard');"
-               onmouseover="this.style.borderColor='var(--accent-purple-light)'" onmouseout="this.style.borderColor=''">
-            <div class="card-body" style="text-align:center;padding:32px 20px;">
-              <div style="font-size:40px;margin-bottom:12px;">${opt.icon}</div>
-              <div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">${opt.type}</div>
-              <div style="font-size:13px;color:var(--text-secondary);">${opt.desc}</div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-    return;
-  }
-
   content.innerHTML = `
     <div class="page-header">
       <h1>Contract Package</h1>
-      <p>Client type: <strong>${State.clientType}</strong> &nbsp;·&nbsp; <button class="btn-secondary btn-sm" onclick="State.clientType=null;renderClientContract();">Change type</button></p>
+      <p>Your onboarding contract package${State.clientType ? ` · <strong>${State.clientType}</strong>` : ''}</p>
     </div>
 
     <div class="info-box" style="margin-bottom:20px;">
