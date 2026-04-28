@@ -1888,38 +1888,40 @@ function renderDocRows(docs, role) {
    ============================================================ */
 function renderAuditPage() {
   const content = document.getElementById('page-content');
-  const allEvents = State.clients.flatMap(c =>
-    c.auditTrail.map(a => ({ ...a, clientName: c.name, clientId: c.id }))
-  ).sort((a, b) => new Date(b.time) - new Date(a.time));
+
+  const isClient = State.currentRole === 'client';
+  const events = isClient
+    ? (State.myClientProfile?.auditTrail || []).slice().reverse()
+    : State.clients.flatMap(c =>
+        c.auditTrail.map(a => ({ ...a, clientName: c.name, clientId: c.id || c.clientId }))
+      ).sort((a, b) => new Date(b.time) - new Date(a.time));
+
+  const title    = isClient ? 'My Activity' : 'Audit Trail';
+  const subtitle = isClient
+    ? `Activity log for your application`
+    : `Complete activity log across all cases`;
 
   content.innerHTML = `
     <div class="page-header">
-      <h1>Audit Trail</h1>
-      <p>Complete activity log across all cases</p>
+      <h1>${title}</h1>
+      <p>${subtitle}</p>
     </div>
     <div class="card">
-      <div class="card-header">
-        <div class="filter-bar">
-          <div class="search-input-wrap">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input class="search-input" placeholder="Search events..." />
-          </div>
-        </div>
-      </div>
-      <div class="card-body">
-        ${allEvents.map(a => `
-          <div class="audit-item">
-            <div class="audit-dot" style="background:${auditColor(a.type)}22;color:${auditColor(a.type)};">
-              ${auditEmoji(a.type)}
-            </div>
-            <div class="audit-content">
-              <div class="audit-description">${a.action}
-                <button style="background:none;border:none;color:var(--accent-purple-light);cursor:pointer;font-size:12px;margin-left:8px;" onclick="openClientDetail('${a.clientId}')">→ ${a.clientName}</button>
+      <div class="card-body" style="padding:0;">
+        ${events.length === 0
+          ? `<p style="padding:24px;font-size:13px;color:var(--text-muted);">No activity recorded yet.</p>`
+          : events.map((a, i) => `
+            <div style="display:flex;gap:12px;padding:12px 20px;${i < events.length - 1 ? 'border-bottom:1px solid var(--border-subtle);' : ''}align-items:flex-start;">
+              <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;background:${auditColor(a.type)}18;color:${auditColor(a.type)};">
+                ${auditEmoji(a.type)}
               </div>
-              <div class="audit-meta">${a.user} · ${a.time}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;color:var(--text-primary);line-height:1.4;">${a.action}${!isClient && a.clientName ? `<span style="color:var(--accent-purple-light);margin-left:6px;font-size:12px;">→ ${a.clientName}</span>` : ''}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${a.user} · ${a.time}</div>
+              </div>
             </div>
-          </div>
-        `).join('')}
+          `).join('')
+        }
       </div>
     </div>
   `;
