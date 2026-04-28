@@ -2902,54 +2902,52 @@ function updateKycCorrectionStatus(correctionId, status) {
 function renderClientContract() {
   const content = document.getElementById('page-content');
 
+  const clientType = State.clientType || (State.myClientProfile?.type) || 'Standard';
+
   content.innerHTML = `
     <div class="page-header">
       <h1>Contract Package</h1>
-      <p>Your onboarding contract package${State.clientType ? ` · <strong>${State.clientType}</strong>` : ''}</p>
+      <p>Your personalised onboarding package · <strong>${clientType}</strong></p>
     </div>
 
-    <div class="info-box" style="margin-bottom:20px;">
-      <p>📋 Your complete contract package is ready to review. Please read the full document carefully before signing.</p>
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:20px 24px;">
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:4px;">Full Onboarding Contract Package — ${clientType}</div>
+          <div style="font-size:12px;color:var(--text-muted);">Includes: KYC Form · Power of Attorney (Vollmacht) · FIDLEG Categorisation · Investment Profile · Mandate Risk Profile · Form A/T/K/S</div>
+        </div>
+        <button class="btn-primary" style="white-space:nowrap;" onclick="showToast('info','Contract package downloaded.')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:middle;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Package
+        </button>
+      </div>
     </div>
 
     <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="card-title">Received Contract Package</div>
-          <div class="card-subtitle">One combined document — all forms and agreements for ${State.clientType} onboarding</div>
-        </div>
-        <button class="btn-primary btn-sm" onclick="showToast('info','Contract package downloaded.')">⬇ Download Full Package</button>
-      </div>
-      <div class="card-body">
-        <div class="doc-item" style="background:rgba(110,193,228,0.05);border-color:rgba(110,193,228,0.2);">
-          <div class="doc-icon" style="background:rgba(110,193,228,0.15);color:var(--accent-cyan);">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
-          </div>
-          <div class="doc-info">
-            <div class="doc-name">Full Onboarding Contract Package — ${State.clientType}</div>
-            <div class="doc-meta">Includes: KYC Form · Power of Attorney (Vollmacht) · FIDLEG Categorisation · Investment Profile · Mandate Risk Profile · Form A/T/K/S</div>
-          </div>
-          <div class="doc-actions">
-            <span class="status-badge status-under-review">Received</span>
-            <button class="btn-primary btn-xs" onclick="showToast('info','Package downloaded.')">Download</button>
-          </div>
-        </div>
-
-        <div class="card" style="margin-top:16px;background:rgba(249,115,22,0.04);border-color:rgba(249,115,22,0.2);">
-          <div class="card-body">
-            <div style="font-size:13px;font-weight:700;color:var(--accent-orange);margin-bottom:12px;">📌 Signing Instructions</div>
-            <ol style="padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;color:var(--text-primary);">
-              <li>Review the full contract package carefully — read every page.</li>
-              <li>Print all pages that require a signature (marked with ✍).</li>
-              <li>Sign where indicated using a pen (wet signature required).</li>
-              <li>Scan the signed pages clearly at minimum 300 DPI.</li>
-              <li>Save as a single PDF and upload in the next step.</li>
-              <li>Ensure all pages are complete and readable before submission.</li>
-            </ol>
-            <div style="margin-top:16px;">
-              <button class="btn-primary" onclick="navigateTo('client-upload')">Proceed to Upload Signed Documents →</button>
+      <div class="card-body" style="padding:24px;">
+        <div style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:16px;">📌 How to sign and return your documents</div>
+        <div style="display:flex;flex-direction:column;gap:0;">
+          ${[
+            { n:'1', title:'Read the full package', body:'Go through every page carefully before signing anything. If you have questions, contact your relationship manager.' },
+            { n:'2', title:'Print the signature pages', body:'Print all pages marked with ✍. These are the pages that require your handwritten (wet) signature.' },
+            { n:'3', title:'Sign with a pen', body:'Sign in the boxes provided using a ballpoint or fountain pen. Digital signatures are <strong>not accepted</strong> — a physical signature is required.' },
+            { n:'4', title:'Scan at 300 DPI or higher', body:'Scan every signed page in colour at a minimum of 300 DPI. Blurry or low-resolution scans will be rejected.' },
+            { n:'5', title:'Combine into one PDF', body:'Merge all scanned pages into a single PDF file. Do not send separate images or multiple files.' },
+            { n:'6', title:'Upload for compliance review', body:'Use the Upload Signed Docs page to submit. Our team will review your submission within 2 business days.' },
+          ].map(s => `
+            <div style="display:flex;gap:16px;padding:14px 0;border-bottom:1px solid var(--border-subtle);">
+              <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--accent-purple-light);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${s.n}</div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px;">${s.title}</div>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">${s.body}</div>
+              </div>
             </div>
-          </div>
+          `).join('')}
+        </div>
+        <div style="margin-top:20px;">
+          <button class="btn-primary" onclick="navigateTo('client-upload')">
+            Proceed to Upload Signed Documents →
+          </button>
         </div>
       </div>
     </div>
