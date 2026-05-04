@@ -1095,4 +1095,85 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 }
 @media (max-width: 700px) { .cb-fields-grid { grid-template-columns: 1fr; } }
 
+/* Currency selector */
+.cb-currency-selector { display: flex; flex-wrap: wrap; gap: 8px; }
+.cb-currency-btn {
+  padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border-default);
+  background: var(--bg-secondary); color: var(--text-secondary);
+  font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+  -webkit-appearance: none; appearance: none;
+  transition: all var(--transition-fast);
+}
+.cb-currency-btn.active {
+  background: var(--accent-blue, #005073); border-color: var(--accent-blue, #005073);
+  color: #fff;
+}
+.cb-currency-btn:hover:not(.active) {
+  border-color: var(--text-secondary); color: var(--text-primary);
+}
+
+/* Investment profile cards */
+.cb-profile-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px;
+}
+.cb-profile-btn {
+  padding: 16px 14px; border-radius: var(--radius-lg); border: 2px solid var(--border-default);
+  background: var(--bg-secondary); cursor: pointer; text-align: left;
+  font-family: inherit; -webkit-appearance: none; appearance: none;
+  transition: all var(--transition-fast);
+}
+.cb-profile-btn:hover { border-color: var(--text-muted); }
+.cb-profile-btn.active {
+  border-color: var(--accent-blue, #005073);
+  background: rgba(0,80,115,0.06);
+}
+.cb-profile-name { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 5px; }
+.cb-profile-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+@media (max-width: 700px) { .cb-profile-grid { grid-template-columns: 1fr; } }
+
+/* Allocation / currency weight tables */
+.cb-alloc-wrap {
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden;
+}
+.cb-alloc-table { width: 100%; border-collapse: collapse; }
+.cb-alloc-table thead th {
+  background: var(--bg-secondary); padding: 8px 14px; text-align: left;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-muted);
+}
+.cb-alloc-table tbody td { padding: 8px 14px; border-top: 1px solid var(--border-subtle); }
+.cb-alloc-input-wrap { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.cb-alloc-input-wrap input {
+  width: 68px; padding: 5px 8px; border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm); font-size: 13px; text-align: right;
+  background: var(--bg-primary); color: var(--text-primary); font-family: inherit;
+}
+.cb-pct-label { font-size: 13px; color: var(--text-muted); width: 14px; }
+.cb-alloc-total { background: var(--bg-secondary); }
+.cb-alloc-total.cb-alloc-over strong { color: var(--accent-red, #ef4444); }
+
+/* Comments textarea */
+.cb-comments-input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px;
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  font-size: 13px; color: var(--text-primary); background: var(--bg-primary);
+  resize: vertical; min-height: 80px; font-family: inherit;
+}
+.cb-comments-input:focus { outline: none; border-color: var(--accent-blue, #005073); }
+
+/* Checkbox list */
+.cb-checkbox-list { display: flex; flex-direction: column; gap: 8px; }
+.cb-checkbox-label {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  font-size: 13px; color: var(--text-primary);
+  padding: 9px 14px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle); background: var(--bg-secondary);
+  transition: all var(--transition-fast);
+}
+.cb-checkbox-label:hover { border-color: var(--border-default); background: var(--bg-primary); }
+.cb-checkbox-label input[type="checkbox"] {
+  width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-blue, #005073);
+  flex-shrink: 0;
+}
+
 .hidden { display: none !important; }

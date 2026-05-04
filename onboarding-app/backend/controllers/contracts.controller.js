@@ -58,8 +58,35 @@ exports.downloadTemplate = (req, res) => {
 exports.getPlaceholders = async (req, res) => {
   const template = TEMPLATES.find(t => t.id === req.params.templateId);
   if (!template) return res.status(404).json({ error: 'Template not found' });
-  const fields = standardFields(template.lang);
-  res.json({ templateId: template.id, lang: template.lang, fields });
+
+  const base     = standardFields(template.lang);
+  const filePath = path.join(CONTRACTS_DIR, template.file);
+  if (!fs.existsSync(filePath)) {
+    return res.json({ templateId: template.id, lang: template.lang, fields: base });
+  }
+
+  try {
+    const mammoth = require('mammoth');
+    const { value: text } = await mammoth.extractRawText({ path: filePath });
+
+    const checkboxes = [...new Set(
+      [...text.matchAll(/[☐□]\s*([^\n☐□]{2,80})/g)]
+        .map(m => m[1].trim())
+        .filter(v => v.length >= 2 && !v.match(/^\d+$/))
+    )]
+      .slice(0, 25)
+      .map(label => ({
+        key:      'chk_' + label.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'').slice(0,40),
+        label,
+        type:     'checkbox',
+        required: false,
+      }))
+      .filter((f, i, arr) => arr.findIndex(x => x.key === f.key) === i);
+
+    res.json({ templateId: template.id, lang: template.lang, fields: [...base, ...checkboxes] });
+  } catch (_) {
+    res.json({ templateId: template.id, lang: template.lang, fields: base });
+  }
 };
 
 // Escapes a string for safe insertion into XML text content.
@@ -188,6 +215,16 @@ function applyReplacementsToXml(xml, replacements) {
   return xml;
 }
 
+function buildCheckboxReplacements(fieldValues, fieldDefs) {
+  const map = {};
+  (fieldDefs || []).filter(f => f.type === 'checkbox').forEach(f => {
+    const checked = fieldValues[f.key] === 'true';
+    map['☐ ' + f.label] = (checked ? '☑' : '☐') + ' ' + f.label;
+    map['□ ' + f.label] = (checked ? '☑' : '□') + ' ' + f.label;
+  });
+  return map;
+}
+
 exports.previewContract = async (req, res) => {
   const template = TEMPLATES.find(t => t.id === req.params.templateId);
   if (!template) return res.status(404).json({ error: 'Template not found' });
@@ -228,6 +265,19 @@ exports.previewContract = async (req, res) => {
         );
       });
 
+    // Apply checkbox state in preview
+    const checkboxMap = buildCheckboxReplacements(fieldValues, fieldDefs);
+    Object.entries(checkboxMap).forEach(([from, to]) => {
+      const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const isChecked = to.startsWith('☑');
+      processed = processed.replace(
+        new RegExp(esc, 'g'),
+        isChecked
+          ? `<mark style="background:#bbf7d0;padding:1px 4px;border-radius:2px;font-weight:600;">${to}</mark>`
+          : to
+      );
+    });
+
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>${template.name}</title>
       <style>
@@ -258,11 +308,18 @@ exports.generateContract = async (req, res) => {
 
     const content = fs.readFileSync(filePath, 'binary');
     const zip = new PizZip(content);
+    const checkboxMap = buildCheckboxReplacements(fieldValues, fieldDefs);
 
     ['word/document.xml','word/header1.xml','word/footer1.xml','word/header2.xml','word/footer2.xml']
       .forEach(xmlFile => {
         if (!zip.files[xmlFile]) return;
-        zip.file(xmlFile, applyReplacementsToXml(zip.files[xmlFile].asText(), replacements));
+        let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
+        // Apply checkbox state
+        Object.entries(checkboxMap).forEach(([from, to]) => {
+          const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          xml = xml.replace(new RegExp(esc, 'g'), to);
+        });
+        zip.file(xmlFile, xml);
       });
 
     const buffer = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });

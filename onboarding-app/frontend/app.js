@@ -2026,12 +2026,18 @@ function renderAuditPage() {
    CONTRACT BUILDER — state
    ============================================================ */
 const CB = {
-  step: 1,          // 1 = select template, 2 = fill fields, 3 = confirmation
-  lang: 'EN',       // 'EN' | 'DE'
-  templates: [],    // fetched from backend
-  selectedId: null,
-  fields: [],       // fetched per template
-  result: null,     // { otp, clientEmail, clientName }
+  step: 1, lang: 'EN', currency: 'CHF',
+  templates: [], selectedId: null, fields: [], result: null,
+  investmentProfile: 'balanced',
+  allocations: { equities: 60, fixedIncome: 30, cash: 10, other: 0 },
+  currencyWeights: { CHF: 100, EUR: 0, USD: 0, GBP: 0, JPY: 0, other: 0 },
+  investmentComments: '',
+};
+
+const PROFILE_PRESETS = {
+  balanced: { equities: 60, fixedIncome: 30, cash: 10, other: 0 },
+  growth:   { equities: 80, fixedIncome: 15, cash:  5, other: 0 },
+  open:     { equities:  0, fixedIncome:  0, cash:  0, other: 0 },
 };
 
 async function renderContractBuilding() {
@@ -2043,10 +2049,11 @@ async function renderContractBuilding() {
     </div>
     <div id="cb-body"></div>
   `;
-  CB.step = 1;
-  CB.selectedId = null;
-  CB.fields = [];
-  CB.result = null;
+  CB.step = 1; CB.selectedId = null; CB.fields = []; CB.result = null;
+  CB.investmentProfile = 'balanced';
+  CB.allocations = { ...PROFILE_PRESETS.balanced };
+  CB.currencyWeights = { CHF: 100, EUR: 0, USD: 0, GBP: 0, JPY: 0, other: 0 };
+  CB.investmentComments = '';
   await cbRenderStep();
 }
 
@@ -2125,6 +2132,14 @@ async function cbStep1() {
             </div>
           `).join('')}
         </div>
+        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
+          <div class="cb-section-label" style="margin-bottom:10px;">Portfolio Currency</div>
+          <div class="cb-currency-selector">
+            ${['CHF','EUR','USD','GBP','JPY','SGD'].map(c => `
+              <button class="cb-currency-btn${CB.currency===c?' active':''}" onclick="cbSetCurrency('${c}')">${c}</button>
+            `).join('')}
+          </div>
+        </div>
         <div style="margin-top:24px;display:flex;justify-content:flex-end;">
           <button class="btn-primary" onclick="cbGoStep2()" ${CB.selectedId?'':'disabled'} id="cb-next-btn">
             Next: Fill Details
@@ -2200,8 +2215,9 @@ async function cbStep2() {
   const stdKeys = ['client_name','client_email','client_dob',
                    'client_address1','client_address2','client_city','client_country',
                    'client_nationality','contract_date','depot_bank','portfolio_number'];
-  const stdFields   = CB.fields.filter(f => stdKeys.includes(f.key));
-  const extraFields = CB.fields.filter(f => !stdKeys.includes(f.key));
+  const stdFields      = CB.fields.filter(f => stdKeys.includes(f.key));
+  const checkboxFields = CB.fields.filter(f => f.type === 'checkbox');
+  const extraFields    = CB.fields.filter(f => !stdKeys.includes(f.key) && f.type !== 'checkbox');
 
   document.getElementById('cb-fields-area').innerHTML = `
     <div class="cb-section-label">Client Information</div>
@@ -2214,6 +2230,95 @@ async function cbStep2() {
         ${extraFields.map(f => cbFieldHTML(f)).join('')}
       </div>
     ` : ''}
+    ${checkboxFields.length ? `
+      <div class="cb-section-label" style="margin-top:24px;">Document Options</div>
+      <div class="cb-checkbox-list">
+        ${checkboxFields.map(f => cbFieldHTML(f)).join('')}
+      </div>
+    ` : ''}
+
+    <div class="cb-section-label" style="margin-top:28px;">Portfolio Currency</div>
+    <div class="cb-currency-selector" style="margin-top:10px;">
+      ${['CHF','EUR','USD','GBP','JPY','SGD'].map(c => `
+        <button class="cb-currency-btn${CB.currency===c?' active':''}" onclick="cbSetCurrency('${c}')">${c}</button>
+      `).join('')}
+    </div>
+
+    <div class="cb-section-label" style="margin-top:28px;">Investment Profile</div>
+    <div class="cb-profile-grid">
+      <button class="cb-profile-btn${CB.investmentProfile==='balanced'?' active':''}" onclick="cbSetProfile('balanced')">
+        <div class="cb-profile-name">Balanced</div>
+        <div class="cb-profile-hint">60% Equities · 30% Fixed Income · 10% Cash</div>
+      </button>
+      <button class="cb-profile-btn${CB.investmentProfile==='growth'?' active':''}" onclick="cbSetProfile('growth')">
+        <div class="cb-profile-name">Growth</div>
+        <div class="cb-profile-hint">80% Equities · 15% Fixed Income · 5% Cash</div>
+      </button>
+      <button class="cb-profile-btn${CB.investmentProfile==='open'?' active':''}" onclick="cbSetProfile('open')">
+        <div class="cb-profile-name">Open / Custom</div>
+        <div class="cb-profile-hint">Define allocations manually</div>
+      </button>
+    </div>
+    <div class="cb-alloc-wrap" style="margin-top:12px;">
+      <table class="cb-alloc-table">
+        <thead><tr><th>Asset Class</th><th style="text-align:right;">Allocation</th></tr></thead>
+        <tbody>
+          ${[
+            ['alloc_equities',    'Equities',             CB.allocations.equities],
+            ['alloc_fixedincome', 'Fixed Income / Bonds', CB.allocations.fixedIncome],
+            ['alloc_cash',        'Cash & Liquidity',     CB.allocations.cash],
+            ['alloc_other',       'Other / Alternatives', CB.allocations.other],
+          ].map(([id, lbl, val]) => `
+            <tr>
+              <td style="font-size:13px;">${lbl}</td>
+              <td><div class="cb-alloc-input-wrap">
+                <input type="number" id="${id}" value="${val}" min="0" max="100" step="1" oninput="cbUpdateAllocTotal()">
+                <span class="cb-pct-label">%</span>
+              </div></td>
+            </tr>
+          `).join('')}
+          <tr class="cb-alloc-total" id="alloc-total-row">
+            <td style="font-size:13px;font-weight:700;">Total</td>
+            <td style="text-align:right;"><strong id="alloc-total-val">${CB.allocations.equities+CB.allocations.fixedIncome+CB.allocations.cash+CB.allocations.other}%</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Further Comments / Investment Instructions</label>
+      <textarea id="cb_investment_comments" class="cb-comments-input" rows="3"
+                placeholder="Additional instructions, restrictions, or specific remarks…">${CB.investmentComments}</textarea>
+    </div>
+
+    <div class="cb-section-label" style="margin-top:28px;">Currency Allocation</div>
+    <div class="cb-alloc-wrap" style="margin-top:12px;">
+      <table class="cb-alloc-table">
+        <thead><tr><th>Currency</th><th style="text-align:right;">Weight</th></tr></thead>
+        <tbody>
+          ${[
+            ['ccy_CHF',   'CHF — Swiss Franc',     CB.currencyWeights.CHF],
+            ['ccy_EUR',   'EUR — Euro',             CB.currencyWeights.EUR],
+            ['ccy_USD',   'USD — US Dollar',        CB.currencyWeights.USD],
+            ['ccy_GBP',   'GBP — Pound Sterling',   CB.currencyWeights.GBP],
+            ['ccy_JPY',   'JPY — Japanese Yen',     CB.currencyWeights.JPY],
+            ['ccy_other', 'Other',                  CB.currencyWeights.other],
+          ].map(([id, lbl, val]) => `
+            <tr>
+              <td style="font-size:13px;">${lbl}</td>
+              <td><div class="cb-alloc-input-wrap">
+                <input type="number" id="${id}" value="${val}" min="0" max="100" step="1" oninput="cbUpdateCcyTotal()">
+                <span class="cb-pct-label">%</span>
+              </div></td>
+            </tr>
+          `).join('')}
+          <tr class="cb-alloc-total" id="ccy-total-row">
+            <td style="font-size:13px;font-weight:700;">Total</td>
+            <td style="text-align:right;"><strong id="ccy-total-val">${Object.values(CB.currencyWeights).reduce((a,b)=>a+b,0)}%</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div style="margin-top:28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;">
       <button class="btn-secondary" style="display:inline-flex;align-items:center;gap:7px;" onclick="cbViewPreview()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2239,6 +2344,14 @@ async function cbStep2() {
 }
 
 function cbFieldHTML(f) {
+  if (f.type === 'checkbox') {
+    return `
+      <label class="cb-checkbox-label">
+        <input type="checkbox" id="cb_${f.key}" name="${f.key}">
+        <span>${f.label}</span>
+      </label>
+    `;
+  }
   return `
     <div class="form-group" style="margin-bottom:0;">
       <label for="cb_${f.key}">${f.label}${f.required?' <span style="color:var(--accent-red)">*</span>':''}</label>
@@ -2249,14 +2362,66 @@ function cbFieldHTML(f) {
   `;
 }
 
+function cbSetCurrency(c) {
+  CB.currency = c;
+  document.querySelectorAll('.cb-currency-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll(`.cb-currency-btn`).forEach(b => {
+    if (b.textContent.trim() === c) b.classList.add('active');
+  });
+}
+
+function cbSetProfile(profile) {
+  CB.investmentProfile = profile;
+  document.querySelectorAll('.cb-profile-btn').forEach(b => b.classList.remove('active'));
+  const btns = document.querySelectorAll('.cb-profile-btn');
+  btns.forEach(b => { if (b.querySelector('.cb-profile-name')?.textContent.toLowerCase().startsWith(profile)) b.classList.add('active'); });
+  const preset = PROFILE_PRESETS[profile];
+  if (preset && profile !== 'open') {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    set('alloc_equities', preset.equities);
+    set('alloc_fixedincome', preset.fixedIncome);
+    set('alloc_cash', preset.cash);
+    set('alloc_other', preset.other);
+    cbUpdateAllocTotal();
+  }
+}
+
+function cbUpdateAllocTotal() {
+  const ids = ['alloc_equities','alloc_fixedincome','alloc_cash','alloc_other'];
+  const vals = ids.map(id => parseFloat(document.getElementById(id)?.value) || 0);
+  const total = vals.reduce((a, b) => a + b, 0);
+  CB.allocations = { equities: vals[0], fixedIncome: vals[1], cash: vals[2], other: vals[3] };
+  const el = document.getElementById('alloc-total-val');
+  if (el) {
+    el.textContent = total + '%';
+    el.closest('tr')?.classList.toggle('cb-alloc-over', Math.round(total) !== 100);
+  }
+}
+
+function cbUpdateCcyTotal() {
+  const ids = ['ccy_CHF','ccy_EUR','ccy_USD','ccy_GBP','ccy_JPY','ccy_other'];
+  const vals = ids.map(id => parseFloat(document.getElementById(id)?.value) || 0);
+  const total = vals.reduce((a, b) => a + b, 0);
+  CB.currencyWeights = { CHF: vals[0], EUR: vals[1], USD: vals[2], GBP: vals[3], JPY: vals[4], other: vals[5] };
+  const el = document.getElementById('ccy-total-val');
+  if (el) {
+    el.textContent = total + '%';
+    el.closest('tr')?.classList.toggle('cb-alloc-over', Math.round(total) !== 100);
+  }
+}
+
 async function cbSubmit() {
   const fieldValues = {};
   let missingRequired = [];
   CB.fields.forEach(f => {
     const el = document.getElementById(`cb_${f.key}`);
     if (el) {
-      fieldValues[f.key] = el.value.trim();
-      if (f.required && !el.value.trim()) missingRequired.push(f.label);
+      if (f.type === 'checkbox') {
+        fieldValues[f.key] = el.checked ? 'true' : 'false';
+      } else {
+        fieldValues[f.key] = el.value.trim();
+        if (f.required && !el.value.trim()) missingRequired.push(f.label);
+      }
     }
   });
 
@@ -2264,6 +2429,26 @@ async function cbSubmit() {
     showToast('warning', `Please fill in: ${missingRequired.join(', ')}`);
     return;
   }
+
+  // Collect investment profile + currency data into fieldValues
+  CB.investmentComments = document.getElementById('cb_investment_comments')?.value?.trim() || '';
+  cbUpdateAllocTotal();
+  cbUpdateCcyTotal();
+  const profileLabel = CB.investmentProfile.charAt(0).toUpperCase() + CB.investmentProfile.slice(1);
+  Object.assign(fieldValues, {
+    portfolio_currency:  CB.currency,
+    investment_profile:  profileLabel,
+    alloc_equities:      String(CB.allocations.equities),
+    alloc_fixed_income:  String(CB.allocations.fixedIncome),
+    alloc_cash:          String(CB.allocations.cash),
+    alloc_other:         String(CB.allocations.other),
+    investment_comments: CB.investmentComments,
+    ccy_weight_chf:      String(CB.currencyWeights.CHF),
+    ccy_weight_eur:      String(CB.currencyWeights.EUR),
+    ccy_weight_usd:      String(CB.currencyWeights.USD),
+    ccy_weight_gbp:      String(CB.currencyWeights.GBP),
+    ccy_weight_jpy:      String(CB.currencyWeights.JPY),
+  });
 
   const clientName  = fieldValues['client_name'];
   const clientEmail = fieldValues['client_email'];
