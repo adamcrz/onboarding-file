@@ -16,32 +16,31 @@ const TEMPLATES = [
 function standardFields(lang) {
   return lang === 'DE'
     ? [
-        { key: 'client_name',        label: 'Vollständiger Name',    type: 'text',  required: true  },
-        { key: 'client_email',       label: 'E-Mail-Adresse',        type: 'email', required: true  },
-        { key: 'client_dob',         label: 'Geburtsdatum',          type: 'date',  required: true  },
-        { key: 'client_address',     label: 'Adresse',               type: 'text',  required: true  },
-        { key: 'client_nationality', label: 'Nationalität',          type: 'text',  required: false },
-        { key: 'contract_date',      label: 'Vertragsdatum',         type: 'date',  required: true  },
-        { key: 'account_number',     label: 'Kontonummer / Depot',   type: 'text',  required: false },
+        { key: 'client_name',        label: 'Vollständiger Name (Nach- und Vorname)', type: 'text',  required: true  },
+        { key: 'client_email',       label: 'E-Mail-Adresse',                         type: 'email', required: true  },
+        { key: 'client_dob',         label: 'Geburtsdatum',                           type: 'date',  required: true  },
+        { key: 'client_address1',    label: 'Strasse und Hausnummer',                 type: 'text',  required: true  },
+        { key: 'client_address2',    label: 'Adresszusatz (optional)',                type: 'text',  required: false },
+        { key: 'client_city',        label: 'Ort',                                    type: 'text',  required: true  },
+        { key: 'client_country',     label: 'Land',                                   type: 'text',  required: true  },
+        { key: 'client_nationality', label: 'Nationalität',                           type: 'text',  required: false },
+        { key: 'contract_date',      label: 'Vertragsdatum',                          type: 'date',  required: true  },
+        { key: 'depot_bank',         label: 'Depotbank',                              type: 'text',  required: false },
+        { key: 'portfolio_number',   label: 'Portfolionummer',                        type: 'text',  required: false },
       ]
     : [
-        { key: 'client_name',        label: 'Client Full Name',      type: 'text',  required: true  },
-        { key: 'client_email',       label: 'Client Email Address',  type: 'email', required: true  },
-        { key: 'client_dob',         label: 'Date of Birth',         type: 'date',  required: true  },
-        { key: 'client_address',     label: 'Client Address',        type: 'text',  required: true  },
-        { key: 'client_nationality', label: 'Nationality',           type: 'text',  required: false },
-        { key: 'contract_date',      label: 'Contract Date',         type: 'date',  required: true  },
-        { key: 'account_number',     label: 'Account / Portfolio No.',type: 'text', required: false },
+        { key: 'client_name',        label: 'Full Name (Last, First)',                type: 'text',  required: true  },
+        { key: 'client_email',       label: 'Client Email Address',                  type: 'email', required: true  },
+        { key: 'client_dob',         label: 'Date of Birth',                         type: 'date',  required: true  },
+        { key: 'client_address1',    label: 'Street Address',                        type: 'text',  required: true  },
+        { key: 'client_address2',    label: 'Address Line 2 (optional)',             type: 'text',  required: false },
+        { key: 'client_city',        label: 'City',                                  type: 'text',  required: true  },
+        { key: 'client_country',     label: 'Country',                               type: 'text',  required: true  },
+        { key: 'client_nationality', label: 'Nationality',                           type: 'text',  required: false },
+        { key: 'contract_date',      label: 'Contract Date',                         type: 'date',  required: true  },
+        { key: 'depot_bank',         label: 'Custodian Bank',                        type: 'text',  required: false },
+        { key: 'portfolio_number',   label: 'Portfolio Number',                      type: 'text',  required: false },
       ];
-}
-
-function guessType(label) {
-  const l = label.toLowerCase();
-  if (l.includes('date') || l.includes('datum'))                  return 'date';
-  if (l.includes('email') || l.includes('e-mail'))               return 'email';
-  if (l.includes('phone') || l.includes('tel') || l.includes('fon')) return 'tel';
-  if (l.includes('amount') || l.includes('betrag') || l.includes('value')) return 'number';
-  return 'text';
 }
 
 exports.getTemplates = (_req, res) => {
@@ -59,60 +58,105 @@ exports.downloadTemplate = (req, res) => {
 exports.getPlaceholders = async (req, res) => {
   const template = TEMPLATES.find(t => t.id === req.params.templateId);
   if (!template) return res.status(404).json({ error: 'Template not found' });
-
-  const base = standardFields(template.lang);
-  const filePath = path.join(CONTRACTS_DIR, template.file);
-
-  if (!fs.existsSync(filePath)) {
-    return res.json({ templateId: template.id, lang: template.lang, fields: base });
-  }
-
-  try {
-    const mammoth = require('mammoth');
-    const { value: text } = await mammoth.extractRawText({ path: filePath });
-
-    const skipKw = ['name','email','adress','address','datum','date','geburt','dob',
-                    'national','account','konto','depot','e-mail'];
-
-    const extra = [...new Set(
-      [...text.matchAll(/\[([^\]]{3,80})\]/g)]
-        .map(m => m[1].trim())
-        .filter(v => !v.match(/^\d+$/) && !v.match(/^[A-Z]{1,4}$/))
-    )]
-      .filter(raw => !skipKw.some(kw => raw.toLowerCase().includes(kw)))
-      .map(raw => ({
-        key:   'tpl_' + raw.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'').slice(0,40),
-        label: raw,
-        type:  guessType(raw),
-        required: false,
-      }))
-      .filter((f, i, arr) => arr.findIndex(x => x.key === f.key) === i)
-      .slice(0, 15);
-
-    res.json({ templateId: template.id, lang: template.lang, fields: [...base, ...extra] });
-  } catch (_) {
-    res.json({ templateId: template.id, lang: template.lang, fields: base });
-  }
+  const fields = standardFields(template.lang);
+  res.json({ templateId: template.id, lang: template.lang, fields });
 };
 
-function buildReplacementMap(fieldValues, fieldDefs) {
+// Escapes a string for safe insertion into XML text content.
+function escXml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Builds a map from the exact placeholder text that appears in the .docx files
+// to the replacement value from the form. The templates use Word bookmarks whose
+// visible text matches the bookmark name (e.g. "NachundVorname", "Adresse1", …).
+function buildReplacementMap(fieldValues, _fieldDefs) {
+  const fv = fieldValues || {};
+  const name        = fv.client_name        || '';
+  const addr1       = fv.client_address1    || fv.client_address || '';
+  const addr2       = fv.client_address2    || '';
+  const city        = fv.client_city        || '';
+  const country     = fv.client_country     || '';
+  const nationality = fv.client_nationality || '';
+  const dob         = fv.client_dob         || '';
+  const contractDate= fv.contract_date      || '';
+  const depotBank   = fv.depot_bank         || '';
+  const portfolioNo = fv.portfolio_number   || '';
+
+  // Split "Last First" → lastName / firstName for templates that store them separately
+  const parts     = name.trim().split(/\s+/);
+  const lastName  = parts.length > 1 ? parts[parts.length - 1] : name;
+  const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
+
+  const cityDate = [city, contractDate].filter(Boolean).join(', ');
+  const fullAddr  = [addr1, addr2, city, country].filter(Boolean).join(', ');
+
   const map = {};
-  const synonyms = {
-    client_name:        ['Name','Name des Kunden','Client Name','Full Name','Kundenname','Anleger','Vertragspartner'],
-    client_email:       ['E-Mail','Email','E-Mail-Adresse','Client Email'],
-    client_dob:         ['Geburtsdatum','Date of Birth','DOB','geboren am','Geburtstag'],
-    client_address:     ['Adresse','Address','Client Address','Wohnadresse','Wohnort'],
-    client_nationality: ['Nationalität','Nationality','Staatsbürgerschaft','Staatsangehörigkeit'],
-    contract_date:      ['Datum','Date','Vertragsdatum','Contract Date','Ort und Datum'],
-    account_number:     ['Kontonummer','Account Number','Portfolio No.','Depot-Nr.','Depot','Konto'],
-  };
-  Object.entries(synonyms).forEach(([key, patterns]) => {
-    if (fieldValues[key]) patterns.forEach(p => { map[p] = fieldValues[key]; });
-  });
-  (fieldDefs || []).filter(f => f.key.startsWith('tpl_')).forEach(f => {
-    if (fieldValues[f.key]) map[f.label] = fieldValues[f.key];
-  });
+
+  // Full name — all numbered suffix variants used across different template pages
+  if (name) {
+    [
+      'NachundVorname','NachundVorname1','NachundVorname2','NachundVorname3',
+      'NachundVorname5','NachundVorname7','NachundVorname10','NachnameVorname',
+    ].forEach(k => { map[k] = name; });
+  }
+  if (lastName)  { map['Nachname']  = lastName;  map['Nachname1'] = lastName; }
+  if (firstName)   map['Vorname']   = firstName;
+
+  // Address components
+  if (addr1)   { map['Adresse1'] = addr1; map['Adresse11'] = addr1; }
+  if (addr2)   { map['Adresse2'] = addr2; map['Adresse21'] = addr2; map['Adresse23'] = addr2; }
+  if (fullAddr)  map['Adresse']  = fullAddr;
+  if (city)    { map['Ort'] = city;  map['Ort1'] = city; map['Ort2'] = city; map['Ort3'] = city; }
+  if (country) { map['Land'] = country; map['Land1'] = country; }
+
+  // Signature-block place/date line
+  if (cityDate)    map['Ort/Datum'] = cityDate;
+
+  // Personal details
+  if (dob)         map['Birth']       = dob;
+  if (nationality) { map['Nat'] = nationality; map['Nat.'] = nationality; map['Nationality'] = nationality; }
+
+  // Contract details
+  if (depotBank)   map['Depotbank']        = depotBank;
+  if (portfolioNo) { map['Portfolionummer'] = portfolioNo; map['Portfolionummer1'] = portfolioNo; }
+
   return map;
+}
+
+// Replaces placeholder text inside a Word XML string.
+//
+// The templates store placeholder text as visible run text matching the bookmark
+// name (e.g. <w:t>NachundVorname</w:t>). Word sometimes splits a single word
+// across two adjacent runs (e.g. <w:t>Nach</w:t><w:t>undVorname</w:t>). We
+// handle both cases by working paragraph-by-paragraph: collect all <w:t> text,
+// compare the trimmed concatenation to each placeholder, and if it matches we
+// write the value into the first <w:t> and empty the rest.
+function applyReplacementsToXml(xml, replacements) {
+  if (!Object.keys(replacements).length) return xml;
+
+  return xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, para => {
+    const textNodes = [...para.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
+    if (!textNodes.length) return para;
+
+    const combinedText = textNodes.map(m => m[1]).join('').trim();
+    const value = replacements[combinedText];
+    if (value === undefined || value === '') return para;
+
+    // Put the replacement value in the first <w:t>, wipe the rest
+    let firstDone = false;
+    return para.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, () => {
+      if (!firstDone) {
+        firstDone = true;
+        return `<w:t xml:space="preserve">${escXml(value)}</w:t>`;
+      }
+      return '<w:t></w:t>';
+    });
+  });
 }
 
 exports.previewContract = async (req, res) => {
@@ -123,22 +167,37 @@ exports.previewContract = async (req, res) => {
 
   try {
     const mammoth = require('mammoth');
-    const { value: html } = await mammoth.convertToHtml({ path: filePath });
+    const PizZip  = require('pizzip');
     const { fieldValues = {}, fieldDefs = [] } = req.body;
     const replacements = buildReplacementMap(fieldValues, fieldDefs);
 
-    let processed = html;
-    Object.entries(replacements).forEach(([pattern, value]) => {
-      const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      processed = processed.replace(
-        new RegExp(`\\[${escaped}\\]`, 'g'),
-        `<mark style="background:#bbf7d0;padding:1px 4px;border-radius:2px;font-weight:600;">${value}</mark>`
-      );
+    // Apply replacements to the docx XML before converting to HTML
+    const content = fs.readFileSync(filePath, 'binary');
+    const zip = new PizZip(content);
+    ['word/document.xml'].forEach(xmlFile => {
+      if (!zip.files[xmlFile]) return;
+      zip.file(xmlFile, applyReplacementsToXml(zip.files[xmlFile].asText(), replacements));
     });
-    processed = processed.replace(
-      /\[([^\]]{1,80})\]/g,
-      '<mark style="background:#fecaca;padding:1px 4px;border-radius:2px;">[$1]</mark>'
-    );
+
+    const buffer = zip.generate({ type: 'nodebuffer' });
+    const { value: html } = await mammoth.convertToHtml({ buffer });
+
+    // Highlight any remaining unfilled placeholders in red
+    const knownPlaceholders = [
+      'NachundVorname','Adresse1','Adresse2','Adresse','Ort','Land',
+      'Depotbank','Portfolionummer','Birth','Nat','Nationality',
+      'Nachname','Vorname','Ort/Datum',
+    ];
+    let processed = html;
+    knownPlaceholders
+      .filter(p => !replacements[p])
+      .forEach(p => {
+        const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        processed = processed.replace(
+          new RegExp(`\\b${esc}\\b`, 'g'),
+          `<mark style="background:#fecaca;padding:1px 4px;border-radius:2px;">${p}</mark>`
+        );
+      });
 
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>${template.name}</title>
@@ -174,12 +233,7 @@ exports.generateContract = async (req, res) => {
     ['word/document.xml','word/header1.xml','word/footer1.xml','word/header2.xml','word/footer2.xml']
       .forEach(xmlFile => {
         if (!zip.files[xmlFile]) return;
-        let xml = zip.files[xmlFile].asText();
-        Object.entries(replacements).forEach(([pattern, value]) => {
-          const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          xml = xml.replace(new RegExp(`\\[${escaped}\\]`, 'g'), value);
-        });
-        zip.file(xmlFile, xml);
+        zip.file(xmlFile, applyReplacementsToXml(zip.files[xmlFile].asText(), replacements));
       });
 
     const buffer = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });

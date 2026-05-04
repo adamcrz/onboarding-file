@@ -2154,11 +2154,17 @@ async function cbStep2() {
     CB.fields = data.fields || [];
   } catch (_) {
     CB.fields = [
-      { key:'client_name',    label:'Client Full Name',    type:'text',  required:true  },
-      { key:'client_email',   label:'Client Email Address',type:'email', required:true  },
-      { key:'client_dob',     label:'Date of Birth',       type:'date',  required:true  },
-      { key:'client_address', label:'Client Address',      type:'text',  required:true  },
-      { key:'contract_date',  label:'Contract Date',       type:'date',  required:true  },
+      { key:'client_name',        label:'Full Name (Last, First)',      type:'text',  required:true  },
+      { key:'client_email',       label:'Client Email Address',         type:'email', required:true  },
+      { key:'client_dob',         label:'Date of Birth',                type:'date',  required:true  },
+      { key:'client_address1',    label:'Street Address',               type:'text',  required:true  },
+      { key:'client_address2',    label:'Address Line 2 (optional)',    type:'text',  required:false },
+      { key:'client_city',        label:'City',                         type:'text',  required:true  },
+      { key:'client_country',     label:'Country',                      type:'text',  required:true  },
+      { key:'client_nationality', label:'Nationality',                  type:'text',  required:false },
+      { key:'contract_date',      label:'Contract Date',                type:'date',  required:true  },
+      { key:'depot_bank',         label:'Custodian Bank',               type:'text',  required:false },
+      { key:'portfolio_number',   label:'Portfolio Number',             type:'text',  required:false },
     ];
   }
 
