@@ -2262,25 +2262,36 @@ async function cbStep2() {
     </div>
     <div class="cb-alloc-wrap" style="margin-top:12px;">
       <table class="cb-alloc-table">
-        <thead><tr><th>Asset Class</th><th style="text-align:right;">Allocation</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Asset Class</th>
+            <th style="text-align:right;">Min %</th>
+            <th style="text-align:right;">Max %</th>
+          </tr>
+        </thead>
         <tbody>
           ${[
-            ['alloc_equities',    'Equities',             CB.allocations.equities],
-            ['alloc_fixedincome', 'Fixed Income / Bonds', CB.allocations.fixedIncome],
-            ['alloc_cash',        'Cash & Liquidity',     CB.allocations.cash],
-            ['alloc_other',       'Other / Alternatives', CB.allocations.other],
-          ].map(([id, lbl, val]) => `
+            ['equities',    'alloc_equities',    'Equities',             CB.allocations.equities],
+            ['fixedIncome', 'alloc_fixedincome', 'Fixed Income / Bonds', CB.allocations.fixedIncome],
+            ['cash',        'alloc_cash',        'Cash & Liquidity',     CB.allocations.cash],
+            ['other',       'alloc_other',       'Other / Alternatives', CB.allocations.other],
+          ].map(([_key, id, lbl, vals]) => `
             <tr>
               <td style="font-size:13px;">${lbl}</td>
               <td><div class="cb-alloc-input-wrap">
-                <input type="number" id="${id}" value="${val}" min="0" max="100" step="1" oninput="cbUpdateAllocTotal()">
+                <input type="number" id="${id}_min" value="${vals.min}" min="0" max="100" step="1" oninput="cbUpdateAllocTotal()">
+                <span class="cb-pct-label">%</span>
+              </div></td>
+              <td><div class="cb-alloc-input-wrap">
+                <input type="number" id="${id}_max" value="${vals.max}" min="0" max="100" step="1" oninput="cbUpdateAllocTotal()">
                 <span class="cb-pct-label">%</span>
               </div></td>
             </tr>
           `).join('')}
           <tr class="cb-alloc-total" id="alloc-total-row">
             <td style="font-size:13px;font-weight:700;">Total</td>
-            <td style="text-align:right;"><strong id="alloc-total-val">${CB.allocations.equities+CB.allocations.fixedIncome+CB.allocations.cash+CB.allocations.other}%</strong></td>
+            <td style="text-align:right;"><strong id="alloc-total-min">${CB.allocations.equities.min+CB.allocations.fixedIncome.min+CB.allocations.cash.min+CB.allocations.other.min}%</strong></td>
+            <td style="text-align:right;"><strong id="alloc-total-max">${CB.allocations.equities.max+CB.allocations.fixedIncome.max+CB.allocations.cash.max+CB.allocations.other.max}%</strong></td>
           </tr>
         </tbody>
       </table>
@@ -2388,28 +2399,38 @@ function cbSetCurrency(c) {
 function cbSetProfile(profile) {
   CB.investmentProfile = profile;
   document.querySelectorAll('.cb-profile-btn').forEach(b => b.classList.remove('active'));
-  const btns = document.querySelectorAll('.cb-profile-btn');
-  btns.forEach(b => { if (b.querySelector('.cb-profile-name')?.textContent.toLowerCase().startsWith(profile)) b.classList.add('active'); });
+  document.querySelectorAll('.cb-profile-btn').forEach(b => {
+    if (b.querySelector('.cb-profile-name')?.textContent.toLowerCase().startsWith(profile)) b.classList.add('active');
+  });
   const preset = PROFILE_PRESETS[profile];
-  if (preset && profile !== 'open') {
-    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-    set('alloc_equities', preset.equities);
-    set('alloc_fixedincome', preset.fixedIncome);
-    set('alloc_cash', preset.cash);
-    set('alloc_other', preset.other);
+  if (preset) {
+    const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    s('alloc_equities_min',    preset.equities.min);    s('alloc_equities_max',    preset.equities.max);
+    s('alloc_fixedincome_min', preset.fixedIncome.min); s('alloc_fixedincome_max', preset.fixedIncome.max);
+    s('alloc_cash_min',        preset.cash.min);        s('alloc_cash_max',        preset.cash.max);
+    s('alloc_other_min',       preset.other.min);       s('alloc_other_max',       preset.other.max);
     cbUpdateAllocTotal();
   }
 }
 
 function cbUpdateAllocTotal() {
-  const ids = ['alloc_equities','alloc_fixedincome','alloc_cash','alloc_other'];
-  const vals = ids.map(id => parseFloat(document.getElementById(id)?.value) || 0);
-  const total = vals.reduce((a, b) => a + b, 0);
-  CB.allocations = { equities: vals[0], fixedIncome: vals[1], cash: vals[2], other: vals[3] };
-  const el = document.getElementById('alloc-total-val');
-  if (el) {
-    el.textContent = total + '%';
-    el.closest('tr')?.classList.toggle('cb-alloc-over', Math.round(total) !== 100);
+  const ids = ['equities','fixedincome','cash','other'];
+  const mins = ids.map(id => parseFloat(document.getElementById(`alloc_${id}_min`)?.value) || 0);
+  const maxs = ids.map(id => parseFloat(document.getElementById(`alloc_${id}_max`)?.value) || 0);
+  const totalMin = mins.reduce((a,b)=>a+b,0);
+  const totalMax = maxs.reduce((a,b)=>a+b,0);
+  CB.allocations = {
+    equities:    { min: mins[0], max: maxs[0] },
+    fixedIncome: { min: mins[1], max: maxs[1] },
+    cash:        { min: mins[2], max: maxs[2] },
+    other:       { min: mins[3], max: maxs[3] },
+  };
+  const minEl = document.getElementById('alloc-total-min');
+  const maxEl = document.getElementById('alloc-total-max');
+  if (minEl) minEl.textContent = totalMin + '%';
+  if (maxEl) {
+    maxEl.textContent = totalMax + '%';
+    maxEl.closest('tr')?.classList.toggle('cb-alloc-over', Math.round(totalMax) !== 100);
   }
 }
 
@@ -2426,49 +2447,18 @@ function cbUpdateCcyTotal() {
 }
 
 async function cbSubmit() {
-  const fieldValues = {};
-  let missingRequired = [];
-  CB.fields.forEach(f => {
-    const el = document.getElementById(`cb_${f.key}`);
-    if (el) {
-      if (f.type === 'checkbox') {
-        fieldValues[f.key] = el.checked ? 'true' : 'false';
-      } else {
-        fieldValues[f.key] = el.value.trim();
-        if (f.required && !el.value.trim()) missingRequired.push(f.label);
-      }
-    }
-  });
+  // Validate required fields first
+  const missingRequired = CB.fields
+    .filter(f => f.required && f.type !== 'checkbox')
+    .filter(f => { const el = document.getElementById(`cb_${f.key}`); return !el?.value?.trim(); })
+    .map(f => f.label);
 
   if (missingRequired.length) {
     showToast('warning', `Please fill in: ${missingRequired.join(', ')}`);
     return;
   }
 
-  // Collect investment profile, fee + currency data into fieldValues
-  CB.investmentComments = document.getElementById('cb_investment_comments')?.value?.trim() || '';
-  CB.managementFee  = document.getElementById('cb_management_fee')?.value?.trim()  || '';
-  CB.performanceFee = document.getElementById('cb_performance_fee')?.value?.trim() || '';
-  cbUpdateAllocTotal();
-  cbUpdateCcyTotal();
-  const profileLabel = CB.investmentProfile.charAt(0).toUpperCase() + CB.investmentProfile.slice(1);
-  Object.assign(fieldValues, {
-    portfolio_currency:  CB.currency,
-    investment_profile:  profileLabel,
-    alloc_equities:      String(CB.allocations.equities),
-    alloc_fixed_income:  String(CB.allocations.fixedIncome),
-    alloc_cash:          String(CB.allocations.cash),
-    alloc_other:         String(CB.allocations.other),
-    investment_comments: CB.investmentComments,
-    management_fee:      CB.managementFee,
-    performance_fee:     CB.performanceFee,
-    ccy_weight_chf:      String(CB.currencyWeights.CHF),
-    ccy_weight_eur:      String(CB.currencyWeights.EUR),
-    ccy_weight_usd:      String(CB.currencyWeights.USD),
-    ccy_weight_gbp:      String(CB.currencyWeights.GBP),
-    ccy_weight_jpy:      String(CB.currencyWeights.JPY),
-  });
-
+  const fieldValues = cbCollectAllValues();
   const clientName  = fieldValues['client_name'];
   const clientEmail = fieldValues['client_email'];
 
@@ -2558,12 +2548,39 @@ async function cbViewTemplate(id) {
   }
 }
 
-async function cbViewPreview() {
-  const fieldValues = {};
+function cbCollectAllValues() {
+  const fv = {};
   CB.fields.forEach(f => {
     const el = document.getElementById(`cb_${f.key}`);
-    if (el) fieldValues[f.key] = el.value.trim();
+    if (el) fv[f.key] = f.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value.trim();
   });
+  cbUpdateAllocTotal();
+  cbUpdateCcyTotal();
+  Object.assign(fv, {
+    portfolio_currency:      CB.currency,
+    investment_profile:      CB.investmentProfile.charAt(0).toUpperCase() + CB.investmentProfile.slice(1),
+    alloc_equities_min:      String(CB.allocations.equities.min),
+    alloc_equities_max:      String(CB.allocations.equities.max),
+    alloc_fixed_income_min:  String(CB.allocations.fixedIncome.min),
+    alloc_fixed_income_max:  String(CB.allocations.fixedIncome.max),
+    alloc_cash_min:          String(CB.allocations.cash.min),
+    alloc_cash_max:          String(CB.allocations.cash.max),
+    alloc_other_min:         String(CB.allocations.other.min),
+    alloc_other_max:         String(CB.allocations.other.max),
+    investment_comments:     document.getElementById('cb_investment_comments')?.value?.trim() || '',
+    management_fee:          document.getElementById('cb_management_fee')?.value?.trim()      || '',
+    performance_fee:         document.getElementById('cb_performance_fee')?.value?.trim()     || '',
+    ccy_weight_chf:          String(CB.currencyWeights.CHF),
+    ccy_weight_eur:          String(CB.currencyWeights.EUR),
+    ccy_weight_usd:          String(CB.currencyWeights.USD),
+    ccy_weight_gbp:          String(CB.currencyWeights.GBP),
+    ccy_weight_jpy:          String(CB.currencyWeights.JPY),
+  });
+  return fv;
+}
+
+async function cbViewPreview() {
+  const fieldValues = cbCollectAllValues();
   const win = window.open('', '_blank');
   win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Generating preview…</p>');
   try {
@@ -2577,11 +2594,7 @@ async function cbViewPreview() {
 }
 
 async function cbDownloadFilled() {
-  const fieldValues = {};
-  CB.fields.forEach(f => {
-    const el = document.getElementById(`cb_${f.key}`);
-    if (el) fieldValues[f.key] = el.value.trim();
-  });
+  const fieldValues = cbCollectAllValues();
   try {
     const token = localStorage.getItem('token');
     const response = await fetch(`http://localhost:5000/api/contracts/generate/${CB.selectedId}`, {
