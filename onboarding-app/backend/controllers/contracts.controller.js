@@ -62,11 +62,27 @@ exports.getPlaceholders = async (req, res) => {
   const base     = standardFields(template.lang);
   const filePath = path.join(CONTRACTS_DIR, template.file);
   if (!fs.existsSync(filePath)) {
-    return res.json({ templateId: template.id, lang: template.lang, fields: base });
+    return res.json({ templateId: template.id, lang: template.lang, fields: base, bookmarks: [] });
   }
 
   try {
     const mammoth = require('mammoth');
+    const PizZip  = require('pizzip');
+
+    // Extract bookmark names from the docx XML
+    const content = fs.readFileSync(filePath, 'binary');
+    const zip     = new PizZip(content);
+    const docXml  = zip.files['word/document.xml']?.asText() || '';
+    const bmRe    = /<w:bookmarkStart\b[^/]*\/>/g;
+    const bookmarks = [];
+    let bm;
+    while ((bm = bmRe.exec(docXml)) !== null) {
+      const nameM = bm[0].match(/w:name="([^"]+)"/);
+      if (nameM && !nameM[1].startsWith('_')) bookmarks.push(nameM[1]);
+    }
+    const uniqueBookmarks = [...new Set(bookmarks)].sort();
+    console.log(`[${template.id}] Bookmarks found:`, uniqueBookmarks);
+
     const { value: text } = await mammoth.extractRawText({ path: filePath });
 
     const checkboxes = [...new Set(
@@ -83,9 +99,9 @@ exports.getPlaceholders = async (req, res) => {
       }))
       .filter((f, i, arr) => arr.findIndex(x => x.key === f.key) === i);
 
-    res.json({ templateId: template.id, lang: template.lang, fields: [...base, ...checkboxes] });
+    res.json({ templateId: template.id, lang: template.lang, fields: [...base, ...checkboxes], bookmarks: uniqueBookmarks });
   } catch (_) {
-    res.json({ templateId: template.id, lang: template.lang, fields: base });
+    res.json({ templateId: template.id, lang: template.lang, fields: base, bookmarks: [] });
   }
 };
 

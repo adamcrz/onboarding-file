@@ -2204,6 +2204,9 @@ async function cbStep2() {
   try {
     const data = await apiFetch('GET', `/contracts/placeholders/${CB.selectedId}`);
     CB.fields = data.fields || [];
+    if (data.bookmarks?.length) {
+      console.log(`[Contract Builder] Bookmarks in "${CB.selectedId}":`, data.bookmarks);
+    }
   } catch (_) {
     CB.fields = [
       { key:'client_name',        label:'Full Name (Last, First)',      type:'text',  required:true  },
