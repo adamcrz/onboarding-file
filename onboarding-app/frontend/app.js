@@ -250,11 +250,10 @@ const ROLES = {
     badge: 'Client',
     nav: [
       { section: 'My Application' },
-      { id: 'dashboard', label: 'Application Status', icon: homeIcon() },
-      { id: 'client-contract', label: 'Contract Package', icon: fileIcon() },
+      { id: 'dashboard', label: 'Application Status', icon: statusIcon() },
+      { id: 'client-contract', label: 'Contract Package', icon: contractIcon() },
       { id: 'client-upload', label: 'Upload Signed Docs', icon: uploadIcon() },
-      { section: 'Support' },
-      { id: 'audit', label: 'Activity', icon: auditIcon() },
+      { id: 'audit', label: 'Activity', icon: clockIcon() },
     ]
   }
 };
@@ -278,6 +277,9 @@ function uploadIcon()  { return `<svg width="14" height="14" viewBox="0 0 24 24"
 function checkIcon()   { return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20,6 9,17 4,12"/></svg>`; }
 function xIcon()       { return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`; }
 function alertIcon()   { return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`; }
+function statusIcon()  { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>`; }
+function contractIcon(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><path d="M10 13l1.5 1.5L15 11"/></svg>`; }
+function clockIcon()   { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>`; }
 
 /* ============================================================
    AUTH PANEL — state machine for the login card
@@ -308,27 +310,27 @@ function renderAuthPanel() {
 
 function loginFormHTML() {
   return `
-    <h1 class="login-title">Welcome back</h1>
-    <p class="login-subtitle">Select your portal to continue</p>
+    <h1 class="login-title" style="text-align:center;">Welcome back</h1>
+    <p class="login-subtitle" style="text-align:center;margin-bottom:0;">Select your portal to continue</p>
 
     <div class="role-portal-grid">
-      <button class="role-portal-card" onclick="goToRoleLogin('compliance')">
+      <button class="role-portal-card role-portal-compliance" onclick="goToRoleLogin('compliance')">
         <div class="role-portal-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
         </div>
         <div class="role-portal-name">Compliance</div>
         <div class="role-portal-desc">Review &amp; approve cases</div>
       </button>
-      <button class="role-portal-card" onclick="goToRoleLogin('rm')">
+      <button class="role-portal-card role-portal-rm" onclick="goToRoleLogin('rm')">
         <div class="role-portal-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
         </div>
         <div class="role-portal-name">Rel. Manager</div>
         <div class="role-portal-desc">Manage client onboarding</div>
       </button>
-      <button class="role-portal-card" onclick="goToRoleLogin('client')">
+      <button class="role-portal-card role-portal-client" onclick="goToRoleLogin('client')">
         <div class="role-portal-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
         </div>
         <div class="role-portal-name">Client</div>
         <div class="role-portal-desc">Track your application</div>
@@ -346,15 +348,15 @@ function loginFormHTML() {
 const ROLE_META = {
   compliance: {
     name: 'Compliance Officer', portal: 'Compliance Portal',
-    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`,
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`,
   },
   rm: {
     name: 'Relationship Manager', portal: 'RM Portal',
-    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>`,
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>`,
   },
   client: {
     name: 'Client', portal: 'Client Portal',
-    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>`,
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`,
   },
 };
 

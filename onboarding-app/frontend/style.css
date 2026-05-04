@@ -939,23 +939,30 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
   font-family: inherit; text-align: center;
 }
 .role-portal-card:hover {
-  border-color: var(--accent-purple-light);
-  background: var(--accent-purple-glow);
-  color: var(--accent-purple);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
 .role-portal-icon {
-  width: 52px; height: 52px; border-radius: var(--radius-lg);
+  width: 56px; height: 56px; border-radius: var(--radius-lg);
   display: flex; align-items: center; justify-content: center;
-  background: rgba(110,193,228,0.12);
-  color: var(--accent-purple);
   transition: background var(--transition-fast);
 }
-.role-portal-card:hover .role-portal-icon {
-  background: rgba(110,193,228,0.22);
-}
+
+/* Compliance — navy */
+.role-portal-compliance .role-portal-icon { background: rgba(0,80,115,0.10); color: #005073; }
+.role-portal-compliance:hover { border-color: #005073; background: rgba(0,80,115,0.04); color: #005073; }
+.role-portal-compliance:hover .role-portal-icon { background: rgba(0,80,115,0.16); }
+
+/* Rel. Manager — mid-blue */
+.role-portal-rm .role-portal-icon { background: rgba(65,114,159,0.10); color: #41729F; }
+.role-portal-rm:hover { border-color: #41729F; background: rgba(65,114,159,0.04); color: #41729F; }
+.role-portal-rm:hover .role-portal-icon { background: rgba(65,114,159,0.16); }
+
+/* Client — teal/sky */
+.role-portal-client .role-portal-icon { background: rgba(110,193,228,0.12); color: #3a8ab5; }
+.role-portal-client:hover { border-color: #6EC1E4; background: rgba(110,193,228,0.06); color: #3a8ab5; }
+.role-portal-client:hover .role-portal-icon { background: rgba(110,193,228,0.20); }
 
 .role-portal-name {
   font-size: 12.5px; font-weight: 700; color: inherit;
