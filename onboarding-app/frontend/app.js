@@ -536,6 +536,8 @@ function resetPasswordFormHTML() {
    AUTH
    ============================================================ */
 async function enterApp(role) {
+  localStorage.setItem('sessionRole', role);
+  localStorage.setItem('sessionActive', '1');
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('main-screen').classList.add('active');
   State.currentRole = role;
@@ -611,6 +613,9 @@ function resetLoginBtn() {
 function logout() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  localStorage.removeItem('sessionRole');
+  localStorage.removeItem('sessionActive');
+  AuthState.selectedRole = '';
   document.getElementById('main-screen').classList.remove('active');
   document.getElementById('login-screen').classList.add('active');
   setAuthPanel('login');
@@ -3570,8 +3575,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   const verifyTok  = params.get('verify');
   const resetTok   = params.get('reset');
 
+  // Restore session on page refresh (token-based or demo role)
+  const savedRole   = localStorage.getItem('sessionRole');
+  const sessionOn   = localStorage.getItem('sessionActive');
+  const token       = localStorage.getItem('token');
+  if ((token || sessionOn) && savedRole && ROLES[savedRole]) {
+    AuthState.selectedRole = savedRole;
+    await enterApp(savedRole);
+    return;
+  }
+
   if (verifyTok) {
-    renderAuthPanel(); // show login card shell first so toasts have a backdrop
+    renderAuthPanel();
     handleEmailVerification(verifyTok);
   } else if (resetTok) {
     AuthState.resetToken = resetTok;

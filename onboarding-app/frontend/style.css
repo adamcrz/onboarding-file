@@ -324,13 +324,27 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .sidebar.collapsed .nav-badge { display: none; }
 
 .sidebar-footer {
-  padding: 12px 8px; border-top: 1px solid var(--border-subtle);
-  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  padding: 12px; border-top: 1px solid var(--border-subtle); flex-shrink: 0;
 }
-.sidebar.collapsed .sidebar-footer { justify-content: center; }
+
+.sidebar-user-card {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(0,80,115,0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 8px 10px 12px;
+  transition: background var(--transition-fast);
+}
+.sidebar-user-card:hover { background: rgba(0,80,115,0.08); }
+
+.sidebar.collapsed .sidebar-footer { padding: 12px 8px; }
+.sidebar.collapsed .sidebar-user-card {
+  flex-direction: column; gap: 8px;
+  background: none; border: none; padding: 6px 0;
+}
 
 .user-avatar {
-  width: 34px; height: 34px; border-radius: var(--radius-full);
+  width: 36px; height: 36px; border-radius: var(--radius-full);
   background: var(--gradient-brand); color: white;
   display: flex; align-items: center; justify-content: center;
   font-size: 13px; font-weight: 700; flex-shrink: 0;
@@ -338,7 +352,7 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 
 .user-info { overflow: hidden; flex: 1; min-width: 0; }
 .user-name { display: block; font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.user-role { display: block; font-size: 11px; color: var(--text-muted); }
+.user-role { display: block; font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 .sidebar.collapsed .user-info { display: none; }
 
 .btn-logout {
@@ -347,7 +361,7 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
   transition: all var(--transition-fast); flex-shrink: 0;
 }
 .btn-logout:hover { color: var(--accent-red); background: rgba(239,68,68,0.1); }
-.sidebar.collapsed .btn-logout { margin: 0 auto; }
+.sidebar.collapsed .btn-logout { padding: 5px; }
 
 /* ============================================================
    TOPBAR
