@@ -282,7 +282,7 @@ function alertIcon()   { return `<svg width="14" height="14" viewBox="0 0 24 24"
 /* ============================================================
    AUTH PANEL — state machine for the login card
    ============================================================ */
-const AuthState = { panel: 'login', pendingEmail: '', resetToken: '' };
+const AuthState = { panel: 'login', pendingEmail: '', resetToken: '', selectedRole: '' };
 
 function setAuthPanel(panel) {
   AuthState.panel = panel;
@@ -294,6 +294,7 @@ function renderAuthPanel() {
   if (!el) return;
   const map = {
     'login':           loginFormHTML,
+    'role-login':      roleLoginFormHTML,
     'register':        registerFormHTML,
     'verify-pending':  verifyPendingHTML,
     'forgot-password': forgotPasswordHTML,
@@ -307,15 +308,79 @@ function renderAuthPanel() {
 
 function loginFormHTML() {
   return `
-    <div class="auth-tabs">
-      <button class="auth-tab active"  onclick="setAuthPanel('login')">Sign In</button>
-      <button class="auth-tab"         onclick="setAuthPanel('register')">Create Account</button>
+    <h1 class="login-title">Welcome back</h1>
+    <p class="login-subtitle">Select your portal to continue</p>
+
+    <div class="role-portal-grid">
+      <button class="role-portal-card" onclick="goToRoleLogin('compliance')">
+        <div class="role-portal-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </div>
+        <div class="role-portal-name">Compliance</div>
+        <div class="role-portal-desc">Review &amp; approve cases</div>
+      </button>
+      <button class="role-portal-card" onclick="goToRoleLogin('rm')">
+        <div class="role-portal-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        </div>
+        <div class="role-portal-name">Rel. Manager</div>
+        <div class="role-portal-desc">Manage client onboarding</div>
+      </button>
+      <button class="role-portal-card" onclick="goToRoleLogin('client')">
+        <div class="role-portal-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+        </div>
+        <div class="role-portal-name">Client</div>
+        <div class="role-portal-desc">Track your application</div>
+      </button>
     </div>
 
-    <h1 class="login-title">Welcome back</h1>
-    <p class="login-subtitle">Sign in to your compliance portal</p>
+    <div style="text-align:center;margin-top:8px;">
+      <button class="auth-link-btn" onclick="setAuthPanel('register')">New to the portal? Create account</button>
+    </div>
 
-    <div class="form-group">
+    <p class="login-footer" style="margin-top:24px;">SHA cryptography &nbsp;·&nbsp; Protected by 256-bit TLS encryption</p>
+  `;
+}
+
+const ROLE_META = {
+  compliance: {
+    name: 'Compliance Officer', portal: 'Compliance Portal',
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`,
+  },
+  rm: {
+    name: 'Relationship Manager', portal: 'RM Portal',
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>`,
+  },
+  client: {
+    name: 'Client', portal: 'Client Portal',
+    icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>`,
+  },
+};
+
+function goToRoleLogin(role) {
+  AuthState.selectedRole = role;
+  State.currentRole = role;
+  setAuthPanel('role-login');
+}
+
+function roleLoginFormHTML() {
+  const role = AuthState.selectedRole || 'compliance';
+  const meta = ROLE_META[role] || ROLE_META.compliance;
+  return `
+    <button class="auth-back-btn" onclick="setAuthPanel('login')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </button>
+
+    <div class="role-login-badge-row">
+      <span class="role-login-badge">${meta.icon} ${meta.portal}</span>
+    </div>
+
+    <h1 class="login-title">Sign in</h1>
+    <p class="login-subtitle">Logging in as <strong>${meta.name}</strong></p>
+
+    <div class="form-group" style="margin-top:20px;">
       <label for="login-email">Email</label>
       <input type="email" id="login-email" placeholder="you@institution.com"
              autocomplete="email" onkeydown="if(event.key==='Enter')login()" />
@@ -334,27 +399,11 @@ function loginFormHTML() {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
     </button>
 
-    <div class="auth-divider"><span>or quick demo access</span></div>
-
-    <div class="role-selector">
-      <p class="role-label">Select a role then click Sign In above</p>
-      <div class="role-grid" style="grid-template-columns:1fr 1fr 1fr;">
-        <button class="role-btn active" data-role="compliance" onclick="selectRole(this,'compliance')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-          Compliance
-        </button>
-        <button class="role-btn" data-role="rm" onclick="selectRole(this,'rm')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-          Rel. Manager
-        </button>
-        <button class="role-btn" data-role="client" onclick="selectRole(this,'client')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
-          Client
-        </button>
-      </div>
+    <div style="text-align:center;margin-top:16px;">
+      <button class="auth-link-btn" onclick="setAuthPanel('register')">New to the portal? Create account</button>
     </div>
 
-    <p class="login-footer">SHA cryptography &nbsp;·&nbsp; Protected by 256-bit TLS encryption</p>
+    <p class="login-footer" style="margin-top:20px;">SHA cryptography &nbsp;·&nbsp; Protected by 256-bit TLS encryption</p>
   `;
 }
 
@@ -426,7 +475,7 @@ function verifyPendingHTML() {
 function forgotPasswordHTML() {
   return `
     <button class="auth-link-btn" style="display:block;margin-bottom:20px;"
-            onclick="setAuthPanel('login')">← Back to sign in</button>
+            onclick="setAuthPanel('role-login')">← Back to sign in</button>
     <h1 class="login-title" style="font-size:20px;">Reset password</h1>
     <p class="login-subtitle">Enter your email and we'll send you a reset link.</p>
 
@@ -496,7 +545,7 @@ async function enterApp(role) {
 async function login() {
   const email    = (document.getElementById('login-email')?.value || '').trim();
   const password = document.getElementById('login-password')?.value || '';
-  const demoRole = State.currentRole;
+  const demoRole = AuthState.selectedRole || State.currentRole;
   const btn      = document.getElementById('login-btn');
 
   if (!email || !password) {

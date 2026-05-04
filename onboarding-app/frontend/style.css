@@ -267,7 +267,7 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .sidebar.collapsed { width: 68px; }
 
 .sidebar-header {
-  padding: 20px 16px; border-bottom: 1px solid var(--border-subtle);
+  padding: 28px 20px 24px; border-bottom: 1px solid var(--border-subtle);
   display: flex; align-items: center; gap: 12px; flex-shrink: 0;
 }
 .sidebar-logo {
@@ -280,12 +280,8 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
   max-height: 48px;
 }
 
-.sidebar.collapsed .sidebar-company-logo {
-  width: 30px;
-  height: 30px;
-  object-fit: cover;
-  object-position: left center;
-  border-radius: 6px;
+.sidebar.collapsed .sidebar-header {
+  display: none;
 }
 
 .sidebar-nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
@@ -927,4 +923,81 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .auth-link-btn:hover {
   color: var(--accent-purple);
 }
+
+/* Role Portal Cards — login landing */
+.role-portal-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+  margin: 24px 0;
+}
+
+.role-portal-card {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 20px 10px; border-radius: var(--radius-lg);
+  background: var(--bg-input); border: 1.5px solid var(--border-subtle);
+  color: var(--text-secondary); cursor: pointer;
+  transition: all var(--transition-base);
+  font-family: inherit; text-align: center;
+}
+.role-portal-card:hover {
+  border-color: var(--accent-purple-light);
+  background: var(--accent-purple-glow);
+  color: var(--accent-purple);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.role-portal-icon {
+  width: 52px; height: 52px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(110,193,228,0.12);
+  color: var(--accent-purple);
+  transition: background var(--transition-fast);
+}
+.role-portal-card:hover .role-portal-icon {
+  background: rgba(110,193,228,0.22);
+}
+
+.role-portal-name {
+  font-size: 12.5px; font-weight: 700; color: inherit;
+}
+.role-portal-desc {
+  font-size: 11px; color: var(--text-muted); line-height: 1.4;
+}
+
+/* Auth back button */
+.auth-back-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; color: var(--text-muted);
+  font-size: 13px; cursor: pointer; padding: 4px 0;
+  margin-bottom: 18px; font-family: inherit;
+  transition: color var(--transition-fast);
+}
+.auth-back-btn:hover { color: var(--text-primary); }
+
+/* Role login badge */
+.role-login-badge-row { margin-bottom: 14px; }
+.role-login-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 13px; border-radius: var(--radius-full);
+  background: var(--accent-purple-glow);
+  border: 1px solid rgba(110,193,228,0.35);
+  color: var(--accent-purple);
+  font-size: 12px; font-weight: 600;
+}
+
+/* Topbar exit button */
+.topbar-exit-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid var(--border-default);
+  color: var(--text-secondary); cursor: pointer;
+  padding: 6px 13px; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 500; font-family: inherit;
+  transition: all var(--transition-fast);
+}
+.topbar-exit-btn:hover {
+  color: var(--accent-red);
+  border-color: var(--accent-red);
+  background: rgba(239,68,68,0.06);
+}
+
 .hidden { display: none !important; }
