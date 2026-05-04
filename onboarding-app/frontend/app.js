@@ -2061,18 +2061,30 @@ async function cbStep1() {
       <div class="card-body">
         <div class="cb-template-grid" id="cb-template-grid">
           ${filtered.map(t => `
-            <button class="cb-template-card ${CB.selectedId===t.id?'selected':''}"
-                    onclick="cbSelectTemplate('${t.id}')">
-              <div class="cb-template-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-                  <polyline points="14,2 14,8 20,8"/>
-                  <path d="M10 13l1.5 1.5L15 11"/>
+            <div class="cb-template-wrap">
+              <button class="cb-template-card ${CB.selectedId===t.id?'selected':''}"
+                      onclick="cbSelectTemplate('${t.id}')">
+                <div class="cb-template-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14,2 14,8 20,8"/>
+                    <path d="M10 13l1.5 1.5L15 11"/>
+                  </svg>
+                </div>
+                <div class="cb-template-name">${t.name}</div>
+                <div class="cb-template-type">${t.type}</div>
+              </button>
+              <a class="cb-dl-btn" href="http://localhost:5000/api/contracts/download/${t.id}"
+                 download title="Download original template"
+                 onclick="event.stopPropagation()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="7,10 12,15 17,10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
-              </div>
-              <div class="cb-template-name">${t.name}</div>
-              <div class="cb-template-type">${t.type}</div>
-            </button>
+                Download
+              </a>
+            </div>
           `).join('')}
         </div>
         <div style="margin-top:24px;display:flex;justify-content:flex-end;">
@@ -2157,7 +2169,16 @@ async function cbStep2() {
         ${extraFields.map(f => cbFieldHTML(f)).join('')}
       </div>
     ` : ''}
-    <div style="margin-top:28px;display:flex;justify-content:flex-end;gap:12px;">
+    <div style="margin-top:28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;">
+      <a class="btn-secondary" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;"
+         href="http://localhost:5000/api/contracts/download/${CB.selectedId}" download>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7,10 12,15 17,10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download Template
+      </a>
       <button class="btn-primary" onclick="cbSubmit()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.02 2.18 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14v2.92z"/></svg>
         Send Contract & Invite Client

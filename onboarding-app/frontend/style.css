@@ -1045,12 +1045,15 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .cb-template-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px;
 }
+.cb-template-wrap {
+  display: flex; flex-direction: column; gap: 6px;
+}
 .cb-template-card {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   padding: 24px 16px; border-radius: var(--radius-lg);
   background: var(--bg-input); border: 1.5px solid var(--border-subtle);
   cursor: pointer; font-family: inherit; text-align: center;
-  transition: all var(--transition-base);
+  transition: all var(--transition-base); flex: 1;
 }
 .cb-template-card:hover {
   border-color: var(--accent-purple-light); background: var(--accent-purple-glow);
@@ -1068,6 +1071,19 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .cb-template-card.selected .cb-template-icon { background: rgba(0,80,115,0.14); }
 .cb-template-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
 .cb-template-type { font-size: 11px; color: var(--text-muted); }
+
+.cb-dl-btn {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 6px 10px; border-radius: var(--radius-md);
+  background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+  color: var(--text-secondary); font-size: 12px; font-weight: 500;
+  text-decoration: none; cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.cb-dl-btn:hover {
+  background: var(--accent-purple-glow); border-color: var(--accent-purple-light);
+  color: var(--accent-purple);
+}
 
 .cb-section-label {
   font-size: 11px; font-weight: 700; text-transform: uppercase;

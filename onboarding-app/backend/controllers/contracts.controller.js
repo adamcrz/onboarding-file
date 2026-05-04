@@ -48,6 +48,14 @@ exports.getTemplates = (_req, res) => {
   res.json(TEMPLATES.map(({ id, lang, name, type }) => ({ id, lang, name, type })));
 };
 
+exports.downloadTemplate = (req, res) => {
+  const template = TEMPLATES.find(t => t.id === req.params.templateId);
+  if (!template) return res.status(404).json({ error: 'Template not found' });
+  const filePath = path.join(CONTRACTS_DIR, template.file);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on disk' });
+  res.download(filePath, template.file);
+};
+
 exports.getPlaceholders = async (req, res) => {
   const template = TEMPLATES.find(t => t.id === req.params.templateId);
   if (!template) return res.status(404).json({ error: 'Template not found' });
