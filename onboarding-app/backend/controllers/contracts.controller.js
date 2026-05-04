@@ -152,6 +152,11 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   if (depotBank)   map['Depotbank']        = depotBank;
   if (portfolioNo) { map['Portfolionummer'] = portfolioNo; map['Portfolionummer1'] = portfolioNo; }
 
+  const mgmtFee = fv.management_fee  ? fv.management_fee  + '%' : '';
+  const perfFee = fv.performance_fee ? fv.performance_fee + '%' : '';
+  if (mgmtFee) { map['Honorar'] = mgmtFee; map['Verwaltungsgebuehr'] = mgmtFee; map['ManagementFee'] = mgmtFee; }
+  if (perfFee) { map['Performancegebuehr'] = perfFee; map['PerformanceFee'] = perfFee; }
+
   return map;
 }
 
