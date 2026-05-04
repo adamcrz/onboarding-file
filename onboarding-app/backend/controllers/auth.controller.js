@@ -145,9 +145,12 @@ const resendVerification = async (req, res) => {
 
     const token = user.createEmailVerificationToken();
     await user.save();
-    await sendVerificationEmail(user.email, user.name, token);
+    const resendResult = await sendVerificationEmail(user.email, user.name, token);
 
-    res.status(200).json({ message: 'Verification email resent.' });
+    res.status(200).json({
+      message: 'Verification email resent.',
+      emailPreviewUrl: resendResult?.previewUrl || null,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -168,13 +171,15 @@ const forgotPassword = async (req, res) => {
     const token = user.createPasswordResetToken();
     await user.save();
 
+    let resetPreviewUrl = null;
     try {
-      await sendPasswordResetEmail(user.email, user.name, token);
+      const result = await sendPasswordResetEmail(user.email, user.name, token);
+      resetPreviewUrl = result?.previewUrl || null;
     } catch (emailErr) {
       console.error('⚠  Reset email failed to send:', emailErr.message);
     }
 
-    res.status(200).json(generic);
+    res.status(200).json({ ...generic, emailPreviewUrl: resetPreviewUrl });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

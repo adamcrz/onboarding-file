@@ -284,7 +284,7 @@ function clockIcon()   { return `<svg width="16" height="16" viewBox="0 0 24 24"
 /* ============================================================
    AUTH PANEL — state machine for the login card
    ============================================================ */
-const AuthState = { panel: 'login', pendingEmail: '', resetToken: '', selectedRole: '' };
+const AuthState = { panel: 'login', pendingEmail: '', resetToken: '', selectedRole: '', emailPreviewUrl: '' };
 
 function setAuthPanel(panel) {
   AuthState.panel = panel;
@@ -455,12 +455,22 @@ function registerFormHTML() {
 }
 
 function verifyPendingHTML() {
+  const devBanner = AuthState.emailPreviewUrl ? `
+    <div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:14px 16px;margin-bottom:20px;text-align:left;">
+      <div style="font-size:12px;font-weight:700;color:#713f12;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Dev mode — no real email sent</div>
+      <p style="font-size:12px;color:#854d0e;margin:0 0 10px;">SMTP is not configured. Click below to preview the email in your browser.</p>
+      <a href="${AuthState.emailPreviewUrl}" target="_blank"
+         style="display:inline-block;padding:8px 16px;background:#005073;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">
+        View email in browser →
+      </a>
+    </div>` : '';
   return `
     <div style="text-align:center;padding:20px 0 8px;">
       <div style="font-size:52px;margin-bottom:14px;">📧</div>
       <h1 class="login-title" style="font-size:20px;">Check your email</h1>
       <p class="login-subtitle">We sent a verification link to</p>
       <p style="font-weight:700;color:var(--accent-purple);font-size:14px;margin:6px 0 20px;">${AuthState.pendingEmail}</p>
+      ${devBanner}
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;line-height:1.6;">
         Click the link in the email to activate your account.<br>
         Check your spam folder if you don't see it within a few minutes.
@@ -495,6 +505,15 @@ function forgotPasswordHTML() {
 }
 
 function resetSentHTML() {
+  const devBanner = AuthState.emailPreviewUrl ? `
+    <div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:14px 16px;margin:16px 0;text-align:left;">
+      <div style="font-size:12px;font-weight:700;color:#713f12;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Dev mode — no real email sent</div>
+      <p style="font-size:12px;color:#854d0e;margin:0 0 10px;">SMTP is not configured. Click below to preview the reset email.</p>
+      <a href="${AuthState.emailPreviewUrl}" target="_blank"
+         style="display:inline-block;padding:8px 16px;background:#005073;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">
+        View email in browser →
+      </a>
+    </div>` : '';
   return `
     <div style="text-align:center;padding:20px 0 8px;">
       <div style="font-size:52px;margin-bottom:14px;">✉️</div>
@@ -503,6 +522,7 @@ function resetSentHTML() {
         If that email is registered you'll receive a reset link shortly.<br>
         Check your spam folder too.
       </p>
+      ${devBanner}
       <button class="btn-secondary btn-full" style="margin-top:28px;"
               onclick="setAuthPanel('login')">Back to sign in</button>
     </div>
@@ -573,7 +593,8 @@ async function login() {
     const data = await res.json();
 
     if (res.status === 403 && data.code === 'EMAIL_NOT_VERIFIED') {
-      AuthState.pendingEmail = data.email || email;
+      AuthState.pendingEmail    = data.email || email;
+      AuthState.emailPreviewUrl = '';
       setAuthPanel('verify-pending');
       return;
     }
@@ -669,7 +690,8 @@ async function register() {
       return;
     }
 
-    AuthState.pendingEmail = data.email || email;
+    AuthState.pendingEmail    = data.email || email;
+    AuthState.emailPreviewUrl = data.emailPreviewUrl || '';
     setAuthPanel('verify-pending');
 
   } catch (err) {
@@ -688,7 +710,12 @@ async function resendVerification() {
       body: JSON.stringify({ email: AuthState.pendingEmail }),
     });
     const data = await res.json();
-    showToast(res.ok ? 'success' : 'error', data.message || data.error);
+    if (res.ok && data.emailPreviewUrl) {
+      AuthState.emailPreviewUrl = data.emailPreviewUrl;
+      setAuthPanel('verify-pending');
+    } else {
+      showToast(res.ok ? 'success' : 'error', data.message || data.error);
+    }
   } catch (_) {
     showToast('error', 'Could not reach the server.');
   } finally {
@@ -702,11 +729,13 @@ async function forgotPassword() {
   if (!email) { showToast('warning', 'Please enter your email.'); return; }
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
   try {
-    await fetch('http://localhost:5000/api/auth/forgot-password', {
+    const res  = await fetch('http://localhost:5000/api/auth/forgot-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
+    const data = await res.json().catch(() => ({}));
+    AuthState.emailPreviewUrl = data.emailPreviewUrl || '';
     setAuthPanel('reset-sent');
   } catch (_) {
     showToast('error', 'Could not reach the server.');
