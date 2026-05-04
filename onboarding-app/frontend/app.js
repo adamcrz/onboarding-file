@@ -1993,18 +1993,277 @@ function renderAuditPage() {
 /* ============================================================
    PAGE: CONTRACT BUILDING
    ============================================================ */
-function renderContractBuilding() {
+/* ============================================================
+   CONTRACT BUILDER — state
+   ============================================================ */
+const CB = {
+  step: 1,          // 1 = select template, 2 = fill fields, 3 = confirmation
+  lang: 'EN',       // 'EN' | 'DE'
+  templates: [],    // fetched from backend
+  selectedId: null,
+  fields: [],       // fetched per template
+  result: null,     // { otp, clientEmail, clientName }
+};
+
+async function renderContractBuilding() {
   const content = document.getElementById('page-content');
   content.innerHTML = `
     <div class="page-header">
-      <h1>Contract Building</h1>
-      <p>Configure and generate client contracts (Backend integration pending)</p>
+      <h1>Contract Builder</h1>
+      <p>Select a template, fill client details, and send a secure portal invitation</p>
     </div>
+    <div id="cb-body"></div>
+  `;
+  CB.step = 1;
+  CB.selectedId = null;
+  CB.fields = [];
+  CB.result = null;
+  await cbRenderStep();
+}
+
+async function cbRenderStep() {
+  if (CB.step === 1) await cbStep1();
+  else if (CB.step === 2) await cbStep2();
+  else cbStep3();
+}
+
+/* ── Step 1: Choose language + template ─────────────────────── */
+async function cbStep1() {
+  const el = document.getElementById('cb-body');
+  el.innerHTML = `<div class="cb-loading">Loading templates…</div>`;
+
+  try {
+    const templates = await apiFetch('GET', '/contracts/templates');
+    CB.templates = templates;
+  } catch (_) {
+    CB.templates = [
+      { id:'de-all-in',      lang:'DE', name:'Vertragsset All-In',   type:'All-In'              },
+      { id:'de-advisory',    lang:'DE', name:'Advisory Vertrag',      type:'Advisory'            },
+      { id:'en-disc-all-in', lang:'EN', name:'Discretionary All-In',  type:'Discretionary All-In'},
+      { id:'en-advisory',    lang:'EN', name:'Advisory Contract',      type:'Advisory'            },
+      { id:'en-execution',   lang:'EN', name:'Execution Only',         type:'Execution Only'      },
+    ];
+  }
+
+  const filtered = CB.templates.filter(t => t.lang === CB.lang);
+  el.innerHTML = `
     <div class="card">
-      <div class="card-body" style="text-align: center; padding: 80px 20px; color: var(--text-muted);">
-        <div style="font-size: 48px; margin-bottom: 16px;">🏗️</div>
-        <h3 style="color: var(--text-primary); margin-bottom: 8px;">Coming Soon</h3>
-        <p>This module will connect to the backend to dynamically build and manage contracts.</p>
+      <div class="card-header">
+        <div>
+          <div class="card-title">Step 1 of 3 — Select Contract Template</div>
+          <div class="card-subtitle">Choose the language and contract type</div>
+        </div>
+        <div class="cb-lang-toggle">
+          <button class="cb-lang-btn ${CB.lang==='EN'?'active':''}" onclick="cbSetLang('EN')">EN</button>
+          <button class="cb-lang-btn ${CB.lang==='DE'?'active':''}" onclick="cbSetLang('DE')">DE</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="cb-template-grid" id="cb-template-grid">
+          ${filtered.map(t => `
+            <button class="cb-template-card ${CB.selectedId===t.id?'selected':''}"
+                    onclick="cbSelectTemplate('${t.id}')">
+              <div class="cb-template-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                  <polyline points="14,2 14,8 20,8"/>
+                  <path d="M10 13l1.5 1.5L15 11"/>
+                </svg>
+              </div>
+              <div class="cb-template-name">${t.name}</div>
+              <div class="cb-template-type">${t.type}</div>
+            </button>
+          `).join('')}
+        </div>
+        <div style="margin-top:24px;display:flex;justify-content:flex-end;">
+          <button class="btn-primary" onclick="cbGoStep2()" ${CB.selectedId?'':'disabled'} id="cb-next-btn">
+            Next: Fill Details
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function cbSetLang(lang) {
+  CB.lang = lang;
+  CB.selectedId = null;
+  cbStep1();
+}
+
+function cbSelectTemplate(id) {
+  CB.selectedId = id;
+  document.querySelectorAll('.cb-template-card').forEach(c => c.classList.remove('selected'));
+  const card = document.querySelector(`.cb-template-card[onclick*="${id}"]`);
+  if (card) card.classList.add('selected');
+  const btn = document.getElementById('cb-next-btn');
+  if (btn) btn.disabled = false;
+}
+
+async function cbGoStep2() {
+  if (!CB.selectedId) return;
+  CB.step = 2;
+  await cbStep2();
+}
+
+/* ── Step 2: Fill fields ─────────────────────────────────────── */
+async function cbStep2() {
+  const el = document.getElementById('cb-body');
+  const tpl = CB.templates.find(t => t.id === CB.selectedId);
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Step 2 of 3 — Client & Contract Details</div>
+          <div class="card-subtitle">${tpl?.name || CB.selectedId}</div>
+        </div>
+        <button class="btn-secondary btn-sm" onclick="CB.step=1;cbRenderStep()">← Back</button>
+      </div>
+      <div class="card-body">
+        <div id="cb-fields-area">
+          <div class="cb-loading">Scanning template for fields…</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const data = await apiFetch('GET', `/contracts/placeholders/${CB.selectedId}`);
+    CB.fields = data.fields || [];
+  } catch (_) {
+    CB.fields = [
+      { key:'client_name',    label:'Client Full Name',    type:'text',  required:true  },
+      { key:'client_email',   label:'Client Email Address',type:'email', required:true  },
+      { key:'client_dob',     label:'Date of Birth',       type:'date',  required:true  },
+      { key:'client_address', label:'Client Address',      type:'text',  required:true  },
+      { key:'contract_date',  label:'Contract Date',       type:'date',  required:true  },
+    ];
+  }
+
+  const stdKeys = ['client_name','client_email','client_dob','client_address',
+                   'client_nationality','contract_date','account_number'];
+  const stdFields   = CB.fields.filter(f => stdKeys.includes(f.key));
+  const extraFields = CB.fields.filter(f => !stdKeys.includes(f.key));
+
+  document.getElementById('cb-fields-area').innerHTML = `
+    <div class="cb-section-label">Client Information</div>
+    <div class="cb-fields-grid">
+      ${stdFields.map(f => cbFieldHTML(f)).join('')}
+    </div>
+    ${extraFields.length ? `
+      <div class="cb-section-label" style="margin-top:24px;">Contract-Specific Fields</div>
+      <div class="cb-fields-grid">
+        ${extraFields.map(f => cbFieldHTML(f)).join('')}
+      </div>
+    ` : ''}
+    <div style="margin-top:28px;display:flex;justify-content:flex-end;gap:12px;">
+      <button class="btn-primary" onclick="cbSubmit()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.02 2.18 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14v2.92z"/></svg>
+        Send Contract & Invite Client
+      </button>
+    </div>
+  `;
+}
+
+function cbFieldHTML(f) {
+  return `
+    <div class="form-group" style="margin-bottom:0;">
+      <label for="cb_${f.key}">${f.label}${f.required?' <span style="color:var(--accent-red)">*</span>':''}</label>
+      <input type="${f.type||'text'}" id="cb_${f.key}" name="${f.key}"
+             placeholder="${f.type==='date'?'YYYY-MM-DD':f.label}"
+             ${f.required?'required':''} />
+    </div>
+  `;
+}
+
+async function cbSubmit() {
+  const fieldValues = {};
+  let missingRequired = [];
+  CB.fields.forEach(f => {
+    const el = document.getElementById(`cb_${f.key}`);
+    if (el) {
+      fieldValues[f.key] = el.value.trim();
+      if (f.required && !el.value.trim()) missingRequired.push(f.label);
+    }
+  });
+
+  if (missingRequired.length) {
+    showToast('warning', `Please fill in: ${missingRequired.join(', ')}`);
+    return;
+  }
+
+  const clientName  = fieldValues['client_name'];
+  const clientEmail = fieldValues['client_email'];
+
+  if (!clientEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+    showToast('warning', 'Please enter a valid client email address.');
+    return;
+  }
+
+  const btn = document.querySelector('#cb-body .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+
+  try {
+    const res = await apiFetch('POST', '/contracts/invite', {
+      clientName, clientEmail, templateId: CB.selectedId, fieldValues,
+    });
+    CB.result = { otp: res.otp, clientName, clientEmail };
+    CB.step = 3;
+    cbStep3();
+  } catch (err) {
+    showToast('error', err.message || 'Failed to send invitation.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Send Contract & Invite Client'; }
+  }
+}
+
+/* ── Step 3: Confirmation ────────────────────────────────────── */
+function cbStep3() {
+  const el = document.getElementById('cb-body');
+  const { otp, clientName, clientEmail } = CB.result || {};
+  const tpl = CB.templates.find(t => t.id === CB.selectedId);
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-body" style="text-align:center;padding:48px 32px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:rgba(97,206,112,0.15);
+                    display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2.5">
+            <polyline points="20,6 9,17 4,12"/>
+          </svg>
+        </div>
+        <h2 style="color:var(--text-primary);margin-bottom:8px;">Invitation Sent!</h2>
+        <p style="color:var(--text-secondary);margin-bottom:28px;">
+          A portal access email has been sent to <strong>${clientEmail}</strong>
+        </p>
+
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-default);
+                    border-radius:var(--radius-lg);padding:24px;max-width:360px;margin:0 auto 28px;text-align:left;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+                      color:var(--text-muted);margin-bottom:14px;">Account Details</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div><span style="font-size:12px;color:var(--text-muted);">Client</span>
+              <div style="font-size:14px;font-weight:600;color:var(--text-primary);">${clientName}</div>
+            </div>
+            <div><span style="font-size:12px;color:var(--text-muted);">Email</span>
+              <div style="font-size:14px;font-weight:600;color:var(--text-primary);">${clientEmail}</div>
+            </div>
+            <div><span style="font-size:12px;color:var(--text-muted);">Contract</span>
+              <div style="font-size:14px;font-weight:600;color:var(--text-primary);">${tpl?.name || CB.selectedId}</div>
+            </div>
+            <div><span style="font-size:12px;color:var(--text-muted);">One-Time Password</span>
+              <div style="font-size:22px;font-weight:700;font-family:monospace;color:var(--accent-purple);
+                          letter-spacing:4px;margin-top:2px;">${otp || '—'}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+                Share this with the client if the email isn't received
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-primary" onclick="renderContractBuilding()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Build Another Contract
+        </button>
       </div>
     </div>
   `;

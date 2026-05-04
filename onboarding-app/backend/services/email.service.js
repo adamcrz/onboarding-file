@@ -93,4 +93,45 @@ async function sendPasswordResetEmail(to, name, token) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+async function sendClientInviteEmail(to, name, otp, contractName) {
+  const base       = process.env.FRONTEND_URL || 'http://127.0.0.1:5500';
+  const portalLink = `${base}/frontend/index.html`;
+
+  if (!USE_REAL_EMAIL) {
+    console.log('\n────────────────────────────────────────────────────');
+    console.log(`✉️   CLIENT PORTAL INVITE  →  ${name} <${to}>`);
+    console.log(`     Contract : ${contractName}`);
+    console.log(`     Email    : ${to}`);
+    console.log(`     Password : ${otp}`);
+    console.log(`     Portal   : ${portalLink}`);
+    console.log('────────────────────────────────────────────────────\n');
+    return;
+  }
+
+  await getTransporter().sendMail({
+    from:    process.env.EMAIL_FROM || '"Tramondo Investment Partners" <noreply@tramondo.ch>',
+    to,
+    subject: 'Your Tramondo Client Portal Access',
+    html: brand(`
+      <h2 style="color:#111827;margin:0 0 8px;">Welcome, ${name}!</h2>
+      <p style="color:#4b5563;line-height:1.6;">
+        Your contract package has been prepared and your client portal account is ready.
+        Please use the credentials below to sign in and review your documents.
+      </p>
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:20px;margin:20px 0;">
+        <p style="margin:0 0 8px;font-size:12px;color:#0c4a6e;font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Your Login Credentials</p>
+        <p style="margin:0 0 6px;color:#374151;font-size:14px;"><strong>Email:</strong> ${to}</p>
+        <p style="margin:0;color:#374151;font-size:14px;"><strong>One-Time Password:</strong>
+          <span style="font-family:monospace;font-size:20px;font-weight:700;color:#005073;letter-spacing:3px;margin-left:8px;">${otp}</span>
+        </p>
+      </div>
+      <a href="${portalLink}" style="display:inline-block;margin:20px 0 8px;padding:13px 30px;background:#005073;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;font-size:14px;">
+        Open Client Portal →
+      </a>
+      <p style="color:#6b7280;font-size:13px;">Contract: <strong>${contractName}</strong></p>
+      <p style="color:#9ca3af;font-size:12px;margin-top:20px;">Please change your password after your first login. If you did not expect this email, contact your relationship manager.</p>
+    `),
+  });
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendClientInviteEmail };

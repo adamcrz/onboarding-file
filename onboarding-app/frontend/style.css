@@ -1022,4 +1022,60 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
   background: rgba(239,68,68,0.06);
 }
 
+/* ============================================================
+   CONTRACT BUILDER
+   ============================================================ */
+.cb-loading {
+  text-align: center; padding: 48px; color: var(--text-muted); font-size: 14px;
+}
+
+.cb-lang-toggle {
+  display: flex; gap: 4px;
+  background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: 3px;
+}
+.cb-lang-btn {
+  padding: 6px 16px; border: none; border-radius: calc(var(--radius-md) - 2px);
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  background: none; color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+.cb-lang-btn.active { background: var(--accent-purple); color: #fff; }
+
+.cb-template-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px;
+}
+.cb-template-card {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 24px 16px; border-radius: var(--radius-lg);
+  background: var(--bg-input); border: 1.5px solid var(--border-subtle);
+  cursor: pointer; font-family: inherit; text-align: center;
+  transition: all var(--transition-base);
+}
+.cb-template-card:hover {
+  border-color: var(--accent-purple-light); background: var(--accent-purple-glow);
+  transform: translateY(-2px); box-shadow: var(--shadow-md);
+}
+.cb-template-card.selected {
+  border-color: var(--accent-purple); background: var(--accent-purple-glow);
+  box-shadow: 0 0 0 3px var(--accent-purple-glow);
+}
+.cb-template-icon {
+  width: 56px; height: 56px; border-radius: var(--radius-lg);
+  background: rgba(0,80,115,0.08); color: var(--accent-purple);
+  display: flex; align-items: center; justify-content: center;
+}
+.cb-template-card.selected .cb-template-icon { background: rgba(0,80,115,0.14); }
+.cb-template-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.cb-template-type { font-size: 11px; color: var(--text-muted); }
+
+.cb-section-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-muted); margin-bottom: 14px;
+}
+.cb-fields-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+@media (max-width: 700px) { .cb-fields-grid { grid-template-columns: 1fr; } }
+
 .hidden { display: none !important; }
