@@ -2074,16 +2074,25 @@ async function cbStep1() {
                 <div class="cb-template-name">${t.name}</div>
                 <div class="cb-template-type">${t.type}</div>
               </button>
-              <a class="cb-dl-btn" href="http://localhost:5000/api/contracts/download/${t.id}"
-                 download title="Download original template"
-                 onclick="event.stopPropagation()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                  <polyline points="7,10 12,15 17,10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                Download
-              </a>
+              <div style="display:flex;gap:6px;margin-top:4px;">
+                <button class="cb-dl-btn" style="flex:1;" onclick="event.stopPropagation();cbViewTemplate('${t.id}')" title="View in browser">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  View
+                </button>
+                <a class="cb-dl-btn" style="flex:1;" href="http://localhost:5000/api/contracts/download/${t.id}"
+                   download title="Download original template"
+                   onclick="event.stopPropagation()">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="7,10 12,15 17,10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Download
+                </a>
+              </div>
             </div>
           `).join('')}
         </div>
@@ -2170,15 +2179,21 @@ async function cbStep2() {
       </div>
     ` : ''}
     <div style="margin-top:28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;">
-      <a class="btn-secondary" style="display:inline-flex;align-items:center;gap:7px;text-decoration:none;"
-         href="http://localhost:5000/api/contracts/download/${CB.selectedId}" download>
+      <button class="btn-secondary" style="display:inline-flex;align-items:center;gap:7px;" onclick="cbViewPreview()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        View Preview
+      </button>
+      <button class="btn-secondary" style="display:inline-flex;align-items:center;gap:7px;" onclick="cbDownloadFilled()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
           <polyline points="7,10 12,15 17,10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        Download Template
-      </a>
+        Download Filled
+      </button>
       <button class="btn-primary" onclick="cbSubmit()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.02 2.18 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14v2.92z"/></svg>
         Send Contract & Invite Client
@@ -2289,6 +2304,71 @@ function cbStep3() {
     </div>
   `;
 }
+/* ── View / Download helpers ─────────────────────────────── */
+async function cbViewTemplate(id) {
+  const win = window.open('', '_blank');
+  win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Loading preview…</p>');
+  try {
+    const data = await apiFetch('POST', `/contracts/preview/${id}`, { fieldValues: {}, fieldDefs: [] });
+    win.document.open();
+    win.document.write(data.html);
+    win.document.close();
+  } catch (err) {
+    win.document.write(`<p style="font-family:Arial;padding:24px;color:red;">Error: ${err.message}</p>`);
+  }
+}
+
+async function cbViewPreview() {
+  const fieldValues = {};
+  CB.fields.forEach(f => {
+    const el = document.getElementById(`cb_${f.key}`);
+    if (el) fieldValues[f.key] = el.value.trim();
+  });
+  const win = window.open('', '_blank');
+  win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Generating preview…</p>');
+  try {
+    const data = await apiFetch('POST', `/contracts/preview/${CB.selectedId}`, { fieldValues, fieldDefs: CB.fields });
+    win.document.open();
+    win.document.write(data.html);
+    win.document.close();
+  } catch (err) {
+    win.document.write(`<p style="font-family:Arial;padding:24px;color:red;">Error: ${err.message}</p>`);
+  }
+}
+
+async function cbDownloadFilled() {
+  const fieldValues = {};
+  CB.fields.forEach(f => {
+    const el = document.getElementById(`cb_${f.key}`);
+    if (el) fieldValues[f.key] = el.value.trim();
+  });
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`http://localhost:5000/api/contracts/generate/${CB.selectedId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ fieldValues, fieldDefs: CB.fields }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Download failed' }));
+      throw new Error(err.error || 'Download failed');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const tpl = CB.templates.find(t => t.id === CB.selectedId);
+    a.href = url;
+    a.download = tpl?.file || `${CB.selectedId}.docx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast('error', err.message || 'Download failed');
+  }
+}
+
 /* ============================================================
    PAGE: REVIEW QUEUE (Compliance only)
    ============================================================ */
