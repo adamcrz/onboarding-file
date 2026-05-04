@@ -154,8 +154,28 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
 
   const mgmtFee = fv.management_fee  ? fv.management_fee  + '%' : '';
   const perfFee = fv.performance_fee ? fv.performance_fee + '%' : '';
-  if (mgmtFee) { map['Honorar'] = mgmtFee; map['Verwaltungsgebuehr'] = mgmtFee; map['ManagementFee'] = mgmtFee; }
+  if (mgmtFee) { map['Honorar'] = mgmtFee; map['Verwaltungsgebuehr'] = mgmtFee; map['ManagementFee'] = mgmtFee; map['Gebuehr'] = mgmtFee; }
   if (perfFee) { map['Performancegebuehr'] = perfFee; map['PerformanceFee'] = perfFee; }
+
+  // Portfolio currency
+  const ccy = fv.portfolio_currency || '';
+  if (ccy) { map['Currency'] = ccy; map['Waehrung'] = ccy; map['Referenzwaehrung'] = ccy; map['RefCcy'] = ccy; }
+
+  // Asset allocation ranges (Bandbreiten) — covers common bookmark naming patterns
+  const pct = v => (v !== '' && v !== undefined) ? v + '%' : '';
+  const eqMin  = fv.alloc_equities_min;    const eqMax  = fv.alloc_equities_max;
+  const fiMin  = fv.alloc_fixed_income_min; const fiMax  = fv.alloc_fixed_income_max;
+  const caMin  = fv.alloc_cash_min;         const caMax  = fv.alloc_cash_max;
+  const altMin = fv.alloc_other_min;        const altMax = fv.alloc_other_max;
+
+  if (eqMin  !== undefined) { map['MinEquity']      = pct(eqMin);  map['EquityMin']  = pct(eqMin);  map['MinAktien'] = pct(eqMin);  }
+  if (eqMax  !== undefined) { map['MaxEquity']      = pct(eqMax);  map['EquityMax']  = pct(eqMax);  map['MaxAktien'] = pct(eqMax);  }
+  if (fiMin  !== undefined) { map['MinBonds']       = pct(fiMin);  map['BondsMin']   = pct(fiMin);  map['MinObl']    = pct(fiMin);  }
+  if (fiMax  !== undefined) { map['MaxBonds']       = pct(fiMax);  map['BondsMax']   = pct(fiMax);  map['MaxObl']    = pct(fiMax);  map['MaxFixedIncome'] = pct(fiMax); }
+  if (caMin  !== undefined) { map['MinCash']        = pct(caMin);  map['CashMin']    = pct(caMin);  map['MinLiqui']  = pct(caMin);  }
+  if (caMax  !== undefined) { map['MaxCash']        = pct(caMax);  map['CashMax']    = pct(caMax);  map['MaxLiqui']  = pct(caMax);  map['MaxLiquidity'] = pct(caMax); }
+  if (altMin !== undefined) { map['MinAlt']         = pct(altMin); map['AltMin']     = pct(altMin); map['MinAlternative'] = pct(altMin); }
+  if (altMax !== undefined) { map['MaxAlt']         = pct(altMax); map['AltMax']     = pct(altMax); map['MaxAlternative'] = pct(altMax); }
 
   return map;
 }
