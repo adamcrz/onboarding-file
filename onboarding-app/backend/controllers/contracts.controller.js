@@ -128,35 +128,64 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   return map;
 }
 
-// Replaces placeholder text inside a Word XML string.
+// Replaces placeholder text inside a Word XML string using Word bookmarks as
+// anchors. Each placeholder in the templates is wrapped in a bookmark whose
+// w:name matches the placeholder text (e.g. w:name="NachundVorname"). This
+// approach handles both single-run and split-run placeholders, and also handles
+// multiple placeholders in the same paragraph (e.g. "Adresse1 Adresse2").
 //
-// The templates store placeholder text as visible run text matching the bookmark
-// name (e.g. <w:t>NachundVorname</w:t>). Word sometimes splits a single word
-// across two adjacent runs (e.g. <w:t>Nach</w:t><w:t>undVorname</w:t>). We
-// handle both cases by working paragraph-by-paragraph: collect all <w:t> text,
-// compare the trimmed concatenation to each placeholder, and if it matches we
-// write the value into the first <w:t> and empty the rest.
+// Processing order: last-to-first so string indices stay valid as we modify.
 function applyReplacementsToXml(xml, replacements) {
   if (!Object.keys(replacements).length) return xml;
 
-  return xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, para => {
-    const textNodes = [...para.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
-    if (!textNodes.length) return para;
+  // Collect all bookmarkStart elements whose name matches a replacement key.
+  const bookmarks = [];
+  const bmStartRe = /<w:bookmarkStart\b[^/]*\/>/g;
+  let m;
+  while ((m = bmStartRe.exec(xml)) !== null) {
+    const nameM = m[0].match(/w:name="([^"]+)"/);
+    const idM   = m[0].match(/w:id="(\d+)"/);
+    if (!nameM || !idM) continue;
+    const name  = nameM[1];
+    const id    = idM[1];
+    const value = replacements[name];
+    if (!value) continue;
 
-    const combinedText = textNodes.map(m => m[1]).join('').trim();
-    const value = replacements[combinedText];
-    if (value === undefined || value === '') return para;
+    // Find the matching bookmarkEnd tag
+    const endRe    = new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${id}"[^>]*/>`);
+    const endMatch = endRe.exec(xml.slice(m.index));
+    if (!endMatch) continue;
 
-    // Put the replacement value in the first <w:t>, wipe the rest
+    bookmarks.push({
+      // content region: from end of bookmarkStart tag to start of bookmarkEnd tag
+      contentStart: m.index + m[0].length,
+      contentEnd:   m.index + endMatch.index,
+      value,
+    });
+  }
+
+  if (!bookmarks.length) return xml;
+
+  // Process from last to first so earlier offsets stay valid
+  bookmarks.sort((a, b) => b.contentStart - a.contentStart);
+
+  bookmarks.forEach(bm => {
+    const segment = xml.slice(bm.contentStart, bm.contentEnd);
+
+    // Replace text runs inside this bookmark: first <w:t> gets the value, rest are emptied
     let firstDone = false;
-    return para.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, () => {
+    const newSegment = segment.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, () => {
       if (!firstDone) {
         firstDone = true;
-        return `<w:t xml:space="preserve">${escXml(value)}</w:t>`;
+        return `<w:t xml:space="preserve">${escXml(bm.value)}</w:t>`;
       }
       return '<w:t></w:t>';
     });
+
+    xml = xml.slice(0, bm.contentStart) + newSegment + xml.slice(bm.contentEnd);
   });
+
+  return xml;
 }
 
 exports.previewContract = async (req, res) => {

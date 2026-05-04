@@ -2168,8 +2168,9 @@ async function cbStep2() {
     ];
   }
 
-  const stdKeys = ['client_name','client_email','client_dob','client_address',
-                   'client_nationality','contract_date','account_number'];
+  const stdKeys = ['client_name','client_email','client_dob',
+                   'client_address1','client_address2','client_city','client_country',
+                   'client_nationality','contract_date','depot_bank','portfolio_number'];
   const stdFields   = CB.fields.filter(f => stdKeys.includes(f.key));
   const extraFields = CB.fields.filter(f => !stdKeys.includes(f.key));
 
