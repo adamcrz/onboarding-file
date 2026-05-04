@@ -2032,6 +2032,7 @@ const CB = {
   allocations: { equities: 60, fixedIncome: 30, cash: 10, other: 0 },
   currencyWeights: { CHF: 100, EUR: 0, USD: 0, GBP: 0, JPY: 0, other: 0 },
   investmentComments: '',
+  managementFee: '', performanceFee: '',
 };
 
 const PROFILE_PRESETS = {
@@ -2054,6 +2055,7 @@ async function renderContractBuilding() {
   CB.allocations = { ...PROFILE_PRESETS.balanced };
   CB.currencyWeights = { CHF: 100, EUR: 0, USD: 0, GBP: 0, JPY: 0, other: 0 };
   CB.investmentComments = '';
+  CB.managementFee = ''; CB.performanceFee = '';
   await cbRenderStep();
 }
 
@@ -2437,8 +2439,10 @@ async function cbSubmit() {
     return;
   }
 
-  // Collect investment profile + currency data into fieldValues
+  // Collect investment profile, fee + currency data into fieldValues
   CB.investmentComments = document.getElementById('cb_investment_comments')?.value?.trim() || '';
+  CB.managementFee  = document.getElementById('cb_management_fee')?.value?.trim()  || '';
+  CB.performanceFee = document.getElementById('cb_performance_fee')?.value?.trim() || '';
   cbUpdateAllocTotal();
   cbUpdateCcyTotal();
   const profileLabel = CB.investmentProfile.charAt(0).toUpperCase() + CB.investmentProfile.slice(1);
@@ -2450,6 +2454,8 @@ async function cbSubmit() {
     alloc_cash:          String(CB.allocations.cash),
     alloc_other:         String(CB.allocations.other),
     investment_comments: CB.investmentComments,
+    management_fee:      CB.managementFee,
+    performance_fee:     CB.performanceFee,
     ccy_weight_chf:      String(CB.currencyWeights.CHF),
     ccy_weight_eur:      String(CB.currencyWeights.EUR),
     ccy_weight_usd:      String(CB.currencyWeights.USD),
