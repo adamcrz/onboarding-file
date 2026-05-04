@@ -291,7 +291,8 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
   text-transform: uppercase; letter-spacing: 0.1em;
   padding: 12px 10px 6px; white-space: nowrap; overflow: hidden;
 }
-.sidebar.collapsed .nav-section-label { visibility: hidden; }
+.sidebar.collapsed .nav-section-label { display: none; }
+.sidebar.collapsed .sidebar-nav { padding: 8px 4px; }
 
 .nav-item {
   display: flex; align-items: center; gap: 10px;

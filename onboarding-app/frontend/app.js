@@ -584,9 +584,17 @@ async function login() {
       return;
     }
 
+    const backendRole = data.user.role;
+    if (AuthState.selectedRole && backendRole !== AuthState.selectedRole) {
+      const names = { compliance: 'Compliance', rm: 'Rel. Manager', client: 'Client' };
+      const correct = names[backendRole] || backendRole;
+      showToast('error', `These credentials belong to the ${correct} portal. Please go back and select the correct portal.`);
+      resetLoginBtn();
+      return;
+    }
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
-    enterApp(AuthState.selectedRole || data.user.role);
+    enterApp(backendRole);
 
   } catch (err) {
     const isNetwork = err.name === 'AbortError'
