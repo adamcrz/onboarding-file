@@ -1,6 +1,7 @@
 const express  = require('express');
 const mongoose = require('mongoose');
 const cors     = require('cors');
+const path     = require('path');
 require('dotenv').config();
 
 const clientsRoutes    = require('./routes/clients.routes');
@@ -13,7 +14,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
+// ─── Serve frontend static files ──────────────────────────────────────────────
+const FRONTEND_DIR = path.join(__dirname, '../frontend');
+app.use('/frontend', express.static(FRONTEND_DIR));
+// Root redirect → app
+app.get('/', (_req, res) => res.redirect('/frontend/index.html'));
+
+// ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth',      authRoutes);
 app.use('/api/clients',   clientsRoutes);
 app.use('/api/documents', documentsRoutes);
