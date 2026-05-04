@@ -2035,7 +2035,7 @@ const CB = {
     cash:        { min:  5, max: 30 },
     other:       { min:  0, max: 15 },
   },
-  currencyWeights: { CHF: 100, EUR: 0, USD: 0, GBP: 0, JPY: 0, other: 0 },
+  currencyWeights: { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, JPY: { min: 0, max: 0 }, other: { min: 0, max: 0 } },
   investmentComments: '',
   managementFee: '', performanceFee: '',
 };
