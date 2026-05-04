@@ -2230,13 +2230,6 @@ async function cbStep2() {
         ${extraFields.map(f => cbFieldHTML(f)).join('')}
       </div>
     ` : ''}
-    ${checkboxFields.length ? `
-      <div class="cb-section-label" style="margin-top:24px;">Document Options</div>
-      <div class="cb-checkbox-list">
-        ${checkboxFields.map(f => cbFieldHTML(f)).join('')}
-      </div>
-    ` : ''}
-
     <div class="cb-section-label" style="margin-top:28px;">Portfolio Currency</div>
     <div class="cb-currency-selector" style="margin-top:10px;">
       ${['CHF','EUR','USD','GBP','JPY','SGD'].map(c => `
@@ -2288,6 +2281,20 @@ async function cbStep2() {
       <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Further Comments / Investment Instructions</label>
       <textarea id="cb_investment_comments" class="cb-comments-input" rows="3"
                 placeholder="Additional instructions, restrictions, or specific remarks…">${CB.investmentComments}</textarea>
+    </div>
+
+    <div class="cb-section-label" style="margin-top:28px;">Fee Structure</div>
+    <div class="cb-fields-grid" style="margin-top:12px;max-width:500px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label for="cb_management_fee">Annual Management Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% p.a.</span></label>
+        <input type="number" id="cb_management_fee" step="0.01" min="0" max="100"
+               placeholder="e.g. 1.00" value="${CB.managementFee||''}">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label for="cb_performance_fee">Performance Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% (optional)</span></label>
+        <input type="number" id="cb_performance_fee" step="0.01" min="0" max="100"
+               placeholder="e.g. 10.00" value="${CB.performanceFee||''}">
+      </div>
     </div>
 
     <div class="cb-section-label" style="margin-top:28px;">Currency Allocation</div>
