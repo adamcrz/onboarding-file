@@ -55,8 +55,10 @@ const register = async (req, res) => {
       });
     }
 
+    let emailPreviewUrl = null;
     try {
-      await sendVerificationEmail(user.email, user.name, verificationToken);
+      const result = await sendVerificationEmail(user.email, user.name, verificationToken);
+      emailPreviewUrl = result?.previewUrl || null;
     } catch (emailErr) {
       console.error('⚠  Verification email failed to send:', emailErr.message);
     }
@@ -64,6 +66,7 @@ const register = async (req, res) => {
     res.status(201).json({
       message: 'Registration successful. Please check your email to verify your account.',
       email:   user.email,
+      emailPreviewUrl,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

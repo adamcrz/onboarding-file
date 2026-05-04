@@ -1,13 +1,12 @@
 const nodemailer = require('nodemailer');
 
-const USE_REAL_EMAIL = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER);
+const USE_REAL_SMTP = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
 
-let _transporter = null;
-
-function getTransporter() {
-  if (!USE_REAL_EMAIL) return null;
-  if (_transporter) return _transporter;
-  _transporter = nodemailer.createTransport({
+// Real SMTP transporter (Gmail, Outlook, SendGrid, etc.)
+let _smtpTransporter = null;
+function getSmtpTransporter() {
+  if (_smtpTransporter) return _smtpTransporter;
+  _smtpTransporter = nodemailer.createTransport({
     host:   process.env.EMAIL_HOST,
     port:   parseInt(process.env.EMAIL_PORT) || 587,
     secure: parseInt(process.env.EMAIL_PORT) === 465,
@@ -16,7 +15,26 @@ function getTransporter() {
       pass: process.env.EMAIL_PASS,
     },
   });
-  return _transporter;
+  return _smtpTransporter;
+}
+
+// Ethereal test transporter — created once, reused for all dev emails.
+// Ethereal is a fake SMTP that captures emails and shows them at a preview URL.
+let _etherealTransporter = null;
+let _etherealUser = null;
+async function getEtherealTransporter() {
+  if (_etherealTransporter) return _etherealTransporter;
+  const testAccount = await nodemailer.createTestAccount();
+  _etherealUser = testAccount.user;
+  _etherealTransporter = nodemailer.createTransport({
+    host:   'smtp.ethereal.email',
+    port:   587,
+    secure: false,
+    auth: { user: testAccount.user, pass: testAccount.pass },
+  });
+  console.log('\n📬  Ethereal test account ready — all dev emails are captured here.');
+  console.log(`    Account: ${testAccount.user}\n`);
+  return _etherealTransporter;
 }
 
 function brand(body) {
@@ -33,20 +51,25 @@ function brand(body) {
     </div>`;
 }
 
+// Sends mail via real SMTP or Ethereal and returns the preview URL (Ethereal only).
+async function sendMail(mailOptions) {
+  if (USE_REAL_SMTP) {
+    await getSmtpTransporter().sendMail(mailOptions);
+    return null;
+  }
+  // Dev mode: use Ethereal
+  const transporter = await getEtherealTransporter();
+  const info = await transporter.sendMail(mailOptions);
+  const previewUrl = nodemailer.getTestMessageUrl(info);
+  console.log(`\n📧  Email to ${mailOptions.to} — preview: ${previewUrl}\n`);
+  return previewUrl;
+}
+
 async function sendVerificationEmail(to, name, token) {
   const base = process.env.FRONTEND_URL || 'http://127.0.0.1:5500';
   const link = `${base}/frontend/index.html?verify=${token}`;
 
-  if (!USE_REAL_EMAIL) {
-    console.log('\n────────────────────────────────────────────────────');
-    console.log(`📧  VERIFY EMAIL for ${name} <${to}>`);
-    console.log(`    Open this link to verify the account:`);
-    console.log(`    ${link}`);
-    console.log('────────────────────────────────────────────────────\n');
-    return;
-  }
-
-  await getTransporter().sendMail({
+  const previewUrl = await sendMail({
     from:    process.env.EMAIL_FROM || '"ComplianceOS" <noreply@complianceos.com>',
     to,
     subject: 'Verify your ComplianceOS account',
@@ -61,22 +84,15 @@ async function sendVerificationEmail(to, name, token) {
       <p style="color:#6b7280;font-size:12px;margin-top:24px;">⏱ This link expires in <strong>24 hours</strong>.</p>
     `),
   });
+
+  return { previewUrl, verifyLink: link };
 }
 
 async function sendPasswordResetEmail(to, name, token) {
   const base = process.env.FRONTEND_URL || 'http://127.0.0.1:5500';
   const link = `${base}/frontend/index.html?reset=${token}`;
 
-  if (!USE_REAL_EMAIL) {
-    console.log('\n────────────────────────────────────────────────────');
-    console.log(`🔑  PASSWORD RESET for ${name} <${to}>`);
-    console.log(`    Open this link to reset the password:`);
-    console.log(`    ${link}`);
-    console.log('────────────────────────────────────────────────────\n');
-    return;
-  }
-
-  await getTransporter().sendMail({
+  const previewUrl = await sendMail({
     from:    process.env.EMAIL_FROM || '"ComplianceOS" <noreply@complianceos.com>',
     to,
     subject: 'Reset your ComplianceOS password',
@@ -91,24 +107,15 @@ async function sendPasswordResetEmail(to, name, token) {
       <p style="color:#6b7280;font-size:12px;margin-top:24px;">⏱ This link expires in <strong>1 hour</strong>. If you didn't request this, you can safely ignore this email.</p>
     `),
   });
+
+  return { previewUrl, resetLink: link };
 }
 
 async function sendClientInviteEmail(to, name, otp, contractName) {
   const base       = process.env.FRONTEND_URL || 'http://127.0.0.1:5500';
   const portalLink = `${base}/frontend/index.html`;
 
-  if (!USE_REAL_EMAIL) {
-    console.log('\n────────────────────────────────────────────────────');
-    console.log(`✉️   CLIENT PORTAL INVITE  →  ${name} <${to}>`);
-    console.log(`     Contract : ${contractName}`);
-    console.log(`     Email    : ${to}`);
-    console.log(`     Password : ${otp}`);
-    console.log(`     Portal   : ${portalLink}`);
-    console.log('────────────────────────────────────────────────────\n');
-    return;
-  }
-
-  await getTransporter().sendMail({
+  const previewUrl = await sendMail({
     from:    process.env.EMAIL_FROM || '"Tramondo Investment Partners" <noreply@tramondo.ch>',
     to,
     subject: 'Your Tramondo Client Portal Access',
@@ -132,6 +139,8 @@ async function sendClientInviteEmail(to, name, otp, contractName) {
       <p style="color:#9ca3af;font-size:12px;margin-top:20px;">Please change your password after your first login. If you did not expect this email, contact your relationship manager.</p>
     `),
   });
+
+  return { previewUrl };
 }
 
 module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendClientInviteEmail };
