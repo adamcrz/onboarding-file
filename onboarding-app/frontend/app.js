@@ -586,7 +586,7 @@ async function login() {
 
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
-    enterApp(data.user.role);
+    enterApp(AuthState.selectedRole || data.user.role);
 
   } catch (err) {
     const isNetwork = err.name === 'AbortError'
