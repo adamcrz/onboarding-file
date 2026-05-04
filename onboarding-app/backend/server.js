@@ -16,9 +16,8 @@ app.use(express.json());
 
 // ─── Serve frontend static files ──────────────────────────────────────────────
 const FRONTEND_DIR = path.join(__dirname, '../frontend');
-app.use('/frontend', express.static(FRONTEND_DIR));
-// Root redirect → app
-app.get('/', (_req, res) => res.redirect('/frontend/index.html'));
+app.use(express.static(FRONTEND_DIR));                    // serves at /
+app.use('/frontend', express.static(FRONTEND_DIR));       // keeps email links working
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth',      authRoutes);
@@ -84,7 +83,7 @@ connectDB()
   .then(autoSeed)
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`🚀  Server running on http://localhost:${PORT}`);
+      console.log(`🚀  Server running — open http://localhost:${PORT} in your browser`);
     });
   })
   .catch(err => {
