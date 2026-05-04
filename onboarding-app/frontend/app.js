@@ -2029,16 +2029,21 @@ const CB = {
   step: 1, lang: 'EN', currency: 'CHF',
   templates: [], selectedId: null, fields: [], result: null,
   investmentProfile: 'balanced',
-  allocations: { equities: 60, fixedIncome: 30, cash: 10, other: 0 },
+  allocations: {
+    equities:    { min: 20, max: 70 },
+    fixedIncome: { min: 20, max: 50 },
+    cash:        { min:  5, max: 30 },
+    other:       { min:  0, max: 15 },
+  },
   currencyWeights: { CHF: 100, EUR: 0, USD: 0, GBP: 0, JPY: 0, other: 0 },
   investmentComments: '',
   managementFee: '', performanceFee: '',
 };
 
 const PROFILE_PRESETS = {
-  balanced: { equities: 60, fixedIncome: 30, cash: 10, other: 0 },
-  growth:   { equities: 80, fixedIncome: 15, cash:  5, other: 0 },
-  open:     { equities:  0, fixedIncome:  0, cash:  0, other: 0 },
+  balanced: { equities:{min:20,max:70}, fixedIncome:{min:20,max:50}, cash:{min:5,max:30},  other:{min:0,max:15} },
+  growth:   { equities:{min:50,max:90}, fixedIncome:{min:0, max:35}, cash:{min:0,max:15},  other:{min:0,max:10} },
+  open:     { equities:{min:0, max:0},  fixedIncome:{min:0, max:0},  cash:{min:0, max:0},  other:{min:0, max:0}  },
 };
 
 async function renderContractBuilding() {
@@ -2052,7 +2057,8 @@ async function renderContractBuilding() {
   `;
   CB.step = 1; CB.selectedId = null; CB.fields = []; CB.result = null;
   CB.investmentProfile = 'balanced';
-  CB.allocations = { ...PROFILE_PRESETS.balanced };
+  const bp = PROFILE_PRESETS.balanced;
+  CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
   CB.currencyWeights = { CHF: 100, EUR: 0, USD: 0, GBP: 0, JPY: 0, other: 0 };
   CB.investmentComments = '';
   CB.managementFee = ''; CB.performanceFee = '';
