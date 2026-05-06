@@ -2030,6 +2030,7 @@ const CB = {
   templates: [], selectedId: null, fields: [], result: null,
   contractTypeNew: true,
   uo: false,
+  mandatsname: '',
   person2: { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' },
   kundenberater: '', kundenberaterEmail: '',
   investmentProfile: 'balanced',
@@ -2070,12 +2071,13 @@ async function renderContractBuilding() {
   CB.step = 1; CB.selectedId = null; CB.fields = []; CB.result = null;
   CB.contractTypeNew = true;
   CB.uo = false;
+  CB.mandatsname = '';
   CB.person2 = { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' };
   CB.kundenberater = ''; CB.kundenberaterEmail = '';
   CB.investmentProfile = 'balanced';
   const bp = PROFILE_PRESETS.balanced;
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
-  CB.currencyWeights = { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, JPY: { min: 0, max: 0 }, other: { min: 0, max: 0 } };
+  CB.currencyWeights = { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } };
   CB.investmentComments = '';
   CB.managementFee = ''; CB.performanceFee = '';
   await cbRenderStep();
@@ -2271,7 +2273,7 @@ async function cbStep2() {
   const checkboxFields = CB.fields.filter(f => f.type === 'checkbox');
   const extraFields    = CB.fields.filter(f => !stdKeys.includes(f.key) && f.type !== 'checkbox');
 
-  document.getElementById('cb-fields-area').innerHTML = `
+  try { document.getElementById('cb-fields-area').innerHTML = `
     <div class="cb-section-label">Client Information</div>
     <div class="cb-fields-grid">
       ${stdFields.map(f => cbFieldHTML(f)).join('')}
@@ -2418,12 +2420,12 @@ async function cbStep2() {
         </thead>
         <tbody>
           ${[
-            ['ccy_CHF', 'CHF — Swiss Franc',     CB.currencyWeights.CHF],
-            ['ccy_EUR', 'EUR — Euro',             CB.currencyWeights.EUR],
-            ['ccy_USD', 'USD — US Dollar',        CB.currencyWeights.USD],
-            ['ccy_GBP', 'GBP — Pound Sterling',  CB.currencyWeights.GBP],
-            ['ccy_AUD', 'AUD — Australian Dollar',CB.currencyWeights.AUD],
-            ['ccy_JPY', 'JPY — Japanese Yen',     CB.currencyWeights.JPY],
+            ['ccy_CHF', 'CHF — Swiss Franc',      CB.currencyWeights.CHF || {min:0,max:0}],
+            ['ccy_EUR', 'EUR — Euro',              CB.currencyWeights.EUR || {min:0,max:0}],
+            ['ccy_USD', 'USD — US Dollar',         CB.currencyWeights.USD || {min:0,max:0}],
+            ['ccy_GBP', 'GBP — Pound Sterling',   CB.currencyWeights.GBP || {min:0,max:0}],
+            ['ccy_AUD', 'AUD — Australian Dollar', CB.currencyWeights.AUD || {min:0,max:0}],
+            ['ccy_JPY', 'JPY — Japanese Yen',      CB.currencyWeights.JPY || {min:0,max:0}],
           ].map(([id, lbl, vals]) => `
             <tr>
               <td style="font-size:13px;">${lbl}</td>
@@ -2467,7 +2469,11 @@ async function cbStep2() {
         Send Contract & Invite Client
       </button>
     </div>
-  `;
+  `; } catch(e) {
+    console.error('cbStep2 render error:', e);
+    document.getElementById('cb-fields-area').innerHTML =
+      `<p style="color:red;padding:16px;font-family:monospace;">Render error: ${e.message}</p>`;
+  }
 }
 
 function cbFieldHTML(f) {
