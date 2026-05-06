@@ -16,20 +16,23 @@ const TEMPLATES = [
 function standardFields(lang) {
   return lang === 'DE'
     ? [
-        { key: 'client_name',        label: 'Vollständiger Name (Nach- und Vorname)', type: 'text',  required: true  },
-        { key: 'client_email',       label: 'E-Mail-Adresse',                         type: 'email', required: true  },
-        { key: 'client_dob',         label: 'Geburtsdatum',                           type: 'date',  required: true  },
-        { key: 'client_address1',    label: 'Strasse und Hausnummer',                 type: 'text',  required: true  },
-        { key: 'client_address2',    label: 'Adresszusatz (optional)',                type: 'text',  required: false },
-        { key: 'client_city',        label: 'Ort',                                    type: 'text',  required: true  },
-        { key: 'client_country',     label: 'Land',                                   type: 'text',  required: true  },
-        { key: 'client_nationality', label: 'Nationalität',                           type: 'text',  required: false },
-        { key: 'contract_date',      label: 'Vertragsdatum',                          type: 'date',  required: true  },
-        { key: 'depot_bank',         label: 'Depotbank',                              type: 'text',  required: false },
-        { key: 'portfolio_number',   label: 'Portfolionummer',                        type: 'text',  required: false },
+        { key: 'client_last_name',   label: 'Nachname',                              type: 'text',  required: true  },
+        { key: 'client_first_name',  label: 'Vorname',                               type: 'text',  required: true  },
+        { key: 'client_email',       label: 'E-Mail-Adresse',                        type: 'email', required: true  },
+        { key: 'client_dob',         label: 'Geburtsdatum',                          type: 'date',  required: true  },
+        { key: 'client_address1',    label: 'Strasse und Hausnummer',                type: 'text',  required: true  },
+        { key: 'client_address2',    label: 'Adresszusatz (optional)',               type: 'text',  required: false },
+        { key: 'client_city',        label: 'Ort',                                   type: 'text',  required: true  },
+        { key: 'client_country',     label: 'Land',                                  type: 'text',  required: true  },
+        { key: 'client_nationality', label: 'Nationalität',                          type: 'text',  required: false },
+        { key: 'contract_date',      label: 'Vertragsdatum',                         type: 'date',  required: true  },
+        { key: 'depot_bank',         label: 'Depotbank',                             type: 'text',  required: false },
+        { key: 'portfolio_number',   label: 'Portfolionummer',                       type: 'text',  required: false },
+        { key: 'additional_category',label: 'Weitere Anlagekategorie (optional)',    type: 'text',  required: false },
       ]
     : [
-        { key: 'client_name',        label: 'Full Name (Last, First)',                type: 'text',  required: true  },
+        { key: 'client_last_name',   label: 'Last Name',                             type: 'text',  required: true  },
+        { key: 'client_first_name',  label: 'First Name',                            type: 'text',  required: true  },
         { key: 'client_email',       label: 'Client Email Address',                  type: 'email', required: true  },
         { key: 'client_dob',         label: 'Date of Birth',                         type: 'date',  required: true  },
         { key: 'client_address1',    label: 'Street Address',                        type: 'text',  required: true  },
@@ -40,6 +43,7 @@ function standardFields(lang) {
         { key: 'contract_date',      label: 'Contract Date',                         type: 'date',  required: true  },
         { key: 'depot_bank',         label: 'Custodian Bank',                        type: 'text',  required: false },
         { key: 'portfolio_number',   label: 'Portfolio Number',                      type: 'text',  required: false },
+        { key: 'additional_category',label: 'Additional Investment Category (opt.)', type: 'text',  required: false },
       ];
 }
 
@@ -119,7 +123,11 @@ function escXml(s) {
 // visible text matches the bookmark name (e.g. "NachundVorname", "Adresse1", …).
 function buildReplacementMap(fieldValues, _fieldDefs) {
   const fv = fieldValues || {};
-  const name        = fv.client_name        || '';
+  // Name: separate last/first fields (client_last_name, client_first_name)
+  const lastName    = fv.client_last_name  || '';
+  const firstName   = fv.client_first_name || '';
+  const fullName    = [firstName, lastName].filter(Boolean).join(' ');
+
   const addr1       = fv.client_address1    || fv.client_address || '';
   const addr2       = fv.client_address2    || '';
   const city        = fv.client_city        || '';
@@ -130,39 +138,36 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   const depotBank   = fv.depot_bank         || '';
   const portfolioNo = fv.portfolio_number   || '';
 
-  // Split "Last First" → lastName / firstName for templates that store them separately
-  const parts     = name.trim().split(/\s+/);
-  const lastName  = parts.length > 1 ? parts[parts.length - 1] : name;
-  const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
-
   const cityDate = [city, contractDate].filter(Boolean).join(', ');
   const fullAddr  = [addr1, addr2, city, country].filter(Boolean).join(', ');
 
   const map = {};
 
-  // Full name — all numbered suffix variants used across different template pages
-  if (name) {
+  // Full name (NachundVorname = "Vorname Nachname") — all numbered variants across template pages
+  if (fullName) {
     [
       'NachundVorname','NachundVorname1','NachundVorname2','NachundVorname3',
-      'NachundVorname5','NachundVorname7','NachundVorname10','NachnameVorname',
-    ].forEach(k => { map[k] = name; });
+      'NachundVorname4','NachundVorname5','NachundVorname7','NachundVorname8',
+      'NachundVorname9','NachundVorname10','NachnameVorname',
+    ].forEach(k => { map[k] = fullName; });
   }
-  if (lastName)  { map['Nachname']  = lastName;  map['Nachname1'] = lastName; }
-  if (firstName)   map['Vorname']   = firstName;
+  if (lastName)  { map['Nachname']  = lastName;  map['Nachname1']  = lastName;  }
+  if (firstName) { map['Vorname']   = firstName;  map['Vorname1']   = firstName; }
 
-  // Address components
-  if (addr1)   { map['Adresse1'] = addr1; map['Adresse11'] = addr1; }
-  if (addr2)   { map['Adresse2'] = addr2; map['Adresse21'] = addr2; map['Adresse23'] = addr2; }
+  // Address components — all numbered variants
+  if (addr1)   { map['Adresse1'] = addr1; map['Adresse11'] = addr1; map['Adresse12'] = addr1; map['Adresse13'] = addr1; }
+  if (addr2)   { map['Adresse2'] = addr2; map['Adresse21'] = addr2; map['Adresse22'] = addr2; map['Adresse23'] = addr2; }
   if (fullAddr)  map['Adresse']  = fullAddr;
-  if (city)    { map['Ort'] = city;  map['Ort1'] = city; map['Ort2'] = city; map['Ort3'] = city; }
-  if (country) { map['Land'] = country; map['Land1'] = country; }
+  if (city)    { map['Ort'] = city;  map['Ort1'] = city;  map['Ort2'] = city;  map['Ort3'] = city;  }
+  if (country) { map['Land'] = country; map['Land1'] = country; map['Land2'] = country; map['Land3'] = country; }
 
   // Signature-block place/date line
   if (cityDate)    map['Ort/Datum'] = cityDate;
 
-  // Personal details
-  if (dob)         map['Birth']       = dob;
-  if (nationality) { map['Nat'] = nationality; map['Nat.'] = nationality; map['Nationality'] = nationality; }
+  // Personal details — all numbered variants
+  if (dob)         { map['Birth']  = dob;         map['Birth1'] = dob;         }
+  if (nationality) { map['Nat']    = nationality;  map['Nat1']   = nationality;
+                     map['Nat.']   = nationality;  map['Nationality'] = nationality; }
 
   // Contract details
   if (depotBank)   map['Depotbank']        = depotBank;
@@ -178,12 +183,7 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   const ccy = fv.portfolio_currency || '';
   if (ccy) map['Currency'] = ccy;
 
-  // Currency weights — bookmarks: CHF, EUR, USD, GBP
-  const pct = v => (v !== '' && v !== undefined && v !== '0') ? v + '%' : '';
-  if (fv.ccy_weight_chf) map['CHF'] = pct(fv.ccy_weight_chf);
-  if (fv.ccy_weight_eur) map['EUR'] = pct(fv.ccy_weight_eur);
-  if (fv.ccy_weight_usd) map['USD'] = pct(fv.ccy_weight_usd);
-  if (fv.ccy_weight_gbp) map['GBP'] = pct(fv.ccy_weight_gbp);
+  // (currency weight MAX values go via ccy_chf_max etc — handled below with pctVal)
 
   // Further instructions — bookmark: Furtherinstructions
   const comments = fv.investment_comments || '';
@@ -204,7 +204,21 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   if (fv.ccy_usd_max) map['USD'] = pctVal(fv.ccy_usd_max);
   if (fv.ccy_gbp_max) map['GBP'] = pctVal(fv.ccy_gbp_max);
 
+  // Additional investment category (last row of the investment table) — bookmark: And
+  if (fv.additional_category) map['And'] = fv.additional_category;
+
   return map;
+}
+
+// Builds checkbox replacement map for the "New Contract / Replaces existing" toggle.
+function buildContractTypeCheckboxes(fieldValues) {
+  const isNew = fieldValues.contract_type !== 'replace';
+  return {
+    '☐ New Contract':                    (isNew  ? '☑' : '☐') + ' New Contract',
+    '□ New Contract':                    (isNew  ? '☑' : '□') + ' New Contract',
+    '☐ Replaces the existing Contract':  (!isNew ? '☑' : '☐') + ' Replaces the existing Contract',
+    '□ Replaces the existing Contract':  (!isNew ? '☑' : '□') + ' Replaces the existing Contract',
+  };
 }
 
 // Replaces placeholder text inside a Word XML string using Word bookmarks as
@@ -303,6 +317,11 @@ function applyAllocMinToXml(xml, fieldValues) {
     const minCell  = xml.lastIndexOf('<w:tc>', dashCell - 1);
     if (minCell === -1) return;
 
+    // Safety: the middle cell must contain only "-" — prevents corrupting other content
+    const dashCellEnd = xml.indexOf('</w:tc>', dashCell);
+    const dashText = xml.slice(dashCell, dashCellEnd).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (dashText !== '-') return;
+
     const minCellEnd = xml.indexOf('</w:tc>', minCell) + '</w:tc>'.length;
     const minCellXml = xml.slice(minCell, minCellEnd);
 
@@ -376,8 +395,11 @@ exports.previewContract = async (req, res) => {
         );
       });
 
-    // Apply checkbox state in preview
-    const checkboxMap = buildCheckboxReplacements(fieldValues, fieldDefs);
+    // Apply checkbox state in preview (field checkboxes + contract type toggle)
+    const checkboxMap = {
+      ...buildCheckboxReplacements(fieldValues, fieldDefs),
+      ...buildContractTypeCheckboxes(fieldValues),
+    };
     Object.entries(checkboxMap).forEach(([from, to]) => {
       const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const isChecked = to.startsWith('☑');
@@ -419,7 +441,10 @@ exports.generateContract = async (req, res) => {
 
     const content = fs.readFileSync(filePath, 'binary');
     const zip = new PizZip(content);
-    const checkboxMap = buildCheckboxReplacements(fieldValues, fieldDefs);
+    const checkboxMap = {
+      ...buildCheckboxReplacements(fieldValues, fieldDefs),
+      ...buildContractTypeCheckboxes(fieldValues),
+    };
 
     ['word/document.xml','word/header1.xml','word/footer1.xml','word/header2.xml','word/footer2.xml']
       .forEach(xmlFile => {

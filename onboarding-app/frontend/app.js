@@ -2028,6 +2028,7 @@ function renderAuditPage() {
 const CB = {
   step: 1, lang: 'EN', currency: 'CHF',
   templates: [], selectedId: null, fields: [], result: null,
+  contractTypeNew: true,
   investmentProfile: 'balanced',
   allocations: {
     equities:    { min: 20, max: 70 },
@@ -2056,6 +2057,7 @@ async function renderContractBuilding() {
     <div id="cb-body"></div>
   `;
   CB.step = 1; CB.selectedId = null; CB.fields = []; CB.result = null;
+  CB.contractTypeNew = true;
   CB.investmentProfile = 'balanced';
   const bp = PROFILE_PRESETS.balanced;
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
@@ -2148,6 +2150,19 @@ async function cbStep1() {
             `).join('')}
           </div>
         </div>
+        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
+          <div class="cb-section-label" style="margin-bottom:10px;">Contract Status</div>
+          <div style="display:flex;gap:20px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="radio" name="cb-contract-type" value="new" ${CB.contractTypeNew?'checked':''} onchange="CB.contractTypeNew=true">
+              <span>☑ New Contract</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="radio" name="cb-contract-type" value="replace" ${!CB.contractTypeNew?'checked':''} onchange="CB.contractTypeNew=false">
+              <span>☐ Replaces existing Contract</span>
+            </label>
+          </div>
+        </div>
         <div style="margin-top:24px;display:flex;justify-content:flex-end;">
           <button class="btn-primary" onclick="cbGoStep2()" ${CB.selectedId?'':'disabled'} id="cb-next-btn">
             Next: Fill Details
@@ -2209,23 +2224,26 @@ async function cbStep2() {
     }
   } catch (_) {
     CB.fields = [
-      { key:'client_name',        label:'Full Name (Last, First)',      type:'text',  required:true  },
-      { key:'client_email',       label:'Client Email Address',         type:'email', required:true  },
-      { key:'client_dob',         label:'Date of Birth',                type:'date',  required:true  },
-      { key:'client_address1',    label:'Street Address',               type:'text',  required:true  },
-      { key:'client_address2',    label:'Address Line 2 (optional)',    type:'text',  required:false },
-      { key:'client_city',        label:'City',                         type:'text',  required:true  },
-      { key:'client_country',     label:'Country',                      type:'text',  required:true  },
-      { key:'client_nationality', label:'Nationality',                  type:'text',  required:false },
-      { key:'contract_date',      label:'Contract Date',                type:'date',  required:true  },
-      { key:'depot_bank',         label:'Custodian Bank',               type:'text',  required:false },
-      { key:'portfolio_number',   label:'Portfolio Number',             type:'text',  required:false },
+      { key:'client_last_name',   label:'Last Name',                   type:'text',  required:true  },
+      { key:'client_first_name',  label:'First Name',                  type:'text',  required:true  },
+      { key:'client_email',       label:'Client Email Address',        type:'email', required:true  },
+      { key:'client_dob',         label:'Date of Birth',               type:'date',  required:true  },
+      { key:'client_address1',    label:'Street Address',              type:'text',  required:true  },
+      { key:'client_address2',    label:'Address Line 2 (optional)',   type:'text',  required:false },
+      { key:'client_city',        label:'City',                        type:'text',  required:true  },
+      { key:'client_country',     label:'Country',                     type:'text',  required:true  },
+      { key:'client_nationality', label:'Nationality',                 type:'text',  required:false },
+      { key:'contract_date',      label:'Contract Date',               type:'date',  required:true  },
+      { key:'depot_bank',         label:'Custodian Bank',              type:'text',  required:false },
+      { key:'portfolio_number',   label:'Portfolio Number',            type:'text',  required:false },
+      { key:'additional_category',label:'Additional Investment Category (opt.)', type:'text', required:false },
     ];
   }
 
-  const stdKeys = ['client_name','client_email','client_dob',
+  const stdKeys = ['client_last_name','client_first_name','client_email','client_dob',
                    'client_address1','client_address2','client_city','client_country',
-                   'client_nationality','contract_date','depot_bank','portfolio_number'];
+                   'client_nationality','contract_date','depot_bank','portfolio_number',
+                   'additional_category'];
   const stdFields      = CB.fields.filter(f => stdKeys.includes(f.key));
   const checkboxFields = CB.fields.filter(f => f.type === 'checkbox');
   const extraFields    = CB.fields.filter(f => !stdKeys.includes(f.key) && f.type !== 'checkbox');
@@ -2479,7 +2497,7 @@ async function cbSubmit() {
   }
 
   const fieldValues = cbCollectAllValues();
-  const clientName  = fieldValues['client_name'];
+  const clientName  = [fieldValues['client_first_name'], fieldValues['client_last_name']].filter(Boolean).join(' ');
   const clientEmail = fieldValues['client_email'];
 
   if (!clientEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
@@ -2577,6 +2595,7 @@ function cbCollectAllValues() {
   cbUpdateAllocTotal();
   cbUpdateCcyTotal();
   Object.assign(fv, {
+    contract_type:           CB.contractTypeNew ? 'new' : 'replace',
     portfolio_currency:      CB.currency,
     investment_profile:      CB.investmentProfile.charAt(0).toUpperCase() + CB.investmentProfile.slice(1),
     alloc_equities_min:      String(CB.allocations.equities.min),
