@@ -153,12 +153,13 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
 
   const map = {};
 
-  // NachundVorname (contract heading) — all numbered variants across template pages
-  if (contractName) {
+  // NachundVorname (contract heading) — mandatsname takes priority, falls back to auto-computed contractName
+  const headingName = (fv.mandatsname && fv.mandatsname.trim()) ? fv.mandatsname.trim() : contractName;
+  if (headingName) {
     ['NachundVorname','NachundVorname1','NachundVorname2','NachundVorname3',
      'NachundVorname4','NachundVorname5','NachundVorname7','NachundVorname8',
      'NachundVorname9','NachundVorname10','NachnameVorname',
-    ].forEach(k => { map[k] = contractName; });
+    ].forEach(k => { map[k] = headingName; });
   }
 
   // Person 1 name

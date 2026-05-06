@@ -2285,7 +2285,18 @@ async function cbStep2() {
       </div>
     ` : ''}
 
-    <div style="margin-top:28px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
+    <div style="margin-top:28px;">
+      <div class="cb-section-label" style="margin-bottom:8px;">Mandatsname
+        <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:6px;">auto-filled from client name — editable</span>
+      </div>
+      <input type="text" id="cb_mandatsname" value="${CB.mandatsname}"
+             style="width:100%;padding:9px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);
+                    background:var(--bg-primary);color:var(--text-primary);font-size:13px;font-weight:600;"
+             placeholder="e.g. Müller Max  or  Müller Max u/o Müller Anna"
+             oninput="CB.mandatsname=this.value">
+    </div>
+
+    <div style="margin-top:20px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;">
         <input type="checkbox" id="cb-uo-toggle" ${CB.uo?'checked':''} onchange="cbToggleUO(this.checked)"
                style="width:16px;height:16px;accent-color:var(--accent-blue);">
@@ -2296,11 +2307,13 @@ async function cbStep2() {
         <div class="cb-fields-grid">
           <div class="form-group" style="margin-bottom:0;">
             <label for="cb_p2_last_name">Last Name <span style="color:var(--accent-red)">*</span></label>
-            <input type="text" id="cb_p2_last_name" placeholder="Last Name" value="${CB.person2.lastName}">
+            <input type="text" id="cb_p2_last_name" placeholder="Last Name" value="${CB.person2.lastName}"
+                   oninput="cbUpdateMandatsname()">
           </div>
           <div class="form-group" style="margin-bottom:0;">
             <label for="cb_p2_first_name">First Name <span style="color:var(--accent-red)">*</span></label>
-            <input type="text" id="cb_p2_first_name" placeholder="First Name" value="${CB.person2.firstName}">
+            <input type="text" id="cb_p2_first_name" placeholder="First Name" value="${CB.person2.firstName}"
+                   oninput="cbUpdateMandatsname()">
           </div>
           <div class="form-group" style="margin-bottom:0;">
             <label for="cb_p2_dob">Date of Birth</label>
@@ -2485,14 +2498,32 @@ function cbFieldHTML(f) {
       </label>
     `;
   }
+  const nameKeys = ['client_last_name', 'client_first_name'];
+  const extraAttrs = nameKeys.includes(f.key) ? ' oninput="cbUpdateMandatsname()"' : '';
   return `
     <div class="form-group" style="margin-bottom:0;">
       <label for="cb_${f.key}">${f.label}${f.required?' <span style="color:var(--accent-red)">*</span>':''}</label>
       <input type="${f.type||'text'}" id="cb_${f.key}" name="${f.key}"
              placeholder="${f.type==='date'?'YYYY-MM-DD':f.label}"
-             ${f.required?'required':''} />
+             ${f.required?'required':''}${extraAttrs} />
     </div>
   `;
+}
+
+function cbUpdateMandatsname() {
+  const fn1 = document.getElementById('cb_client_first_name')?.value?.trim() || '';
+  const ln1 = document.getElementById('cb_client_last_name')?.value?.trim() || '';
+  const full1 = [fn1, ln1].filter(Boolean).join(' ');
+  let computed = full1;
+  if (CB.uo) {
+    const fn2 = document.getElementById('cb_p2_first_name')?.value?.trim() || '';
+    const ln2 = document.getElementById('cb_p2_last_name')?.value?.trim() || '';
+    const full2 = [fn2, ln2].filter(Boolean).join(' ');
+    if (full2) computed = `${full1} u/o ${full2}`;
+  }
+  const el = document.getElementById('cb_mandatsname');
+  if (el) el.value = computed;
+  CB.mandatsname = computed;
 }
 
 function cbSetRM(name) {
@@ -2507,6 +2538,7 @@ function cbToggleUO(checked) {
   CB.uo = checked;
   const sec = document.getElementById('cb-person2-section');
   if (sec) sec.style.display = checked ? 'block' : 'none';
+  cbUpdateMandatsname();
 }
 
 function cbSetCurrency(c) {
@@ -2715,6 +2747,7 @@ function cbCollectAllValues() {
     p2_country:           document.getElementById('cb_p2_country')?.value?.trim()      || '',
     kundenberater_name:   CB.kundenberater,
     kundenberater_email:  CB.kundenberaterEmail,
+    mandatsname:          document.getElementById('cb_mandatsname')?.value?.trim() || '',
   });
   return fv;
 }
