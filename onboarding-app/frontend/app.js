@@ -2029,6 +2029,9 @@ const CB = {
   step: 1, lang: 'EN', currency: 'CHF',
   templates: [], selectedId: null, fields: [], result: null,
   contractTypeNew: true,
+  uo: false,
+  person2: { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' },
+  kundenberater: '', kundenberaterEmail: '',
   investmentProfile: 'balanced',
   allocations: {
     equities:    { min: 20, max: 70 },
@@ -2036,10 +2039,18 @@ const CB = {
     cash:        { min:  5, max: 30 },
     other:       { min:  0, max: 15 },
   },
-  currencyWeights: { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, JPY: { min: 0, max: 0 }, other: { min: 0, max: 0 } },
+  currencyWeights: { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } },
   investmentComments: '',
   managementFee: '', performanceFee: '',
 };
+
+const KUNDENBERATER = [
+  { name: 'Sarah Mitchell',  email: 'sarah.mitchell@tramondo.com'  },
+  { name: 'Michael Torres',  email: 'm.torres@tramondo.com'         },
+  { name: 'Emily Clarke',    email: 'e.clarke@tramondo.com'         },
+  { name: 'James Okafor',   email: 'j.okafor@tramondo.com'         },
+  { name: 'Daniel Roth',     email: 'd.roth@tramondo.com'           },
+];
 
 const PROFILE_PRESETS = {
   balanced: { equities:{min:20,max:70}, fixedIncome:{min:20,max:50}, cash:{min:5,max:30},  other:{min:0,max:15} },
@@ -2058,6 +2069,9 @@ async function renderContractBuilding() {
   `;
   CB.step = 1; CB.selectedId = null; CB.fields = []; CB.result = null;
   CB.contractTypeNew = true;
+  CB.uo = false;
+  CB.person2 = { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' };
+  CB.kundenberater = ''; CB.kundenberaterEmail = '';
   CB.investmentProfile = 'balanced';
   const bp = PROFILE_PRESETS.balanced;
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
@@ -2141,6 +2155,15 @@ async function cbStep1() {
               </div>
             </div>
           `).join('')}
+        </div>
+        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
+          <div class="cb-section-label" style="margin-bottom:10px;">Relationship Manager (Kundenberater)</div>
+          <select id="cb-rm-select" onchange="cbSetRM(this.value)"
+                  style="width:100%;max-width:380px;padding:8px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);font-size:13px;">
+            <option value="">— Select RM —</option>
+            ${KUNDENBERATER.map(rm => `<option value="${rm.name}" ${CB.kundenberater===rm.name?'selected':''}>${rm.name}</option>`).join('')}
+          </select>
+          ${CB.kundenberaterEmail ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">${CB.kundenberaterEmail}</div>` : ''}
         </div>
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
           <div class="cb-section-label" style="margin-bottom:10px;">Portfolio Currency</div>
@@ -2259,6 +2282,52 @@ async function cbStep2() {
         ${extraFields.map(f => cbFieldHTML(f)).join('')}
       </div>
     ` : ''}
+
+    <div style="margin-top:28px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;">
+        <input type="checkbox" id="cb-uo-toggle" ${CB.uo?'checked':''} onchange="cbToggleUO(this.checked)"
+               style="width:16px;height:16px;accent-color:var(--accent-blue);">
+        Und/Oder Vertrag — Joint Account (2 Contracting Parties)
+      </label>
+      <div id="cb-person2-section" style="display:${CB.uo?'block':'none'};margin-top:16px;">
+        <div class="cb-section-label" style="margin-bottom:12px;color:var(--accent-blue);">Second Account Holder</div>
+        <div class="cb-fields-grid">
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_p2_last_name">Last Name <span style="color:var(--accent-red)">*</span></label>
+            <input type="text" id="cb_p2_last_name" placeholder="Last Name" value="${CB.person2.lastName}">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_p2_first_name">First Name <span style="color:var(--accent-red)">*</span></label>
+            <input type="text" id="cb_p2_first_name" placeholder="First Name" value="${CB.person2.firstName}">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_p2_dob">Date of Birth</label>
+            <input type="date" id="cb_p2_dob" value="${CB.person2.dob}">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_p2_nationality">Nationality</label>
+            <input type="text" id="cb_p2_nationality" placeholder="Nationality" value="${CB.person2.nationality}">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_p2_address1">Street Address</label>
+            <input type="text" id="cb_p2_address1" placeholder="Street Address" value="${CB.person2.address1}">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_p2_address2">Address Line 2</label>
+            <input type="text" id="cb_p2_address2" placeholder="Address Line 2 (optional)" value="${CB.person2.address2}">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_p2_city">City</label>
+            <input type="text" id="cb_p2_city" placeholder="City" value="${CB.person2.city}">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_p2_country">Country</label>
+            <input type="text" id="cb_p2_country" placeholder="Country" value="${CB.person2.country}">
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="cb-section-label" style="margin-top:28px;">Portfolio Currency</div>
     <div class="cb-currency-selector" style="margin-top:10px;">
       ${['CHF','EUR','USD','GBP','JPY','SGD'].map(c => `
@@ -2349,12 +2418,12 @@ async function cbStep2() {
         </thead>
         <tbody>
           ${[
-            ['ccy_CHF',   'CHF — Swiss Franc',   CB.currencyWeights.CHF],
-            ['ccy_EUR',   'EUR — Euro',           CB.currencyWeights.EUR],
-            ['ccy_USD',   'USD — US Dollar',      CB.currencyWeights.USD],
-            ['ccy_GBP',   'GBP — Pound Sterling', CB.currencyWeights.GBP],
-            ['ccy_JPY',   'JPY — Japanese Yen',   CB.currencyWeights.JPY],
-            ['ccy_other', 'Other',                CB.currencyWeights.other],
+            ['ccy_CHF', 'CHF — Swiss Franc',     CB.currencyWeights.CHF],
+            ['ccy_EUR', 'EUR — Euro',             CB.currencyWeights.EUR],
+            ['ccy_USD', 'USD — US Dollar',        CB.currencyWeights.USD],
+            ['ccy_GBP', 'GBP — Pound Sterling',  CB.currencyWeights.GBP],
+            ['ccy_AUD', 'AUD — Australian Dollar',CB.currencyWeights.AUD],
+            ['ccy_JPY', 'JPY — Japanese Yen',     CB.currencyWeights.JPY],
           ].map(([id, lbl, vals]) => `
             <tr>
               <td style="font-size:13px;">${lbl}</td>
@@ -2370,8 +2439,8 @@ async function cbStep2() {
           `).join('')}
           <tr class="cb-alloc-total" id="ccy-total-row">
             <td style="font-size:13px;font-weight:700;">Total</td>
-            <td style="text-align:right;"><strong id="ccy-total-min">${Object.values(CB.currencyWeights).reduce((a,b)=>a+b.min,0)}%</strong></td>
-            <td style="text-align:right;"><strong id="ccy-total-max">${Object.values(CB.currencyWeights).reduce((a,b)=>a+b.max,0)}%</strong></td>
+            <td style="text-align:right;"><strong id="ccy-total-min">${['CHF','EUR','USD','GBP','AUD','JPY'].reduce((a,k)=>a+(CB.currencyWeights[k]?.min||0),0)}%</strong></td>
+            <td style="text-align:right;"><strong id="ccy-total-max">${['CHF','EUR','USD','GBP','AUD','JPY'].reduce((a,k)=>a+(CB.currencyWeights[k]?.max||0),0)}%</strong></td>
           </tr>
         </tbody>
       </table>
@@ -2418,6 +2487,20 @@ function cbFieldHTML(f) {
              ${f.required?'required':''} />
     </div>
   `;
+}
+
+function cbSetRM(name) {
+  const rm = KUNDENBERATER.find(r => r.name === name);
+  CB.kundenberater = name;
+  CB.kundenberaterEmail = rm ? rm.email : '';
+  const hint = document.querySelector('#cb-rm-select + div');
+  if (hint) hint.textContent = CB.kundenberaterEmail || '';
+}
+
+function cbToggleUO(checked) {
+  CB.uo = checked;
+  const sec = document.getElementById('cb-person2-section');
+  if (sec) sec.style.display = checked ? 'block' : 'none';
 }
 
 function cbSetCurrency(c) {
@@ -2467,8 +2550,8 @@ function cbUpdateAllocTotal() {
 }
 
 function cbUpdateCcyTotal() {
-  const ids = ['ccy_CHF','ccy_EUR','ccy_USD','ccy_GBP','ccy_JPY','ccy_other'];
-  const keys = ['CHF','EUR','USD','GBP','JPY','other'];
+  const ids  = ['ccy_CHF','ccy_EUR','ccy_USD','ccy_GBP','ccy_AUD','ccy_JPY'];
+  const keys = ['CHF','EUR','USD','GBP','AUD','JPY'];
   const mins = ids.map(id => parseFloat(document.getElementById(`${id}_min`)?.value) || 0);
   const maxs = ids.map(id => parseFloat(document.getElementById(`${id}_max`)?.value) || 0);
   const totalMin = mins.reduce((a,b)=>a+b,0);
@@ -2609,11 +2692,23 @@ function cbCollectAllValues() {
     investment_comments:     document.getElementById('cb_investment_comments')?.value?.trim() || '',
     management_fee:          document.getElementById('cb_management_fee')?.value?.trim()      || '',
     performance_fee:         document.getElementById('cb_performance_fee')?.value?.trim()     || '',
-    ccy_chf_min: String(CB.currencyWeights.CHF.min),  ccy_chf_max: String(CB.currencyWeights.CHF.max),
-    ccy_eur_min: String(CB.currencyWeights.EUR.min),  ccy_eur_max: String(CB.currencyWeights.EUR.max),
-    ccy_usd_min: String(CB.currencyWeights.USD.min),  ccy_usd_max: String(CB.currencyWeights.USD.max),
-    ccy_gbp_min: String(CB.currencyWeights.GBP.min),  ccy_gbp_max: String(CB.currencyWeights.GBP.max),
-    ccy_jpy_min: String(CB.currencyWeights.JPY.min),  ccy_jpy_max: String(CB.currencyWeights.JPY.max),
+    ccy_chf_min: String(CB.currencyWeights.CHF?.min||0), ccy_chf_max: String(CB.currencyWeights.CHF?.max||0),
+    ccy_eur_min: String(CB.currencyWeights.EUR?.min||0), ccy_eur_max: String(CB.currencyWeights.EUR?.max||0),
+    ccy_usd_min: String(CB.currencyWeights.USD?.min||0), ccy_usd_max: String(CB.currencyWeights.USD?.max||0),
+    ccy_gbp_min: String(CB.currencyWeights.GBP?.min||0), ccy_gbp_max: String(CB.currencyWeights.GBP?.max||0),
+    ccy_aud_min: String(CB.currencyWeights.AUD?.min||0), ccy_aud_max: String(CB.currencyWeights.AUD?.max||0),
+    ccy_jpy_min: String(CB.currencyWeights.JPY?.min||0), ccy_jpy_max: String(CB.currencyWeights.JPY?.max||0),
+    uo_vertrag:           CB.uo ? 'true' : 'false',
+    p2_last_name:         document.getElementById('cb_p2_last_name')?.value?.trim()    || '',
+    p2_first_name:        document.getElementById('cb_p2_first_name')?.value?.trim()   || '',
+    p2_dob:               document.getElementById('cb_p2_dob')?.value?.trim()          || '',
+    p2_nationality:       document.getElementById('cb_p2_nationality')?.value?.trim()  || '',
+    p2_address1:          document.getElementById('cb_p2_address1')?.value?.trim()     || '',
+    p2_address2:          document.getElementById('cb_p2_address2')?.value?.trim()     || '',
+    p2_city:              document.getElementById('cb_p2_city')?.value?.trim()         || '',
+    p2_country:           document.getElementById('cb_p2_country')?.value?.trim()      || '',
+    kundenberater_name:   CB.kundenberater,
+    kundenberater_email:  CB.kundenberaterEmail,
   });
   return fv;
 }

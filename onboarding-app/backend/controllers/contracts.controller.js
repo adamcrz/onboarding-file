@@ -122,52 +122,76 @@ function escXml(s) {
 // to the replacement value from the form. The templates use Word bookmarks whose
 // visible text matches the bookmark name (e.g. "NachundVorname", "Adresse1", …).
 function buildReplacementMap(fieldValues, _fieldDefs) {
-  const fv = fieldValues || {};
-  // Name: separate last/first fields (client_last_name, client_first_name)
-  const lastName    = fv.client_last_name  || '';
-  const firstName   = fv.client_first_name || '';
-  const fullName    = [firstName, lastName].filter(Boolean).join(' ');
+  const fv   = fieldValues || {};
+  const isUO = fv.uo_vertrag === 'true';
 
-  const addr1       = fv.client_address1    || fv.client_address || '';
-  const addr2       = fv.client_address2    || '';
-  const city        = fv.client_city        || '';
-  const country     = fv.client_country     || '';
-  const nationality = fv.client_nationality || '';
-  const dob         = fv.client_dob         || '';
-  const contractDate= fv.contract_date      || '';
-  const depotBank   = fv.depot_bank         || '';
-  const portfolioNo = fv.portfolio_number   || '';
+  // Person 1
+  const lastName1  = fv.client_last_name  || '';
+  const firstName1 = fv.client_first_name || '';
+  const fullName1  = [firstName1, lastName1].filter(Boolean).join(' ');
 
-  const cityDate = [city, contractDate].filter(Boolean).join(', ');
-  const fullAddr  = [addr1, addr2, city, country].filter(Boolean).join(', ');
+  // Person 2 (U/O Vertrag)
+  const lastName2  = fv.p2_last_name  || '';
+  const firstName2 = fv.p2_first_name || '';
+  const fullName2  = [firstName2, lastName2].filter(Boolean).join(' ');
+
+  // Contract-heading name: "Person1" or "Person1 u/o Person2"
+  const contractName = (isUO && fullName2) ? `${fullName1} u/o ${fullName2}` : fullName1;
+
+  const addr1        = fv.client_address1    || fv.client_address || '';
+  const addr2        = fv.client_address2    || '';
+  const city1        = fv.client_city        || '';
+  const country1     = fv.client_country     || '';
+  const nationality1 = fv.client_nationality || '';
+  const dob1         = fv.client_dob         || '';
+  const contractDate = fv.contract_date      || '';
+  const depotBank    = fv.depot_bank         || '';
+  const portfolioNo  = fv.portfolio_number   || '';
+
+  const cityDate = [city1, contractDate].filter(Boolean).join(', ');
+  const fullAddr  = [addr1, addr2, city1, country1].filter(Boolean).join(', ');
 
   const map = {};
 
-  // Full name (NachundVorname = "Vorname Nachname") — all numbered variants across template pages
-  if (fullName) {
-    [
-      'NachundVorname','NachundVorname1','NachundVorname2','NachundVorname3',
-      'NachundVorname4','NachundVorname5','NachundVorname7','NachundVorname8',
-      'NachundVorname9','NachundVorname10','NachnameVorname',
-    ].forEach(k => { map[k] = fullName; });
+  // NachundVorname (contract heading) — all numbered variants across template pages
+  if (contractName) {
+    ['NachundVorname','NachundVorname1','NachundVorname2','NachundVorname3',
+     'NachundVorname4','NachundVorname5','NachundVorname7','NachundVorname8',
+     'NachundVorname9','NachundVorname10','NachnameVorname',
+    ].forEach(k => { map[k] = contractName; });
   }
-  if (lastName)  { map['Nachname']  = lastName;  map['Nachname1']  = lastName;  }
-  if (firstName) { map['Vorname']   = firstName;  map['Vorname1']   = firstName; }
 
-  // Address components — all numbered variants
-  if (addr1)   { map['Adresse1'] = addr1; map['Adresse11'] = addr1; map['Adresse12'] = addr1; map['Adresse13'] = addr1; }
-  if (addr2)   { map['Adresse2'] = addr2; map['Adresse21'] = addr2; map['Adresse22'] = addr2; map['Adresse23'] = addr2; }
-  if (fullAddr)  map['Adresse']  = fullAddr;
-  if (city)    { map['Ort'] = city;  map['Ort1'] = city;  map['Ort2'] = city;  map['Ort3'] = city;  }
-  if (country) { map['Land'] = country; map['Land1'] = country; map['Land2'] = country; map['Land3'] = country; }
+  // Person 1 name
+  if (lastName1)  map['Nachname'] = lastName1;
+  if (firstName1) map['Vorname']  = firstName1;
+
+  // Person 2 name (Form A row 2) — empty if not U/O
+  map['Nachname1'] = isUO ? lastName2  : '';
+  map['Vorname1']  = isUO ? firstName2 : '';
+
+  // Person 1 address — main fields + Form A row 1 (Adresse11) + other pages (Adresse13)
+  if (addr1) { map['Adresse1'] = addr1; map['Adresse11'] = addr1; map['Adresse13'] = addr1; }
+  if (addr2) { map['Adresse2'] = addr2; map['Adresse21'] = addr2; map['Adresse23'] = addr2; }
+  if (fullAddr) map['Adresse'] = fullAddr;
+  if (city1)    { map['Ort'] = city1;    map['Ort1'] = city1;    map['Ort3'] = city1;    }
+  if (country1) { map['Land'] = country1; map['Land1'] = country1; map['Land3'] = country1; }
+
+  // Person 2 address (Form A row 2) — empty if not U/O
+  map['Adresse12'] = isUO ? (fv.p2_address1 || '') : '';
+  map['Adresse22'] = isUO ? (fv.p2_address2 || '') : '';
+  map['Ort2']      = isUO ? (fv.p2_city    || '') : '';
+  map['Land2']     = isUO ? (fv.p2_country  || '') : '';
 
   // Signature-block place/date line
-  if (cityDate)    map['Ort/Datum'] = cityDate;
+  if (cityDate) map['Ort/Datum'] = cityDate;
 
-  // Personal details — all numbered variants
-  if (dob)         { map['Birth']  = dob;         map['Birth1'] = dob;         }
-  if (nationality) { map['Nat']    = nationality;  map['Nat1']   = nationality;
-                     map['Nat.']   = nationality;  map['Nationality'] = nationality; }
+  // Person 1 personal details
+  if (dob1)         { map['Birth'] = dob1;          }
+  if (nationality1) { map['Nat']   = nationality1;  map['Nat.'] = nationality1; map['Nationality'] = nationality1; }
+
+  // Person 2 personal details — empty if not U/O
+  map['Birth1'] = isUO ? (fv.p2_dob         || '') : '';
+  map['Nat1']   = isUO ? (fv.p2_nationality || '') : '';
 
   // Contract details
   if (depotBank)   map['Depotbank']        = depotBank;
@@ -183,7 +207,9 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   const ccy = fv.portfolio_currency || '';
   if (ccy) map['Currency'] = ccy;
 
-  // (currency weight MAX values go via ccy_chf_max etc — handled below with pctVal)
+  // Kundenberater
+  if (fv.kundenberater_name)  { map['Kundenberater'] = fv.kundenberater_name;  map['RM'] = fv.kundenberater_name;  }
+  if (fv.kundenberater_email) { map['KundenberaterEmail'] = fv.kundenberater_email; map['RMEmail'] = fv.kundenberater_email; }
 
   // Further instructions — bookmark: Furtherinstructions
   const comments = fv.investment_comments || '';
@@ -198,11 +224,14 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   if (fv.alloc_cash_max)         map['Cash']  = pctVal(fv.alloc_cash_max);
   if (fv.alloc_other_max)        map['Alt']   = pctVal(fv.alloc_other_max);
 
-  // Currency weights — same pattern: bookmark holds MAX, "0" cell gets MIN
-  if (fv.ccy_chf_max) map['CHF'] = pctVal(fv.ccy_chf_max);
-  if (fv.ccy_eur_max) map['EUR'] = pctVal(fv.ccy_eur_max);
-  if (fv.ccy_usd_max) map['USD'] = pctVal(fv.ccy_usd_max);
-  if (fv.ccy_gbp_max) map['GBP'] = pctVal(fv.ccy_gbp_max);
+  // Currency weights — bookmark holds MAX; "0" cell gets MIN (via applyAllocMinToXml).
+  // Only fill currencies where at least one of min/max is non-zero; otherwise clear bookmark.
+  const ccyActive = (minK, maxK) => parseFloat(fv[minK]) > 0 || parseFloat(fv[maxK]) > 0;
+  map['CHF'] = pctVal(fv.ccy_chf_max);  // CHF always shown (main reference currency)
+  map['EUR'] = ccyActive('ccy_eur_min','ccy_eur_max') ? pctVal(fv.ccy_eur_max) : '';
+  map['USD'] = ccyActive('ccy_usd_min','ccy_usd_max') ? pctVal(fv.ccy_usd_max) : '';
+  map['GBP'] = ccyActive('ccy_gbp_min','ccy_gbp_max') ? pctVal(fv.ccy_gbp_max) : '';
+  map['AUD'] = ccyActive('ccy_aud_min','ccy_aud_max') ? pctVal(fv.ccy_aud_max) : '';
 
   // Additional investment category (last row of the investment table) — bookmark: And
   if (fv.additional_category) map['And'] = fv.additional_category;
@@ -287,25 +316,28 @@ function applyReplacementsToXml(xml, replacements) {
 // and the "0" cell needs the min injected directly into its XML text run.
 function applyAllocMinToXml(xml, fieldValues) {
   const fv = fieldValues || {};
-  const pct = v => (v !== undefined && v !== '') ? v + '%' : '';
-
+  const ccyActive = (minK, maxK) => parseFloat(fv[minK]) > 0 || parseFloat(fv[maxK]) > 0;
   const targets = [
-    { bm: 'Equity', min: fv.alloc_equities_min    },
-    { bm: 'Equtiy', min: fv.alloc_equities_min    },  // typo in EN template
-    { bm: 'Bonds',  min: fv.alloc_fixed_income_min },
-    { bm: 'Cash',   min: fv.alloc_cash_min         },
-    { bm: 'Alt',    min: fv.alloc_other_min        },
-    { bm: 'CHF',    min: fv.ccy_chf_min            },
-    { bm: 'EUR',    min: fv.ccy_eur_min            },
-    { bm: 'USD',    min: fv.ccy_usd_min            },
-    { bm: 'GBP',    min: fv.ccy_gbp_min            },
+    // Asset classes — always show the min value (0% is meaningful, e.g. "0% – 15%")
+    { bm: 'Equity', min: fv.alloc_equities_min,     suppress: false },
+    { bm: 'Equtiy', min: fv.alloc_equities_min,     suppress: false },  // EN template typo
+    { bm: 'Bonds',  min: fv.alloc_fixed_income_min, suppress: false },
+    { bm: 'Cash',   min: fv.alloc_cash_min,          suppress: false },
+    { bm: 'Alt',    min: fv.alloc_other_min,         suppress: false },
+    // Currencies — suppress (clear "0" cell) when both min+max are zero
+    { bm: 'CHF', min: fv.ccy_chf_min, suppress: false },  // CHF always shown
+    { bm: 'EUR', min: fv.ccy_eur_min, suppress: !ccyActive('ccy_eur_min','ccy_eur_max') },
+    { bm: 'USD', min: fv.ccy_usd_min, suppress: !ccyActive('ccy_usd_min','ccy_usd_max') },
+    { bm: 'GBP', min: fv.ccy_gbp_min, suppress: !ccyActive('ccy_gbp_min','ccy_gbp_max') },
+    { bm: 'AUD', min: fv.ccy_aud_min, suppress: !ccyActive('ccy_aud_min','ccy_aud_max') },
   ];
 
   // Track replaced bookmarks so we don't double-replace the typo pair
   const done = new Set();
 
-  targets.forEach(({ bm, min }) => {
-    if (min === undefined || min === '') return;
+  targets.forEach((target) => {
+    const { bm, min, suppress } = target;
+    if (!suppress && (min === undefined || min === '')) return;
     if (done.has(bm)) return;
 
     const bmIdx = xml.indexOf(`w:name="${bm}"`);
@@ -325,10 +357,13 @@ function applyAllocMinToXml(xml, fieldValues) {
     const minCellEnd = xml.indexOf('</w:tc>', minCell) + '</w:tc>'.length;
     const minCellXml = xml.slice(minCell, minCellEnd);
 
-    // Replace the first <w:t>...</w:t> in that cell with the min value
+    // Replace the "0" cell: empty string if suppressed (both values 0), else min%
+    const minText = target.suppress
+      ? ''
+      : ((min !== undefined && min !== '') ? min + '%' : '');
     const newMinCellXml = minCellXml.replace(
       /<w:t[^>]*>[^<]*<\/w:t>/,
-      `<w:t xml:space="preserve">${escXml(pct(min))}</w:t>`
+      `<w:t xml:space="preserve">${escXml(minText)}</w:t>`
     );
 
     if (newMinCellXml !== minCellXml) {
