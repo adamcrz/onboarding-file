@@ -2059,7 +2059,7 @@ async function renderContractBuilding() {
   CB.investmentProfile = 'balanced';
   const bp = PROFILE_PRESETS.balanced;
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
-  CB.currencyWeights = { CHF: 100, EUR: 0, USD: 0, GBP: 0, JPY: 0, other: 0 };
+  CB.currencyWeights = { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, JPY: { min: 0, max: 0 }, other: { min: 0, max: 0 } };
   CB.investmentComments = '';
   CB.managementFee = ''; CB.performanceFee = '';
   await cbRenderStep();
@@ -2322,27 +2322,38 @@ async function cbStep2() {
     <div class="cb-section-label" style="margin-top:28px;">Currency Allocation</div>
     <div class="cb-alloc-wrap" style="margin-top:12px;">
       <table class="cb-alloc-table">
-        <thead><tr><th>Currency</th><th style="text-align:right;">Weight</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Currency</th>
+            <th style="text-align:right;">Min %</th>
+            <th style="text-align:right;">Max %</th>
+          </tr>
+        </thead>
         <tbody>
           ${[
-            ['ccy_CHF',   'CHF — Swiss Franc',     CB.currencyWeights.CHF],
-            ['ccy_EUR',   'EUR — Euro',             CB.currencyWeights.EUR],
-            ['ccy_USD',   'USD — US Dollar',        CB.currencyWeights.USD],
-            ['ccy_GBP',   'GBP — Pound Sterling',   CB.currencyWeights.GBP],
-            ['ccy_JPY',   'JPY — Japanese Yen',     CB.currencyWeights.JPY],
-            ['ccy_other', 'Other',                  CB.currencyWeights.other],
-          ].map(([id, lbl, val]) => `
+            ['ccy_CHF',   'CHF — Swiss Franc',   CB.currencyWeights.CHF],
+            ['ccy_EUR',   'EUR — Euro',           CB.currencyWeights.EUR],
+            ['ccy_USD',   'USD — US Dollar',      CB.currencyWeights.USD],
+            ['ccy_GBP',   'GBP — Pound Sterling', CB.currencyWeights.GBP],
+            ['ccy_JPY',   'JPY — Japanese Yen',   CB.currencyWeights.JPY],
+            ['ccy_other', 'Other',                CB.currencyWeights.other],
+          ].map(([id, lbl, vals]) => `
             <tr>
               <td style="font-size:13px;">${lbl}</td>
               <td><div class="cb-alloc-input-wrap">
-                <input type="number" id="${id}" value="${val}" min="0" max="100" step="1" oninput="cbUpdateCcyTotal()">
+                <input type="number" id="${id}_min" value="${vals.min}" min="0" max="100" step="1" oninput="cbUpdateCcyTotal()">
+                <span class="cb-pct-label">%</span>
+              </div></td>
+              <td><div class="cb-alloc-input-wrap">
+                <input type="number" id="${id}_max" value="${vals.max}" min="0" max="100" step="1" oninput="cbUpdateCcyTotal()">
                 <span class="cb-pct-label">%</span>
               </div></td>
             </tr>
           `).join('')}
           <tr class="cb-alloc-total" id="ccy-total-row">
             <td style="font-size:13px;font-weight:700;">Total</td>
-            <td style="text-align:right;"><strong id="ccy-total-val">${Object.values(CB.currencyWeights).reduce((a,b)=>a+b,0)}%</strong></td>
+            <td style="text-align:right;"><strong id="ccy-total-min">${Object.values(CB.currencyWeights).reduce((a,b)=>a+b.min,0)}%</strong></td>
+            <td style="text-align:right;"><strong id="ccy-total-max">${Object.values(CB.currencyWeights).reduce((a,b)=>a+b.max,0)}%</strong></td>
           </tr>
         </tbody>
       </table>
@@ -2439,13 +2450,19 @@ function cbUpdateAllocTotal() {
 
 function cbUpdateCcyTotal() {
   const ids = ['ccy_CHF','ccy_EUR','ccy_USD','ccy_GBP','ccy_JPY','ccy_other'];
-  const vals = ids.map(id => parseFloat(document.getElementById(id)?.value) || 0);
-  const total = vals.reduce((a, b) => a + b, 0);
-  CB.currencyWeights = { CHF: vals[0], EUR: vals[1], USD: vals[2], GBP: vals[3], JPY: vals[4], other: vals[5] };
-  const el = document.getElementById('ccy-total-val');
-  if (el) {
-    el.textContent = total + '%';
-    el.closest('tr')?.classList.toggle('cb-alloc-over', Math.round(total) !== 100);
+  const keys = ['CHF','EUR','USD','GBP','JPY','other'];
+  const mins = ids.map(id => parseFloat(document.getElementById(`${id}_min`)?.value) || 0);
+  const maxs = ids.map(id => parseFloat(document.getElementById(`${id}_max`)?.value) || 0);
+  const totalMin = mins.reduce((a,b)=>a+b,0);
+  const totalMax = maxs.reduce((a,b)=>a+b,0);
+  CB.currencyWeights = {};
+  keys.forEach((k,i) => { CB.currencyWeights[k] = { min: mins[i], max: maxs[i] }; });
+  const minEl = document.getElementById('ccy-total-min');
+  const maxEl = document.getElementById('ccy-total-max');
+  if (minEl) minEl.textContent = totalMin + '%';
+  if (maxEl) {
+    maxEl.textContent = totalMax + '%';
+    maxEl.closest('tr')?.classList.toggle('cb-alloc-over', Math.round(totalMax) !== 100);
   }
 }
 
@@ -2573,11 +2590,11 @@ function cbCollectAllValues() {
     investment_comments:     document.getElementById('cb_investment_comments')?.value?.trim() || '',
     management_fee:          document.getElementById('cb_management_fee')?.value?.trim()      || '',
     performance_fee:         document.getElementById('cb_performance_fee')?.value?.trim()     || '',
-    ccy_weight_chf:          String(CB.currencyWeights.CHF),
-    ccy_weight_eur:          String(CB.currencyWeights.EUR),
-    ccy_weight_usd:          String(CB.currencyWeights.USD),
-    ccy_weight_gbp:          String(CB.currencyWeights.GBP),
-    ccy_weight_jpy:          String(CB.currencyWeights.JPY),
+    ccy_chf_min: String(CB.currencyWeights.CHF.min),  ccy_chf_max: String(CB.currencyWeights.CHF.max),
+    ccy_eur_min: String(CB.currencyWeights.EUR.min),  ccy_eur_max: String(CB.currencyWeights.EUR.max),
+    ccy_usd_min: String(CB.currencyWeights.USD.min),  ccy_usd_max: String(CB.currencyWeights.USD.max),
+    ccy_gbp_min: String(CB.currencyWeights.GBP.min),  ccy_gbp_max: String(CB.currencyWeights.GBP.max),
+    ccy_jpy_min: String(CB.currencyWeights.JPY.min),  ccy_jpy_max: String(CB.currencyWeights.JPY.max),
   });
   return fv;
 }

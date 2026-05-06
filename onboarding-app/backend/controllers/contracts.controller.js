@@ -189,23 +189,20 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   const comments = fv.investment_comments || '';
   if (comments) map['Furtherinstructions'] = comments;
 
-  // Asset allocations — templates use ONE bookmark per asset class, formatted as a range
+  // Asset allocations — bookmarks hold the MAX value; the MIN goes into the hardcoded "0"
+  // cell immediately before each bookmark (handled by applyAllocMinToXml below).
   // Bookmark names: Equity (DE) / Equtiy (EN typo), Bonds, Cash, Alt
-  const band = (minV, maxV) => {
-    const mn = minV !== undefined && minV !== '' ? minV + '%' : '';
-    const mx = maxV !== undefined && maxV !== '' ? maxV + '%' : '';
-    if (mn && mx) return mn + ' – ' + mx;  // "20% – 70%"
-    return mn || mx;
-  };
-  const eqBand  = band(fv.alloc_equities_min,    fv.alloc_equities_max);
-  const fiBand  = band(fv.alloc_fixed_income_min, fv.alloc_fixed_income_max);
-  const caBand  = band(fv.alloc_cash_min,         fv.alloc_cash_max);
-  const altBand = band(fv.alloc_other_min,        fv.alloc_other_max);
+  const pctVal = v => (v !== undefined && v !== '') ? v + '%' : '';
+  if (fv.alloc_equities_max)     { map['Equity'] = pctVal(fv.alloc_equities_max); map['Equtiy'] = pctVal(fv.alloc_equities_max); }
+  if (fv.alloc_fixed_income_max) map['Bonds'] = pctVal(fv.alloc_fixed_income_max);
+  if (fv.alloc_cash_max)         map['Cash']  = pctVal(fv.alloc_cash_max);
+  if (fv.alloc_other_max)        map['Alt']   = pctVal(fv.alloc_other_max);
 
-  if (eqBand)  { map['Equity'] = eqBand; map['Equtiy'] = eqBand; }  // Equtiy is a typo in the EN template
-  if (fiBand)  map['Bonds'] = fiBand;
-  if (caBand)  map['Cash']  = caBand;
-  if (altBand) map['Alt']   = altBand;
+  // Currency weights — same pattern: bookmark holds MAX, "0" cell gets MIN
+  if (fv.ccy_chf_max) map['CHF'] = pctVal(fv.ccy_chf_max);
+  if (fv.ccy_eur_max) map['EUR'] = pctVal(fv.ccy_eur_max);
+  if (fv.ccy_usd_max) map['USD'] = pctVal(fv.ccy_usd_max);
+  if (fv.ccy_gbp_max) map['GBP'] = pctVal(fv.ccy_gbp_max);
 
   return map;
 }
@@ -270,6 +267,63 @@ function applyReplacementsToXml(xml, replacements) {
   return xml;
 }
 
+// Replaces the hardcoded "0" cell that sits immediately before each allocation/currency
+// bookmark with the corresponding minimum (Bandbreiten) value. The templates have the
+// structure: [cell "0"] [cell "-"] [cell bookmark-MAX], so the bookmark holds the max
+// and the "0" cell needs the min injected directly into its XML text run.
+function applyAllocMinToXml(xml, fieldValues) {
+  const fv = fieldValues || {};
+  const pct = v => (v !== undefined && v !== '') ? v + '%' : '';
+
+  const targets = [
+    { bm: 'Equity', min: fv.alloc_equities_min    },
+    { bm: 'Equtiy', min: fv.alloc_equities_min    },  // typo in EN template
+    { bm: 'Bonds',  min: fv.alloc_fixed_income_min },
+    { bm: 'Cash',   min: fv.alloc_cash_min         },
+    { bm: 'Alt',    min: fv.alloc_other_min        },
+    { bm: 'CHF',    min: fv.ccy_chf_min            },
+    { bm: 'EUR',    min: fv.ccy_eur_min            },
+    { bm: 'USD',    min: fv.ccy_usd_min            },
+    { bm: 'GBP',    min: fv.ccy_gbp_min            },
+  ];
+
+  // Track replaced bookmarks so we don't double-replace the typo pair
+  const done = new Set();
+
+  targets.forEach(({ bm, min }) => {
+    if (min === undefined || min === '') return;
+    if (done.has(bm)) return;
+
+    const bmIdx = xml.indexOf(`w:name="${bm}"`);
+    if (bmIdx === -1) return;
+
+    // Find the <w:tc> containing this bookmark, then step back 2 cells
+    const bmCell   = xml.lastIndexOf('<w:tc>', bmIdx);
+    const dashCell = xml.lastIndexOf('<w:tc>', bmCell - 1);
+    const minCell  = xml.lastIndexOf('<w:tc>', dashCell - 1);
+    if (minCell === -1) return;
+
+    const minCellEnd = xml.indexOf('</w:tc>', minCell) + '</w:tc>'.length;
+    const minCellXml = xml.slice(minCell, minCellEnd);
+
+    // Replace the first <w:t>...</w:t> in that cell with the min value
+    const newMinCellXml = minCellXml.replace(
+      /<w:t[^>]*>[^<]*<\/w:t>/,
+      `<w:t xml:space="preserve">${escXml(pct(min))}</w:t>`
+    );
+
+    if (newMinCellXml !== minCellXml) {
+      xml = xml.slice(0, minCell) + newMinCellXml + xml.slice(minCellEnd);
+      done.add(bm);
+      // If we just handled Equity, mark Equtiy as done too (same cell)
+      if (bm === 'Equity') done.add('Equtiy');
+      if (bm === 'Equtiy') done.add('Equity');
+    }
+  });
+
+  return xml;
+}
+
 function buildCheckboxReplacements(fieldValues, fieldDefs) {
   const map = {};
   (fieldDefs || []).filter(f => f.type === 'checkbox').forEach(f => {
@@ -297,7 +351,9 @@ exports.previewContract = async (req, res) => {
     const zip = new PizZip(content);
     ['word/document.xml'].forEach(xmlFile => {
       if (!zip.files[xmlFile]) return;
-      zip.file(xmlFile, applyReplacementsToXml(zip.files[xmlFile].asText(), replacements));
+      let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
+      xml = applyAllocMinToXml(xml, fieldValues);
+      zip.file(xmlFile, xml);
     });
 
     const buffer = zip.generate({ type: 'nodebuffer' });
@@ -369,6 +425,7 @@ exports.generateContract = async (req, res) => {
       .forEach(xmlFile => {
         if (!zip.files[xmlFile]) return;
         let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
+        xml = applyAllocMinToXml(xml, fieldValues);
         // Apply checkbox state
         Object.entries(checkboxMap).forEach(([from, to]) => {
           const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
