@@ -205,6 +205,9 @@ const State = {
     C001: [{ id: 'sub-1', name: 'Signed Contract Package', date: '2026-04-12', status: 'pending', size: '3.4 MB' }],
   },
 
+  kycTasks: [],
+  _activeKycTask: null,
+
   riskAnswers: {},
   riskScores: {}
 };
@@ -219,15 +222,12 @@ const ROLES = {
     initial: 'C',
     badge: 'Compliance',
     nav: [
-      { section: 'Review Queue' },
+      { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
-      { id: 'review-queue', label: 'Review Queue', icon: checklistIcon(), badge: '8' },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
+      { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
-      { id: 'documents', label: 'Document Templates', icon: fileIcon() },
-      { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
-      { id: 'risk', label: 'Risk Ratings', icon: shieldIcon() },
       { id: 'kyc-form', label: 'KYC Questionnaire', icon: formIcon() },
     ]
   },
@@ -943,6 +943,7 @@ function navigateTo(page) {
     'client-upload': 'Upload Signed Documents',
     risk: 'Risk Ratings',
     'client-detail': 'Client Details',
+    'kyc-fill': 'KYC Questionnaire',
   };
   document.getElementById('topbar-title').textContent = titles[page] || page;
 
@@ -965,6 +966,7 @@ function navigateTo(page) {
     case 'client-upload': renderClientUpload(); break;
     case 'risk': renderRiskRatings(); break;
     case 'client-detail': renderClientDetail(); break;
+    case 'kyc-fill': renderKycFill(); break;
   }
 }
 
@@ -1095,7 +1097,7 @@ function renderComplianceDashboard() {
   content.innerHTML = `
     <div class="page-header">
       <h1>Compliance Dashboard</h1>
-      <p>Review queue, document templates, and Assetmax data export</p>
+      <p>Pending cases and Assetmax data export</p>
     </div>
     <div class="stats-grid">
       ${statCard('#f59e0b', pending.length, 'Awaiting Review', '', false, checklistIcon())}
@@ -1110,8 +1112,8 @@ function renderComplianceDashboard() {
     <div class="grid-2">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Review Queue (${pending.length} cases)</div>
-          <button class="btn-primary btn-sm" onclick="navigateTo('review-queue')">Open Queue</button>
+          <div class="card-title">Pending Cases (${pending.length})</div>
+          <button class="btn-secondary btn-sm" onclick="navigateTo('clients')">View All Cases</button>
         </div>
         <div>
           ${pending.map(c => `
@@ -1127,6 +1129,7 @@ function renderComplianceDashboard() {
               </div>
             </div>
           `).join('')}
+          ${pending.length === 0 ? `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No pending cases.</p>` : ''}
         </div>
       </div>
 
@@ -1134,43 +1137,163 @@ function renderComplianceDashboard() {
         <div class="card-header">
           <div>
             <div class="card-title">Assetmax Export</div>
-            <div class="card-subtitle">Export validated KYC data to Excel for Assetmax upload</div>
+            <div class="card-subtitle">Contract documents and KYC/Mandate Risk data export</div>
           </div>
         </div>
         <div class="card-body">
           <div class="info-box success">
-            <p>Only completed and approved KYC datasets can be exported. All exports are logged in the audit trail.</p>
+            <p>Only approved cases are available for export. All exports are logged in the audit trail.</p>
           </div>
+          ${readyForExport.length === 0 ? `<p style="font-size:13px;color:var(--text-muted);">No approved cases ready for export yet.</p>` : ''}
           ${readyForExport.map(c => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border-subtle);">
-              <div>
-                <div style="font-size:13px;font-weight:500;">${c.name}</div>
-                <div style="font-size:11.5px;color:var(--text-secondary);">Approved ${c.created} · ${c.type}</div>
+            <div style="padding:14px 0;border-bottom:1px solid var(--border-subtle);">
+              <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${c.name}
+                <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:6px;">${c.type} · Approved ${c.created}</span>
               </div>
-              <button class="btn-secondary btn-sm" onclick="exportToAssetmax('${c.id}')">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Export .xlsx
-              </button>
+
+              <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">Contract Documents</div>
+              <div style="background:var(--bg-secondary);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:10px;">
+                ${c.documents.filter(d => d.signedVersion || d.status === 'approved').map(d => `
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-subtle);">
+                    <div style="display:flex;align-items:center;gap:7px;font-size:12px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+                      ${d.name}
+                    </div>
+                    <button class="btn-secondary btn-xs" onclick="showToast('info','Downloading ${d.name}…')">↓</button>
+                  </div>
+                `).join('')}
+                <div style="margin-top:8px;">
+                  <button class="btn-primary btn-sm" style="width:100%;" onclick="showToast('success','Contract package for ${c.name} downloaded.')">
+                    Download Full Contract Package
+                  </button>
+                </div>
+              </div>
+
+              <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">Data Export</div>
+              <div style="background:var(--bg-secondary);border-radius:var(--radius-md);padding:10px 12px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-subtle);">
+                  <div style="display:flex;align-items:center;gap:7px;font-size:12px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                    KYC Data
+                  </div>
+                  <button class="btn-secondary btn-sm" onclick="exportKycData('${c.id}')">
+                    Export .xlsx
+                  </button>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;">
+                  <div style="display:flex;align-items:center;gap:7px;font-size:12px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                    Mandate Risk Profile
+                  </div>
+                  <button class="btn-secondary btn-sm" onclick="exportToAssetmax('${c.id}')">
+                    Export .xlsx
+                  </button>
+                </div>
+              </div>
             </div>
           `).join('')}
-          ${readyForExport.length === 0 ? `<p style="font-size:13px;color:var(--text-muted);">No approved cases ready for export yet.</p>` : ''}
         </div>
       </div>
     </div>
   `;
 }
 
+function exportKycData(clientId) {
+  const c = State.clients.find(c => c.id === clientId);
+  if (!c) return;
+  const filename = c.name.replace(/\s+/g, '_');
+  c.auditTrail.push({ action: 'KYC data exported (.xlsx)', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'submitted' });
+  showToast('success', `KYC_Data_${filename}.xlsx downloaded.`);
+}
+
 function exportToAssetmax(clientId) {
   const c = State.clients.find(c => c.id === clientId);
   if (!c) return;
-  c.auditTrail.push({ action: 'KYC data exported to Assetmax (.xlsx)', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'submitted' });
-  showToast('success', `${c.name} — KYC data exported to Excel for Assetmax upload.`);
+  const filename = c.name.replace(/\s+/g, '_');
+  c.auditTrail.push({ action: 'Mandate Risk Profile exported (.xlsx)', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'submitted' });
+  showToast('success', `Mandate_Risk_Profile_${filename}.xlsx downloaded.`);
+}
+
+function openKycTask(taskId) {
+  const task = State.kycTasks.find(t => t.id === taskId);
+  if (!task) return;
+  State._activeKycTask = task;
+  navigateTo('kyc-fill');
+}
+
+function renderKycFill() {
+  const task = State._activeKycTask;
+  const content = document.getElementById('page-content');
+  if (!task) {
+    content.innerHTML = `<div class="page-header"><h1>KYC Form</h1><p>No active KYC task found.</p></div>`;
+    return;
+  }
+
+  const isRM = task.delegateTo === 'rm';
+  const fillerLabel = isRM ? `Filling on behalf of: <strong>${task.clientName}</strong>` : `Please complete all required fields below.`;
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>KYC Questionnaire</h1>
+      <p>${fillerLabel}</p>
+    </div>
+
+    <div class="info-box" style="margin-bottom:20px;">
+      <p>Your information is processed strictly for compliance purposes and kept confidential.</p>
+    </div>
+
+    <form id="kyc-fill-form">
+      ${task.sections.map(sec => `
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header" style="padding:12px 16px;">
+            <div style="font-size:14px;font-weight:700;">${sec.title}</div>
+          </div>
+          <div class="card-body">
+            ${sec.fields.map(f => `
+              <div class="form-group" style="margin-bottom:14px;">
+                <label style="font-size:12px;font-weight:600;">${f.label}${f.required?' <span style="color:var(--accent-red);">*</span>':''}</label>
+                ${f.type === 'select'
+                  ? `<select name="${f.id}" ${f.required?'required':''} style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
+                      <option value="">— select —</option>
+                      ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
+                    </select>`
+                  : f.type === 'textarea'
+                  ? `<textarea name="${f.id}" rows="3" ${f.required?'required':''} placeholder="${f.label}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);resize:vertical;"></textarea>`
+                  : f.type === 'yesno'
+                  ? `<div style="display:flex;gap:16px;margin-top:4px;">
+                      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="${f.id}" value="yes" ${f.required?'required':''}> Yes</label>
+                      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="${f.id}" value="no"> No</label>
+                    </div>`
+                  : `<input type="${f.type}" name="${f.id}" ${f.required?'required':''} placeholder="${f.label}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">`
+                }
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+
+      <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:8px;margin-bottom:32px;">
+        <button type="button" class="btn-secondary" onclick="navigateTo('dashboard')">Cancel</button>
+        <button type="submit" class="btn-primary">Submit KYC Form</button>
+      </div>
+    </form>
+  `;
+
+  document.getElementById('kyc-fill-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    task.status = 'completed';
+    task.completedAt = new Date().toLocaleString();
+    State._activeKycTask = null;
+    showToast('success', `KYC form for ${task.clientName} submitted successfully.`);
+    setTimeout(() => navigateTo('dashboard'), 1200);
+  });
 }
 
 /* --- RM Dashboard --- */
 function renderRMDashboard() {
   const content = document.getElementById('page-content');
   const myClients = State.clients.filter(c => c.rm === 'Sarah Mitchell');
+  const myKycTasks = State.kycTasks.filter(t => t.delegateTo === 'rm' && t.status === 'pending');
 
   content.innerHTML = `
     <div class="page-header">
@@ -1181,8 +1304,30 @@ function renderRMDashboard() {
       ${statCard('#6366f1', myClients.length, 'My Clients', '', false, usersIcon())}
       ${statCard('#f59e0b', myClients.filter(c=>c.status==='under-review'||c.status==='pending').length, 'In Progress', '', false, checklistIcon())}
       ${statCard('#10b981', myClients.filter(c=>c.status==='approved').length, 'Approved', '', true, checkIcon())}
-      ${statCard('#8b5cf6', myClients.reduce((s,c)=>s+c.documents.length,0), 'Documents Managed', '', false, fileIcon())}
+      ${statCard('#8b5cf6', myKycTasks.length, 'KYC Tasks Pending', '', myKycTasks.length===0, formIcon())}
     </div>
+
+    ${myKycTasks.length > 0 ? `
+    <div class="card" style="margin-bottom:20px;border-color:rgba(139,92,246,0.35);background:rgba(139,92,246,0.04);">
+      <div class="card-header">
+        <div>
+          <div class="card-title" style="color:var(--accent-purple);">KYC Tasks Assigned to You</div>
+          <div class="card-subtitle">${myKycTasks.length} questionnaire${myKycTasks.length!==1?'s':''} to complete</div>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0 16px 12px;">
+        ${myKycTasks.map(t => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border-subtle);">
+            <div>
+              <div style="font-size:13px;font-weight:600;">${t.clientName}</div>
+              <div style="font-size:11.5px;color:var(--text-muted);">${t.clientEmail} · Assigned ${t.createdAt}</div>
+            </div>
+            <button class="btn-primary btn-sm" onclick="openKycTask('${t.id}')">Fill KYC Form</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+
     <div class="card">
       <div class="card-header">
         <div class="card-title">My Clients</div>
@@ -1212,6 +1357,13 @@ function renderRMDashboard() {
   `;
 }
 
+function clientFillKycTask(taskId) {
+  const task = State.kycTasks.find(t => t.id === taskId);
+  if (!task) return;
+  State._activeKycTask = task;
+  navigateTo('kyc-fill');
+}
+
 /* --- Client Dashboard --- */
 function renderClientDashboard() {
   const content = document.getElementById('page-content');
@@ -1222,6 +1374,8 @@ function renderClientDashboard() {
   const progress = client.progress || 0;
   const docs     = client.documents    || [];
   const audit    = client.auditTrail   || [];
+
+  const pendingKycTask = State.kycTasks.find(t => t.delegateTo === 'client' && t.status === 'pending');
 
   const steps = [
     { label: 'KYC Form',           status: progress >= 20 ? 'done' : progress > 0 ? 'active' : '' },
@@ -1236,6 +1390,17 @@ function renderClientDashboard() {
       <h1>Application Status</h1>
       <p>Track your onboarding progress for <strong>${client.name}</strong> · Category: <strong>${State.clientType}</strong></p>
     </div>
+
+    ${pendingKycTask ? `
+    <div class="card" style="margin-bottom:20px;background:rgba(139,92,246,0.07);border-color:rgba(139,92,246,0.35);">
+      <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:13px;color:var(--accent-purple);font-weight:700;">Action Required — KYC Questionnaire</div>
+          <div style="font-size:13px;color:var(--text-primary);margin-top:4px;">Your Kundenberater has requested that you complete the KYC questionnaire. Please fill it in at your earliest convenience.</div>
+        </div>
+        <button class="btn-primary btn-sm" style="background:var(--accent-purple);border-color:var(--accent-purple);" onclick="clientFillKycTask('${pendingKycTask.id}')">Complete KYC Form</button>
+      </div>
+    </div>` : ''}
 
     <div class="card" style="margin-bottom:20px;background:rgba(16,185,129,0.06);border-color:rgba(16,185,129,0.24);">
       <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
@@ -1358,6 +1523,10 @@ function renderClients() {
             <option value="Medium">Medium</option>
             <option value="High">High</option>
           </select>
+          <select class="filter-select" id="rm-filter" onchange="filterClients()">
+            <option value="">All Kundenberater</option>
+            ${[...new Set(State.clients.map(c=>c.rm))].sort().map(rm=>`<option value="${rm}">${rm}</option>`).join('')}
+          </select>
         </div>
         ${State.currentRole === 'rm' ? '<button class="btn-primary btn-sm" onclick="navigateTo(\'new-client\')">+ New Client</button>' : ''}
       </div>
@@ -1426,12 +1595,14 @@ function filterClients() {
   const status = document.getElementById('status-filter').value;
   const type = document.getElementById('type-filter').value;
   const risk = document.getElementById('risk-filter').value;
+  const rm = document.getElementById('rm-filter')?.value || '';
   const showAll = State.currentRole !== 'rm';
   let clients = showAll ? State.clients : State.clients.filter(c => c.rm === 'Sarah Mitchell');
   if (search) clients = clients.filter(c => c.name.toLowerCase().includes(search) || c.country.toLowerCase().includes(search));
   if (status) clients = clients.filter(c => c.status === status);
   if (type) clients = clients.filter(c => c.type === type);
   if (risk) clients = clients.filter(c => c.risk === risk);
+  if (rm) clients = clients.filter(c => c.rm === rm);
   document.getElementById('clients-tbody').innerHTML = renderClientRows(clients);
 }
 
@@ -2020,6 +2191,184 @@ function renderAuditPage() {
   `;
 }
 /* ============================================================
+   KYC QUESTIONNAIRE — template builder state
+   ============================================================ */
+const KYC_TEMPLATE = {
+  sections: [
+    {
+      id: 'sec_personal', title: '1. Personal Information',
+      fields: [
+        { id: 'f_title',       label: 'Title',                      type: 'select',   required: false, options: ['Mr','Mrs','Ms','Dr','Prof'] },
+        { id: 'f_firstname',   label: 'First Name(s)',               type: 'text',     required: true  },
+        { id: 'f_lastname',    label: 'Last Name',                   type: 'text',     required: true  },
+        { id: 'f_dob',         label: 'Date of Birth',               type: 'date',     required: true  },
+        { id: 'f_nationality', label: 'Nationality',                  type: 'text',     required: true  },
+        { id: 'f_country',     label: 'Country of Residence',         type: 'text',     required: true  },
+        { id: 'f_pob',         label: 'Place of Birth',               type: 'text',     required: false },
+      ]
+    },
+    {
+      id: 'sec_identity', title: '2. Identity Documents',
+      fields: [
+        { id: 'f_passport',        label: 'Passport Number',   type: 'text', required: true  },
+        { id: 'f_passport_expiry', label: 'Passport Expiry',   type: 'date', required: true  },
+        { id: 'f_passport_country',label: 'Issuing Country',   type: 'text', required: false },
+      ]
+    },
+    {
+      id: 'sec_address', title: '3. Residential Address',
+      fields: [
+        { id: 'f_addr1',   label: 'Address Line 1', type: 'text', required: true  },
+        { id: 'f_addr2',   label: 'Address Line 2', type: 'text', required: false },
+        { id: 'f_city',    label: 'City',            type: 'text', required: true  },
+        { id: 'f_zip',     label: 'Postal Code',     type: 'text', required: true  },
+        { id: 'f_ctry',    label: 'Country',         type: 'text', required: true  },
+      ]
+    },
+    {
+      id: 'sec_tax', title: '4. Tax Information',
+      fields: [
+        { id: 'f_tax_country', label: 'Tax Residency Country',         type: 'text', required: true },
+        { id: 'f_tin',         label: 'Tax Identification Number (TIN)', type: 'text', required: true },
+      ]
+    },
+    {
+      id: 'sec_employment', title: '5. Employment & Financial Profile',
+      fields: [
+        { id: 'f_emp_status',  label: 'Employment Status',    type: 'select',   required: true, options: ['Employed','Self-Employed / Director','Retired','Student','Other'] },
+        { id: 'f_occupation',  label: 'Occupation / Job Title', type: 'text',   required: false },
+        { id: 'f_employer',    label: 'Employer / Company',    type: 'text',   required: false },
+        { id: 'f_income',      label: 'Annual Income Range',   type: 'select',   required: true, options: ['< CHF 100K','CHF 100K – 500K','CHF 500K – 1M','> CHF 1M'] },
+      ]
+    },
+    {
+      id: 'sec_wealth', title: '6. Source of Wealth & Assets',
+      fields: [
+        { id: 'f_sow',        label: 'Source of Wealth (description)', type: 'textarea', required: true  },
+        { id: 'f_net_assets', label: 'Estimated Net Assets',            type: 'select',   required: true, options: ['< CHF 500K','CHF 500K – 2M','CHF 2M – 10M','> CHF 10M'] },
+      ]
+    },
+    {
+      id: 'sec_pep', title: '7. PEP & Regulatory Declarations',
+      fields: [
+        { id: 'f_pep',       label: 'Politically Exposed Person (PEP)?', type: 'yesno', required: true },
+        { id: 'f_sanctions', label: 'Subject to any sanctions?',          type: 'yesno', required: true },
+        { id: 'f_adverse',   label: 'Adverse media or legal proceedings?',type: 'yesno', required: true },
+      ]
+    },
+  ],
+  _nextId: 100,
+};
+
+function kycNextId() { return 'k' + (KYC_TEMPLATE._nextId++); }
+
+function kycAddSection() {
+  const title = prompt('Section title:');
+  if (!title || !title.trim()) return;
+  KYC_TEMPLATE.sections.push({ id: kycNextId(), title: title.trim(), fields: [] });
+  renderKycForm();
+}
+
+function kycRemoveSection(id) {
+  if (!confirm('Remove this section and all its fields?')) return;
+  KYC_TEMPLATE.sections = KYC_TEMPLATE.sections.filter(s => s.id !== id);
+  renderKycForm();
+}
+
+function kycUpdateSectionTitle(id, val) {
+  const s = KYC_TEMPLATE.sections.find(s => s.id === id);
+  if (s && val.trim()) s.title = val.trim();
+}
+
+function kycShowAddField(secId) {
+  document.getElementById('kaf-' + secId).style.display = 'block';
+  document.getElementById('kaf-toggle-' + secId).style.display = 'none';
+}
+
+function kycHideAddField(secId) {
+  document.getElementById('kaf-' + secId).style.display = 'none';
+  document.getElementById('kaf-toggle-' + secId).style.display = 'inline-flex';
+}
+
+function kycToggleOpts(secId) {
+  const t = document.getElementById('kaf-type-' + secId)?.value;
+  const wrap = document.getElementById('kaf-opts-' + secId);
+  if (wrap) wrap.style.display = t === 'select' ? 'block' : 'none';
+}
+
+function kycAddField(secId) {
+  const label = document.getElementById('kaf-label-' + secId)?.value?.trim();
+  const type  = document.getElementById('kaf-type-' + secId)?.value;
+  const req   = document.getElementById('kaf-req-' + secId)?.checked;
+  const opts  = document.getElementById('kaf-opts-text-' + secId)?.value?.trim();
+  if (!label) { alert('Please enter a field label.'); return; }
+  const s = KYC_TEMPLATE.sections.find(s => s.id === secId);
+  if (!s) return;
+  const field = { id: kycNextId(), label, type: type || 'text', required: !!req };
+  if (type === 'select' && opts) field.options = opts.split(',').map(o => o.trim()).filter(Boolean);
+  s.fields.push(field);
+  renderKycForm();
+}
+
+function kycRemoveField(secId, fieldId) {
+  const s = KYC_TEMPLATE.sections.find(s => s.id === secId);
+  if (s) s.fields = s.fields.filter(f => f.id !== fieldId);
+  renderKycForm();
+}
+
+function kycSaveTemplate() {
+  showToast('success', 'KYC template saved successfully.');
+}
+
+function kycViewTemplatePreview() {
+  const overlay = document.createElement('div');
+  overlay.id = 'kyc-preview-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:24px;';
+  const TYPE_LABELS = { text:'Text input', email:'Email', date:'Date picker', number:'Number', select:'Dropdown', textarea:'Long text', yesno:'Yes / No' };
+  overlay.innerHTML = `
+    <div style="background:var(--bg-primary);border-radius:var(--radius-lg);max-width:680px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid var(--border-default);position:sticky;top:0;background:var(--bg-primary);z-index:1;">
+        <div>
+          <div style="font-size:16px;font-weight:700;">KYC Form Preview</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">As seen by the client or RM filling it in</div>
+        </div>
+        <button onclick="document.getElementById('kyc-preview-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">✕</button>
+      </div>
+      <div style="padding:24px;">
+        ${KYC_TEMPLATE.sections.map(sec => `
+          <div style="margin-bottom:28px;">
+            <div style="font-size:14px;font-weight:700;color:var(--accent-purple);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid rgba(139,92,246,0.2);">${sec.title}</div>
+            ${sec.fields.length === 0
+              ? `<p style="font-size:12px;color:var(--text-muted);font-style:italic;">No fields in this section.</p>`
+              : sec.fields.map(f => `
+                  <div style="margin-bottom:14px;">
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;">${f.label}${f.required?' <span style="color:var(--accent-red);">*</span>':''}</label>
+                    ${f.type === 'select'
+                      ? `<select disabled style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);">${(f.options||[]).map(o=>`<option>${o}</option>`).join('')}<option value="">— select —</option></select>`
+                      : f.type === 'textarea'
+                      ? `<textarea disabled rows="3" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);resize:none;" placeholder="${f.label}"></textarea>`
+                      : f.type === 'yesno'
+                      ? `<div style="display:flex;gap:12px;"><label style="font-size:13px;display:flex;align-items:center;gap:5px;"><input type="radio" disabled> Yes</label><label style="font-size:13px;display:flex;align-items:center;gap:5px;"><input type="radio" disabled> No</label></div>`
+                      : `<input disabled type="${f.type}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);" placeholder="${f.label}">`
+                    }
+                  </div>
+                `).join('')
+            }
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function kycDownloadTemplate() {
+  showToast('info', 'KYC template PDF generation started — download will begin shortly.');
+  setTimeout(() => showToast('success', 'KYC_Questionnaire_Template.pdf downloaded.'), 1800);
+}
+
+/* ============================================================
    PAGE: CONTRACT BUILDING
    ============================================================ */
 /* ============================================================
@@ -2033,6 +2382,7 @@ const CB = {
   mandatsname: '',
   person2: { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' },
   kundenberater: '', kundenberaterEmail: '',
+  kycDelegation: 'none',
   investmentProfile: 'balanced',
   allocations: {
     equities:    { min: 20, max: 70 },
@@ -2073,7 +2423,7 @@ async function renderContractBuilding() {
   CB.uo = false;
   CB.mandatsname = '';
   CB.person2 = { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' };
-  CB.kundenberater = ''; CB.kundenberaterEmail = '';
+  CB.kundenberater = ''; CB.kundenberaterEmail = ''; CB.kycDelegation = 'none';
   CB.investmentProfile = 'balanced';
   const bp = PROFILE_PRESETS.balanced;
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
@@ -2166,6 +2516,25 @@ async function cbStep1() {
             ${KUNDENBERATER.map(rm => `<option value="${rm.name}" ${CB.kundenberater===rm.name?'selected':''}>${rm.name}</option>`).join('')}
           </select>
           ${CB.kundenberaterEmail ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">${CB.kundenberaterEmail}</div>` : ''}
+        </div>
+        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
+          <div class="cb-section-label" style="margin-bottom:10px;">KYC Delegation</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Choose who will complete the KYC questionnaire for this client.</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${[
+              { val:'none',   label:'No delegation — handle KYC manually',           hint:'' },
+              { val:'rm',     label:'Delegate to Kundenberater (RM)',                  hint: CB.kundenberater ? `→ ${CB.kundenberater}` : '(select RM first)' },
+              { val:'client', label:'Delegate to Client (Kunde)',                      hint: 'Client receives KYC form on their portal' },
+            ].map(opt => `
+              <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid ${CB.kycDelegation===opt.val?'var(--accent-purple)':'var(--border-default)'};border-radius:var(--radius-md);cursor:pointer;background:${CB.kycDelegation===opt.val?'rgba(139,92,246,0.06)':'var(--bg-primary)'};">
+                <input type="radio" name="cb-kyc-delegate" value="${opt.val}" ${CB.kycDelegation===opt.val?'checked':''} onchange="CB.kycDelegation='${opt.val}';cbStep1()">
+                <div>
+                  <div style="font-size:13px;font-weight:500;">${opt.label}</div>
+                  ${opt.hint?`<div style="font-size:11px;color:var(--text-muted);margin-top:1px;">${opt.hint}</div>`:''}
+                </div>
+              </label>
+            `).join('')}
+          </div>
         </div>
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
           <div class="cb-section-label" style="margin-bottom:10px;">Portfolio Currency</div>
@@ -2633,7 +3002,19 @@ async function cbSubmit() {
     const res = await apiFetch('POST', '/contracts/invite', {
       clientName, clientEmail, templateId: CB.selectedId, fieldValues,
     });
-    CB.result = { otp: res.otp, clientName, clientEmail };
+    // Create KYC delegation task if requested
+    if (CB.kycDelegation !== 'none') {
+      State.kycTasks.push({
+        id: 'kyct_' + Date.now(),
+        delegateTo: CB.kycDelegation,
+        rmName: CB.kundenberater,
+        clientName, clientEmail,
+        status: 'pending',
+        createdAt: new Date().toLocaleString(),
+        sections: JSON.parse(JSON.stringify(KYC_TEMPLATE.sections)),
+      });
+    }
+    CB.result = { otp: res.otp, clientName, clientEmail, kycDelegation: CB.kycDelegation, rmName: CB.kundenberater };
     CB.step = 3;
     cbStep3();
   } catch (err) {
@@ -2684,6 +3065,17 @@ function cbStep3() {
             </div>
           </div>
         </div>
+
+        ${(CB.result?.kycDelegation && CB.result.kycDelegation !== 'none') ? `
+          <div style="margin:0 auto 20px;max-width:420px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:var(--radius-md);padding:14px 18px;text-align:left;">
+            <div style="font-size:12px;font-weight:700;color:var(--accent-purple);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">KYC Delegated</div>
+            <div style="font-size:13px;color:var(--text-primary);">
+              ${CB.result.kycDelegation === 'rm'
+                ? `KYC questionnaire sent to <strong>${CB.result.rmName || 'the selected RM'}</strong> for completion.`
+                : `KYC questionnaire sent to <strong>${CB.result.clientName}</strong> — visible on their portal.`}
+            </div>
+          </div>
+        ` : ''}
 
         <button class="btn-primary" onclick="renderContractBuilding()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -3105,16 +3497,128 @@ function createCase() {
 }
 
 /* ============================================================
-   PAGE: KYC FORM (Client View)
+   PAGE: KYC FORM — TEMPLATE BUILDER
    ============================================================ */
 function renderKycForm() {
   const content = document.getElementById('page-content');
+  const TYPE_LABELS = { text:'Text', email:'Email', date:'Date', number:'Number', select:'Dropdown', textarea:'Long Text', yesno:'Yes / No' };
 
   content.innerHTML = `
     <div class="page-header">
-      <h1>KYC Self-Declaration Form</h1>
-      <p>Complete all sections carefully. All fields marked * are mandatory. This form is collected in accordance with AML/KYC regulations.</p>
+      <h1>KYC Questionnaire Template</h1>
+      <p>Configure the sections and fields that appear in the KYC form sent to clients.</p>
     </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:13px;color:var(--text-muted);">${KYC_TEMPLATE.sections.length} section${KYC_TEMPLATE.sections.length!==1?'s':''} · ${KYC_TEMPLATE.sections.reduce((a,s)=>a+s.fields.length,0)} fields total</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-secondary btn-sm" onclick="kycViewTemplatePreview()">View Template</button>
+        <button class="btn-secondary btn-sm" onclick="kycDownloadTemplate()">Download</button>
+        <button class="btn-secondary btn-sm" onclick="kycAddSection()">+ Add Section</button>
+        <button class="btn-primary btn-sm" onclick="kycSaveTemplate()">Save Template</button>
+      </div>
+    </div>
+
+    ${KYC_TEMPLATE.sections.map(sec => `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-header" style="padding:12px 16px;">
+          <input type="text" value="${sec.title.replace(/"/g,'&quot;')}"
+                 onblur="kycUpdateSectionTitle('${sec.id}', this.value)"
+                 style="font-size:14px;font-weight:600;border:none;background:transparent;color:var(--text-primary);width:100%;max-width:420px;outline:none;padding:2px 4px;border-radius:4px;"
+                 onfocus="this.style.background='var(--bg-secondary)'" onblur2="this.style.background='transparent'">
+          <button class="btn-secondary btn-xs" onclick="kycRemoveSection('${sec.id}')" style="color:var(--accent-red);border-color:var(--accent-red);">Remove Section</button>
+        </div>
+        <div class="card-body" style="padding:0 16px 14px;">
+          ${sec.fields.length === 0
+            ? `<p style="font-size:12px;color:var(--text-muted);padding:10px 0;">No fields yet — add one below.</p>`
+            : `<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+                <thead>
+                  <tr style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);border-bottom:1px solid var(--border-default);">
+                    <th style="padding:8px 0;text-align:left;">Field Label</th>
+                    <th style="padding:8px 6px;text-align:left;">Type</th>
+                    <th style="padding:8px 6px;text-align:center;">Required</th>
+                    <th style="padding:8px 0;text-align:right;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${sec.fields.map(f => `
+                    <tr style="border-bottom:1px solid var(--border-subtle);">
+                      <td style="padding:9px 0;font-size:13px;">${f.label}${f.options?`<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">(${f.options.join(', ')})</span>`:''}</td>
+                      <td style="padding:9px 6px;"><span style="font-size:11px;padding:2px 7px;border-radius:10px;background:var(--bg-secondary);color:var(--text-secondary);">${TYPE_LABELS[f.type]||f.type}</span></td>
+                      <td style="padding:9px 6px;text-align:center;font-size:12px;">${f.required?'<span style="color:var(--accent-red);">✓</span>':'<span style="color:var(--text-muted);">—</span>'}</td>
+                      <td style="padding:9px 0;text-align:right;">
+                        <button class="btn-secondary btn-xs" onclick="kycRemoveField('${sec.id}','${f.id}')" style="color:var(--text-muted);">✕</button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>`
+          }
+
+          <!-- Inline Add Field form -->
+          <div id="kaf-${sec.id}" style="display:none;background:var(--bg-secondary);border-radius:var(--radius-md);padding:12px;margin-top:6px;">
+            <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-bottom:8px;align-items:end;">
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:11px;">Field Label</label>
+                <input type="text" id="kaf-label-${sec.id}" placeholder="e.g. Passport Number" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:11px;">Type</label>
+                <select id="kaf-type-${sec.id}" onchange="kycToggleOpts('${sec.id}')" style="padding:6px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
+                  <option value="text">Text</option>
+                  <option value="email">Email</option>
+                  <option value="date">Date</option>
+                  <option value="number">Number</option>
+                  <option value="select">Dropdown</option>
+                  <option value="textarea">Long Text</option>
+                  <option value="yesno">Yes / No</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:11px;">&nbsp;</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;padding:6px 0;cursor:pointer;white-space:nowrap;">
+                  <input type="checkbox" id="kaf-req-${sec.id}"> Required
+                </label>
+              </div>
+            </div>
+            <div id="kaf-opts-${sec.id}" style="display:none;margin-bottom:8px;">
+              <label style="font-size:11px;color:var(--text-muted);">Options (comma-separated)</label>
+              <input type="text" id="kaf-opts-text-${sec.id}" placeholder="Option A, Option B, Option C" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn-primary btn-sm" onclick="kycAddField('${sec.id}')">Add Field</button>
+              <button class="btn-secondary btn-sm" onclick="kycHideAddField('${sec.id}')">Cancel</button>
+            </div>
+          </div>
+
+          <button id="kaf-toggle-${sec.id}" class="btn-secondary btn-sm" onclick="kycShowAddField('${sec.id}')" style="margin-top:8px;">+ Add Field</button>
+        </div>
+      </div>
+    `).join('')}
+
+    <div style="margin-top:8px;">
+      <button class="btn-secondary" onclick="kycAddSection()">+ Add Section</button>
+    </div>
+  `;
+}
+
+function submitKyc() {
+  const client = getActiveClientForUpload();
+  if (client) {
+    client.status = 'under-review';
+    client.progress = Math.max(client.progress, 70);
+    addClientAudit(client.id, 'KYC questionnaire submitted for compliance review', 'submitted', 'Client');
+  }
+  showToast('success', 'KYC form submitted successfully. Compliance review has started.');
+  setTimeout(() => navigateTo('dashboard'), 1200);
+}
+
+
+/* ============================================================
+   PAGE: KYC CORRECTIONS (RM view - simplified)   [jumped here]
+   ============================================================ */
+function _kycFormStubEnd_placeholder() {
+  // old static form removed — see renderKycForm template builder above
+  const _unused = `<div class="page-header"><h1>KYC Self-Declaration Form</h1><p>Replaced by template builder.</p></div>
 
     <div class="info-box">
       <p>Your information is processed strictly for compliance purposes and kept confidential. You will be asked to sign this form physically and upload a scanned copy.</p>
@@ -3656,22 +4160,7 @@ function renderKycForm() {
 
         <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:8px;">
           <button class="btn-secondary" onclick="showToast('info','Progress saved as draft.')">Save Progress</button>
-          <button class="btn-primary" onclick="submitKyc()">Submit KYC Form →</button>
-        </div>
-      </div>
-    </div>
   `;
-}
-
-function submitKyc() {
-  const client = getActiveClientForUpload();
-  if (client) {
-    client.status = 'under-review';
-    client.progress = Math.max(client.progress, 70);
-    addClientAudit(client.id, 'KYC questionnaire submitted for compliance review', 'submitted', 'Client');
-  }
-  showToast('success', 'KYC form submitted successfully. Compliance review has started.');
-  setTimeout(() => navigateTo('dashboard'), 1200);
 }
 
 /* ============================================================
