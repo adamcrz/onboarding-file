@@ -8,6 +8,7 @@ const clientsRoutes    = require('./routes/clients.routes');
 const documentsRoutes  = require('./routes/documents.routes');
 const authRoutes       = require('./routes/auth.routes');
 const contractsRoutes  = require('./routes/contracts.routes');
+const kycRoutes        = require('./routes/kyc.routes');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use('/api/auth',      authRoutes);
 app.use('/api/clients',   clientsRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/contracts', contractsRoutes);
+app.use('/api/kyc',       kycRoutes);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));

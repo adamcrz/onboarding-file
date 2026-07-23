@@ -2034,8 +2034,42 @@ function approveDoc(clientId, docId) {
   d.status = 'approved';
   c.auditTrail.push({ action: `Document approved: ${d.name}`, user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'approved' });
   showToast('success', `${d.name} approved.`);
+  if (d.name === 'KYC Form') exportConfirmedKyc(c);
   renderClientDetail();
   switchTab('docs');
+}
+
+// Once Compliance confirms the KYC Form document, export the confirmed answers
+// into the bulk-import .xlsx the external KYC system expects. Only first name,
+// last name and occupation have a known Question-Ident mapping so far — see
+// backend/services/kycExport.service.js.
+async function exportConfirmedKyc(client) {
+  const kyc = client.kyc || {};
+  if (!kyc.firstName && !kyc.lastName && !kyc.occupation) return; // nothing mapped to export
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/kyc/export/natural-person`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        clientId: client.id, firstName: kyc.firstName, lastName: kyc.lastName, occupation: kyc.occupation,
+      }),
+    });
+    if (!response.ok) throw new Error('Export failed');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `NaturalPersonKYC-${client.id}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    client.auditTrail.push({ action: 'KYC exported to NaturalPersonKYC.xlsx for external system', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'approved' });
+  } catch (err) {
+    showToast('error', 'KYC confirmed, but the .xlsx export failed: ' + err.message);
+  }
 }
 
 function requestDocInfo(clientId, docId) {
