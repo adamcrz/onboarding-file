@@ -2039,36 +2039,42 @@ function approveDoc(clientId, docId) {
   switchTab('docs');
 }
 
-// Once Compliance confirms the KYC Form document, export the confirmed answers
-// into the bulk-import .xlsx the external KYC system expects. Only first name,
-// last name and occupation have a known Question-Ident mapping so far — see
-// backend/services/kycExport.service.js.
+// Once Compliance confirms the KYC Form document, add the confirmed answers to
+// the running NaturalPersonKYC export store (backend/data/kycExportRecords.json).
+// It accumulates every confirmed client and can be downloaded any time via
+// "Export Completed KYCs" on the KYC Questionnaire page (kycExportAll()). Only
+// first name, last name and occupation have a known Question-Ident mapping so
+// far — see backend/services/kycExport.service.js.
 async function exportConfirmedKyc(client) {
   const kyc = client.kyc || {};
   if (!kyc.firstName && !kyc.lastName && !kyc.occupation) return; // nothing mapped to export
   try {
+    await apiFetch('POST', '/kyc/confirm', {
+      clientId: client.id, firstName: kyc.firstName, lastName: kyc.lastName, occupation: kyc.occupation,
+    });
+    client.auditTrail.push({ action: 'KYC added to NaturalPersonKYC export for external system', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'approved' });
+  } catch (err) {
+    showToast('error', 'KYC confirmed, but adding it to the export failed: ' + err.message);
+  }
+}
+
+// Downloads the accumulated NaturalPersonKYC.xlsx — every client confirmed so far.
+async function kycExportAll() {
+  try {
     const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/kyc/export/natural-person`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        clientId: client.id, firstName: kyc.firstName, lastName: kyc.lastName, occupation: kyc.occupation,
-      }),
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
     if (!response.ok) throw new Error('Export failed');
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `NaturalPersonKYC-${client.id}.xlsx`;
+    a.download = 'NaturalPersonKYC.xlsx';
     a.click();
     URL.revokeObjectURL(url);
-    client.auditTrail.push({ action: 'KYC exported to NaturalPersonKYC.xlsx for external system', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'approved' });
   } catch (err) {
-    showToast('error', 'KYC confirmed, but the .xlsx export failed: ' + err.message);
+    showToast('error', err.message || 'Export failed');
   }
 }
 
@@ -3884,6 +3890,7 @@ function renderKycForm() {
       <div style="display:flex;gap:8px;">
         <button class="btn-secondary btn-sm" onclick="kycViewTemplatePreview()">View Template</button>
         <button class="btn-secondary btn-sm" onclick="kycDownloadTemplate()">Download</button>
+        ${isCompliance(State.currentRole) ? `<button class="btn-secondary btn-sm" onclick="kycExportAll()">Export Completed KYCs</button>` : ''}
         <button class="btn-secondary btn-sm" onclick="kycAddSection()">+ Add Section</button>
         <button class="btn-primary btn-sm" onclick="kycSaveTemplate()">Save Template</button>
       </div>

@@ -1,13 +1,22 @@
-// Builds the "NaturalPersonKYC" bulk-import .xlsx used to feed a confirmed client
-// KYC record into the external KYC/compliance system. Format reverse-engineered
-// from backend/Import_NaturalPersonKYC.xlsx: a [QUESTIONNAIRE] header block followed
-// by an [ANSWERS] block of Question-Ident/Content rows.
+// Builds the "NaturalPersonKYC" bulk-import .xlsx used to feed confirmed client
+// KYC records into the external KYC/compliance system. Format reverse-engineered
+// from backend/Import_NaturalPersonKYC.xlsx: a [QUESTIONNAIRE] header block (one
+// row per confirmed client) followed by an [ANSWERS] block (one row per answered
+// question across all of them) — matching the original sample file's shape.
+//
+// Every client whose KYC Form is confirmed by Compliance is appended to a running
+// store (data/kycExportRecords.json) so the exported .xlsx accumulates over time
+// and can be re-downloaded at any point with everything confirmed so far.
 //
 // Only 3 fields have a confirmed Question-Ident mapping (first name, last name,
 // occupation) — everything else in the app's KYC data isn't wired up because we
 // don't have Question Idents for it yet. Extend QUESTION_MAP below once more are
 // available.
-const PizZip = require('pizzip');
+const fs      = require('fs');
+const path    = require('path');
+const PizZip  = require('pizzip');
+
+const STORE_PATH = path.join(__dirname, '..', 'data', 'kycExportRecords.json');
 
 const QUESTION_MAP = [
   { key: 'firstName',  questionIdent: 'Q1.1', answerIdent: 'Q1.2', text: 'Vorname(n) Vertragspartei',                                      type: 'ShortFreeTextQuestion' },
@@ -116,32 +125,56 @@ function buildMinimalXlsx(rows) {
   return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
-// Builds the [QUESTIONNAIRE]/[ANSWERS] rows for a single client's confirmed KYC data.
-function buildNaturalPersonKycRows({ importIdent, firstName, lastName, occupation }) {
+// Builds the [QUESTIONNAIRE]/[ANSWERS] rows for every confirmed KYC record so far —
+// one QUESTIONNAIRE row and up to 3 ANSWERS rows per record.
+function buildNaturalPersonKycRows(records) {
   const rows = [
     ['[TYPE:filled-questionnaires]'],
     ['[QUESTIONNAIRE]'],
     ['Import Ident', 'Questionnaire Type', 'Questionnaire Ident'],
-    [importIdent, 'NaturalPersonKYC', 'KYC'],
-    ['[END]'],
-    [],
-    ['[ANSWERS]'],
-    ['Import Ident', 'Question Ident', 'Table Column', 'Table Row', 'Question Text', 'Question type', 'Expects content as answer', 'Answer Ident', 'Answer Text', 'Content'],
   ];
+  records.forEach(r => rows.push([r.importIdent, 'NaturalPersonKYC', 'KYC']));
+  rows.push(['[END]'], [], ['[ANSWERS]'],
+    ['Import Ident', 'Question Ident', 'Table Column', 'Table Row', 'Question Text', 'Question type', 'Expects content as answer', 'Answer Ident', 'Answer Text', 'Content']);
 
-  const values = { firstName, lastName, occupation };
-  QUESTION_MAP.forEach(q => {
-    const content = values[q.key];
-    if (!content) return; // skip fields with no answer rather than exporting a blank row
-    rows.push([importIdent, q.questionIdent, '', '', q.text, q.type, 'TRUE', q.answerIdent, '0', content]);
+  records.forEach(r => {
+    QUESTION_MAP.forEach(q => {
+      const content = r[q.key];
+      if (!content) return; // skip fields with no answer rather than exporting a blank row
+      rows.push([r.importIdent, q.questionIdent, '', '', q.text, q.type, 'TRUE', q.answerIdent, '0', content]);
+    });
   });
 
   rows.push(['[END]']);
   return rows;
 }
 
-function buildNaturalPersonKycXlsx(fields) {
-  return buildMinimalXlsx(buildNaturalPersonKycRows(fields));
+function loadRecords() {
+  if (!fs.existsSync(STORE_PATH)) return [];
+  try { return JSON.parse(fs.readFileSync(STORE_PATH, 'utf8')); } catch { return []; }
 }
 
-module.exports = { buildNaturalPersonKycXlsx, QUESTION_MAP };
+function saveRecords(records) {
+  fs.mkdirSync(path.dirname(STORE_PATH), { recursive: true });
+  fs.writeFileSync(STORE_PATH, JSON.stringify(records, null, 2));
+}
+
+// Adds (or updates, if the client was already confirmed before) a client's
+// confirmed KYC answers to the running store.
+function appendConfirmedKyc({ clientId, firstName, lastName, occupation }) {
+  const importIdent = `NaturalPersonKYC-${clientId}`;
+  const records = loadRecords();
+  const record = { importIdent, clientId, firstName, lastName, occupation, confirmedAt: new Date().toISOString() };
+  const existingIdx = records.findIndex(r => r.clientId === clientId);
+  if (existingIdx >= 0) records[existingIdx] = record;
+  else records.push(record);
+  saveRecords(records);
+  return record;
+}
+
+// Builds the .xlsx containing every client confirmed so far.
+function buildNaturalPersonKycXlsx() {
+  return buildMinimalXlsx(buildNaturalPersonKycRows(loadRecords()));
+}
+
+module.exports = { appendConfirmedKyc, buildNaturalPersonKycXlsx, QUESTION_MAP };
