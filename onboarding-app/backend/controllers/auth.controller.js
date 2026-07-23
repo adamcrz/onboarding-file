@@ -33,7 +33,7 @@ const register = async (req, res) => {
     if (existing)
       return res.status(400).json({ error: 'An account with that email already exists.' });
 
-    const allowedRoles = ['compliance', 'rm', 'client'];
+    const allowedRoles = ['compliance', 'compliance_external', 'rm', 'client'];
     const user = new User({
       name,
       email,

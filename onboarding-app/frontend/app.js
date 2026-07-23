@@ -208,6 +208,8 @@ const State = {
   kycTasks: [],
   _activeKycTask: null,
 
+  contractReviews: [],
+
   riskAnswers: {},
   riskScores: {}
 };
@@ -215,12 +217,19 @@ const State = {
 /* ============================================================
    ROLE DEFINITIONS
    ============================================================ */
+// True for any compliance role variant (internal or external) — use this instead of
+// comparing against the literal 'compliance' string, so permission checks stay correct
+// for both.
+function isCompliance(role) {
+  return role === 'compliance' || role === 'compliance_external';
+}
+
 const ROLES = {
   compliance: {
-    label: 'Compliance Officer',
-    description: 'Compliance Dept.',
+    label: 'Internal Compliance Officer',
+    description: 'Internal Compliance Dept.',
     initial: 'C',
-    badge: 'Compliance',
+    badge: 'Internal Compliance',
     nav: [
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
@@ -228,6 +237,24 @@ const ROLES = {
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
+      { id: 'contract-reviews', label: 'Contract Reviews', icon: checklistIcon() },
+      { id: 'kyc-form', label: 'KYC Questionnaire', icon: formIcon() },
+    ]
+  },
+  // External Compliance — same format/permissions as Internal Compliance for now.
+  compliance_external: {
+    label: 'External Compliance Officer',
+    description: 'External Compliance Dept.',
+    initial: 'E',
+    badge: 'External Compliance',
+    nav: [
+      { section: 'Compliance' },
+      { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
+      { id: 'clients', label: 'All Cases', icon: usersIcon() },
+      { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
+      { section: 'Tools' },
+      { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
+      { id: 'contract-reviews', label: 'Contract Reviews', icon: checklistIcon() },
       { id: 'kyc-form', label: 'KYC Questionnaire', icon: formIcon() },
     ]
   },
@@ -241,6 +268,8 @@ const ROLES = {
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'kyc-corrections', label: 'KYC Corrections', icon: checklistIcon(), badge: '3' },
       { id: 'clients', label: 'My Clients', icon: usersIcon(), badge: '2' },
+      { section: 'Tools' },
+      { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
     ]
   },
   client: {
@@ -318,7 +347,14 @@ function loginFormHTML() {
         <div class="role-portal-icon">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
         </div>
-        <div class="role-portal-name">Compliance</div>
+        <div class="role-portal-name">Internal Compliance</div>
+        <div class="role-portal-desc">Review &amp; approve cases</div>
+      </button>
+      <button class="role-portal-card role-portal-compliance-external" onclick="goToRoleLogin('compliance_external')">
+        <div class="role-portal-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </div>
+        <div class="role-portal-name">External Compliance</div>
         <div class="role-portal-desc">Review &amp; approve cases</div>
       </button>
       <button class="role-portal-card role-portal-rm" onclick="goToRoleLogin('rm')">
@@ -347,7 +383,11 @@ function loginFormHTML() {
 
 const ROLE_META = {
   compliance: {
-    name: 'Compliance Officer', portal: 'Compliance Portal',
+    name: 'Internal Compliance Officer', portal: 'Internal Compliance Portal',
+    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`,
+  },
+  compliance_external: {
+    name: 'External Compliance Officer', portal: 'External Compliance Portal',
     icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`,
   },
   rm: {
@@ -439,9 +479,7 @@ function registerFormHTML() {
     <div class="form-group">
       <label for="reg-role">Role</label>
       <select id="reg-role">
-        <option value="client">Client</option>
-        <option value="rm">Relationship Manager</option>
-        <option value="compliance">Compliance Officer</option>
+        ${Object.entries(ROLE_META).map(([value, meta]) => `<option value="${value}">${meta.name}</option>`).join('')}
       </select>
     </div>
 
@@ -607,7 +645,7 @@ async function login() {
 
     const backendRole = data.user.role;
     if (AuthState.selectedRole && backendRole !== AuthState.selectedRole) {
-      const names = { compliance: 'Compliance', rm: 'Rel. Manager', client: 'Client' };
+      const names = { compliance: 'Internal Compliance', compliance_external: 'External Compliance', rm: 'Rel. Manager', client: 'Client' };
       const correct = names[backendRole] || backendRole;
       showToast('error', `These credentials belong to the ${correct} portal. Please go back and select the correct portal.`);
       resetLoginBtn();
@@ -820,6 +858,7 @@ function setupRoleUI(role) {
           ${item.icon}
           <span>${item.label}</span>
           ${item.badge ? `<span class="nav-badge">${item.badge}</span>` : ''}
+          ${item.id === 'contract-reviews' ? `<span class="nav-badge" id="navbadge-contract-reviews" style="display:none;"></span>` : ''}
         </button>
       `;
     }
@@ -827,6 +866,26 @@ function setupRoleUI(role) {
 
   // Notifications panel
   renderNotificationDropdown();
+  refreshContractReviewsBadge();
+}
+
+function updateContractReviewsBadge() {
+  const pendingCount = State.contractReviews.filter(r => r.status === 'pending').length;
+  const badge = document.getElementById('navbadge-contract-reviews');
+  if (!badge) return;
+  if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = 'flex'; }
+  else badge.style.display = 'none';
+}
+
+// Pulls the current contract-review list from the backend (source of truth) and
+// refreshes the sidebar badge — called on login so the count is right even before
+// Compliance has opened the Contract Reviews page in this session.
+async function refreshContractReviewsBadge() {
+  if (!document.getElementById('navbadge-contract-reviews')) return;
+  try {
+    State.contractReviews = await apiFetch('GET', '/contracts/reviews');
+  } catch (_) { return; }
+  updateContractReviewsBadge();
 }
 
 function updateNotifBadge() {
@@ -888,7 +947,7 @@ function addClientAudit(clientId, action, type, user) {
   if (!client) return;
   client.auditTrail.push({
     action,
-    user: user || (State.currentRole === 'compliance' ? 'Compliance Officer' : State.currentRole === 'rm' ? 'Relationship Manager' : 'Client'),
+    user: user || (isCompliance(State.currentRole) ? ROLES[State.currentRole].label : State.currentRole === 'rm' ? 'Relationship Manager' : 'Client'),
     time: nowTs(),
     type
   });
@@ -929,8 +988,9 @@ function navigateTo(page) {
 
   const titles = {
     dashboard: 'Dashboard',
-    clients: State.currentRole === 'compliance' ? 'All Cases' : 'My Clients',
+    clients: isCompliance(State.currentRole) ? 'All Cases' : 'My Clients',
     'contract-building': 'Contract Building',
+    'contract-reviews': 'Contract Reviews',
     documents: 'Documents',
     audit: 'Audit Trail',
     analytics: 'Analytics',
@@ -953,6 +1013,7 @@ function navigateTo(page) {
   switch(page) {
     case 'dashboard': renderDashboard(); break;
     case 'contract-building': renderContractBuilding(); break;
+    case 'contract-reviews': renderContractReviews(); break;
     case 'clients': renderClients(); break;
     case 'documents': renderDocuments(); break;
     case 'audit': renderAuditPage(); break;
@@ -978,7 +1039,7 @@ function renderDashboard() {
   const content = document.getElementById('page-content');
 
   if (role === 'client') { renderClientDashboard(); return; }
-  if (role === 'compliance') { renderComplianceDashboard(); return; }
+  if (isCompliance(role)) { renderComplianceDashboard(); return; }
   if (role === 'rm') { renderRMDashboard(); return; }
 
   content.innerHTML = `
@@ -1580,7 +1641,7 @@ function renderClientRows(clients) {
       <td onclick="event.stopPropagation()">
         <div class="actions-row">
           <button class="btn-secondary btn-xs" onclick="openClientDetail('${c.id}')">View</button>
-          ${State.currentRole === 'compliance' && (c.status === 'under-review' || c.status === 'pending') ? `
+          ${isCompliance(State.currentRole) && (c.status === 'under-review' || c.status === 'pending') ? `
             <button class="btn-success btn-xs" onclick="event.stopPropagation();approveClient('${c.id}')">Approve</button>
             <button class="btn-danger btn-xs" onclick="event.stopPropagation();rejectClient('${c.id}')">Reject</button>
           ` : ''}
@@ -1655,7 +1716,7 @@ function renderClientDetail() {
         </div>
       </div>
       <div class="actions-row">
-        ${State.currentRole === 'compliance' && (client.status === 'under-review' || client.status === 'pending') ? `
+        ${isCompliance(State.currentRole) && (client.status === 'under-review' || client.status === 'pending') ? `
           <button class="btn-success btn-sm" onclick="approveClientFromDetail('${client.id}')">✓ Approve</button>
           <button class="btn-danger btn-sm" onclick="rejectClientFromDetail('${client.id}')">✗ Reject</button>
           <button class="btn-warning btn-sm" onclick="requestInfo('${client.id}')">Request Info</button>
@@ -1837,7 +1898,7 @@ function screeningBadge(label, val) {
 
 function renderClientDocsTab(client) {
   const canUpload = State.currentRole === 'rm' || State.currentRole === 'client';
-  const canReview = State.currentRole === 'compliance';
+  const canReview = isCompliance(State.currentRole);
   const isClient = State.currentRole === 'client';
   const blankDocs = client.documents.filter(d => d.templateAvailable || d.signedVersion === false || d.uploadedBy === 'Compliance');
   const signedDocs = client.documents.filter(d => d.signedVersion || d.uploadedBy === 'Client' || d.uploadedBy === 'RM');
@@ -2140,7 +2201,7 @@ function renderDocRows(docs, role) {
         <div class="actions-row">
           ${d.date !== '-' ? `<button class="btn-icon" title="View" onclick="viewDoc('${d.id}')">${eyeIcon()}</button>` : ''}
           ${d.date !== '-' ? `<button class="btn-icon" title="Download">${downloadIcon()}</button>` : ''}
-          ${role === 'compliance' && d.status === 'pending' ? `<button class="btn-success btn-xs" onclick="approveDoc('${d.clientId}','${d.id}')">Approve</button>` : ''}
+          ${isCompliance(role) && d.status === 'pending' ? `<button class="btn-success btn-xs" onclick="approveDoc('${d.clientId}','${d.id}')">Approve</button>` : ''}
         </div>
       </td>
     </tr>
@@ -2392,8 +2453,19 @@ const CB = {
   },
   currencyWeights: { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } },
   investmentComments: '',
-  managementFee: '', performanceFee: '',
+  managementFee: '', performanceFee: '', performanceFeeFrequency: 'semiannual',
+  clientType: 'individual',
 };
+
+// Legal form of the contracting party — determines which VSB 20 beneficial-owner
+// appendix (Formular A/K/S/T) applies. Only relevant for templates containing the
+// FormularLetter bookmark (currently the DE All-In and DE Advisory contracts).
+const CLIENT_LEGAL_FORMS = [
+  { value: 'individual', letter: 'A', label: 'Individual / Natural Person' },
+  { value: 'company',    letter: 'K', label: 'Operating Company' },
+  { value: 'foundation', letter: 'S', label: 'Domiciliary Company / Foundation' },
+  { value: 'trust',      letter: 'T', label: 'Trust' },
+];
 
 const KUNDENBERATER = [
   { name: 'Sarah Mitchell',  email: 'sarah.mitchell@tramondo.com'  },
@@ -2429,7 +2501,8 @@ async function renderContractBuilding() {
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
   CB.currencyWeights = { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } };
   CB.investmentComments = '';
-  CB.managementFee = ''; CB.performanceFee = '';
+  CB.managementFee = ''; CB.performanceFee = ''; CB.performanceFeeFrequency = 'semiannual';
+  CB.clientType = 'individual';
   await cbRenderStep();
 }
 
@@ -2666,6 +2739,23 @@ async function cbStep2() {
     </div>
 
     <div style="margin-top:20px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
+      <div class="cb-section-label" style="margin-bottom:8px;">Beneficial-Owner Declaration</div>
+      <div class="cb-fields-grid">
+        <div class="form-group" style="margin-bottom:0;">
+          <label for="cb_client_type">Client Legal Form</label>
+          <select id="cb_client_type" onchange="cbSetClientType(this.value)">
+            ${CLIENT_LEGAL_FORMS.map(f => `<option value="${f.value}" ${CB.clientType===f.value?'selected':''}>${f.label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">
+        Contract will reference Formular <strong id="cb_formular_letter">${CLIENT_LEGAL_FORMS.find(f=>f.value===CB.clientType)?.letter||'A'}</strong> for the VSB 20 beneficial-owner declaration.
+        <a href="#" onclick="cbPreviewAppendix();return false;" style="margin-left:8px;">Preview form</a> ·
+        <a href="#" onclick="cbDownloadAppendix();return false;">Download</a>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;">
         <input type="checkbox" id="cb-uo-toggle" ${CB.uo?'checked':''} onchange="cbToggleUO(this.checked)"
                style="width:16px;height:16px;accent-color:var(--accent-blue);">
@@ -2710,13 +2800,6 @@ async function cbStep2() {
           </div>
         </div>
       </div>
-    </div>
-
-    <div class="cb-section-label" style="margin-top:28px;">Portfolio Currency</div>
-    <div class="cb-currency-selector" style="margin-top:10px;">
-      ${['CHF','EUR','USD','GBP','JPY','SGD'].map(c => `
-        <button class="cb-currency-btn${CB.currency===c?' active':''}" onclick="cbSetCurrency('${c}')">${c}</button>
-      `).join('')}
     </div>
 
     <div class="cb-section-label" style="margin-top:28px;">Investment Profile</div>
@@ -2786,7 +2869,14 @@ async function cbStep2() {
       <div class="form-group" style="margin-bottom:0;">
         <label for="cb_performance_fee">Performance Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% (optional)</span></label>
         <input type="number" id="cb_performance_fee" step="0.01" min="0" max="100"
-               placeholder="e.g. 10.00" value="${CB.performanceFee||''}">
+               placeholder="e.g. 10.00" value="${CB.performanceFee||''}" oninput="cbTogglePerfFreq()">
+      </div>
+      <div class="form-group" id="cb_perf_freq_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
+        <label for="cb_performance_fee_frequency">Performance Fee Settlement</label>
+        <select id="cb_performance_fee_frequency">
+          <option value="annual"     ${CB.performanceFeeFrequency !== 'semiannual' ? 'selected' : ''}>Jährlich</option>
+          <option value="semiannual" ${CB.performanceFeeFrequency === 'semiannual' ? 'selected' : ''}>Halbjährlich</option>
+        </select>
       </div>
     </div>
 
@@ -2846,10 +2936,17 @@ async function cbStep2() {
         </svg>
         Download Filled
       </button>
-      <button class="btn-primary" onclick="cbSubmit()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.02 2.18 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14v2.92z"/></svg>
-        Send Contract & Invite Client
-      </button>
+      ${State.currentRole === 'rm' ? `
+        <button class="btn-primary" onclick="cbSubmitForReview()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/></svg>
+          Send for Review
+        </button>
+      ` : `
+        <button class="btn-primary" onclick="cbSubmit()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.02 2.18 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14v2.92z"/></svg>
+          Send Contract & Invite Client
+        </button>
+      `}
     </div>
   `; } catch(e) {
     console.error('cbStep2 render error:', e);
@@ -2935,6 +3032,54 @@ function cbSetProfile(profile) {
   }
 }
 
+function cbTogglePerfFreq() {
+  const hasFee = !!document.getElementById('cb_performance_fee')?.value?.trim();
+  const wrap = document.getElementById('cb_perf_freq_wrap');
+  if (wrap) wrap.style.display = hasFee ? 'block' : 'none';
+}
+
+function cbSetClientType(val) {
+  CB.clientType = val;
+  const badge = document.getElementById('cb_formular_letter');
+  if (badge) badge.textContent = CLIENT_LEGAL_FORMS.find(f => f.value === val)?.letter || 'A';
+}
+
+async function cbPreviewAppendix() {
+  const win = window.open('', '_blank');
+  win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Loading preview…</p>');
+  try {
+    const data = await apiFetch('GET', `/contracts/appendix/preview/${CB.clientType}/${CB.lang}`);
+    win.document.open();
+    win.document.write(data.html);
+    win.document.close();
+  } catch (err) {
+    win.document.write(`<p style="font-family:Arial;padding:24px;color:red;">Error: ${err.message}</p>`);
+  }
+}
+
+async function cbDownloadAppendix() {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/contracts/appendix/download/${CB.clientType}/${CB.lang}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Download failed' }));
+      throw new Error(err.error || 'Download failed');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const letter = CLIENT_LEGAL_FORMS.find(f => f.value === CB.clientType)?.letter || 'A';
+    a.href = url;
+    a.download = `Formular ${letter} (${CB.lang}).docx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast('error', err.message || 'Download failed');
+  }
+}
+
 function cbUpdateAllocTotal() {
   const ids = ['equities','fixedincome','cash','other'];
   const mins = ids.map(id => parseFloat(document.getElementById(`alloc_${id}_min`)?.value) || 0);
@@ -2974,8 +3119,10 @@ function cbUpdateCcyTotal() {
   }
 }
 
-async function cbSubmit() {
-  // Validate required fields first
+// Validates required fields + client email, returning collected field values or
+// null (after showing a toast) if invalid. Shared by the direct-invite and
+// submit-for-review paths.
+function cbValidateBeforeSubmit() {
   const missingRequired = CB.fields
     .filter(f => f.required && f.type !== 'checkbox')
     .filter(f => { const el = document.getElementById(`cb_${f.key}`); return !el?.value?.trim(); })
@@ -2983,7 +3130,7 @@ async function cbSubmit() {
 
   if (missingRequired.length) {
     showToast('warning', `Please fill in: ${missingRequired.join(', ')}`);
-    return;
+    return null;
   }
 
   const fieldValues = cbCollectAllValues();
@@ -2992,8 +3139,29 @@ async function cbSubmit() {
 
   if (!clientEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
     showToast('warning', 'Please enter a valid client email address.');
-    return;
+    return null;
   }
+
+  return { fieldValues, clientName, clientEmail };
+}
+
+// Creates the client's KYC delegation task, if the RM requested one during Contract Building.
+function cbMaybeCreateKycTask(kycDelegation, rmName, clientName, clientEmail) {
+  if (!kycDelegation || kycDelegation === 'none') return;
+  State.kycTasks.push({
+    id: 'kyct_' + Date.now(),
+    delegateTo: kycDelegation,
+    rmName, clientName, clientEmail,
+    status: 'pending',
+    createdAt: new Date().toLocaleString(),
+    sections: JSON.parse(JSON.stringify(KYC_TEMPLATE.sections)),
+  });
+}
+
+async function cbSubmit() {
+  const valid = cbValidateBeforeSubmit();
+  if (!valid) return;
+  const { fieldValues, clientName, clientEmail } = valid;
 
   const btn = document.querySelector('#cb-body .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
@@ -3002,18 +3170,7 @@ async function cbSubmit() {
     const res = await apiFetch('POST', '/contracts/invite', {
       clientName, clientEmail, templateId: CB.selectedId, fieldValues,
     });
-    // Create KYC delegation task if requested
-    if (CB.kycDelegation !== 'none') {
-      State.kycTasks.push({
-        id: 'kyct_' + Date.now(),
-        delegateTo: CB.kycDelegation,
-        rmName: CB.kundenberater,
-        clientName, clientEmail,
-        status: 'pending',
-        createdAt: new Date().toLocaleString(),
-        sections: JSON.parse(JSON.stringify(KYC_TEMPLATE.sections)),
-      });
-    }
+    cbMaybeCreateKycTask(CB.kycDelegation, CB.kundenberater, clientName, clientEmail);
     CB.result = { otp: res.otp, clientName, clientEmail, kycDelegation: CB.kycDelegation, rmName: CB.kundenberater };
     CB.step = 3;
     cbStep3();
@@ -3023,11 +3180,189 @@ async function cbSubmit() {
   }
 }
 
+// RM-only path: instead of inviting the client directly, the built contract package
+// is submitted to the Compliance department (Contract Reviews) for approval first.
+// Persisted on the real backend so it shows up for Compliance in a separate session.
+async function cbSubmitForReview() {
+  const valid = cbValidateBeforeSubmit();
+  if (!valid) return;
+  const { fieldValues, clientName, clientEmail } = valid;
+
+  const btn = document.querySelector('#cb-body .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+  const tpl = CB.templates.find(t => t.id === CB.selectedId);
+  const rmName = CB.kundenberater || ROLES.rm.label;
+
+  try {
+    await apiFetch('POST', '/contracts/reviews', {
+      templateId: CB.selectedId, templateName: tpl?.name || CB.selectedId, lang: CB.lang,
+      clientName, clientEmail, fieldValues,
+      kycDelegation: CB.kycDelegation, rmName, rmEmail: CB.kundenberaterEmail || '',
+    });
+  } catch (err) {
+    showToast('error', err.message || 'Failed to submit for review.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Send for Review'; }
+    return;
+  }
+
+  CB.result = { clientName, clientEmail, reviewSubmitted: true };
+  CB.step = 3;
+  cbStep3();
+}
+
+/* ── Compliance: Contract Reviews (RM submissions) ──────────── */
+async function renderContractReviews() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>Contract Reviews</h1>
+      <p>Contract packages submitted by Relationship Managers, awaiting approval before the client is invited</p>
+    </div>
+    <div class="cb-loading">Loading submissions…</div>
+  `;
+
+  try {
+    State.contractReviews = await apiFetch('GET', '/contracts/reviews');
+  } catch (err) {
+    content.innerHTML += `<p style="color:var(--accent-red);padding:16px;">Failed to load contract reviews: ${err.message}</p>`;
+    return;
+  }
+  updateContractReviewsBadge();
+  renderContractReviewsList();
+}
+
+function renderContractReviewsList() {
+  const content = document.getElementById('page-content');
+  const pending  = State.contractReviews.filter(r => r.status === 'pending');
+  const reviewed = State.contractReviews.filter(r => r.status !== 'pending');
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>Contract Reviews</h1>
+      <p>Contract packages submitted by Relationship Managers, awaiting approval before the client is invited</p>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header"><div class="card-title">Pending Review (${pending.length})</div></div>
+      <div>
+        ${pending.map(contractReviewRowHTML).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No contract packages awaiting review.</p>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Reviewed</div></div>
+      <div>
+        ${reviewed.map(contractReviewRowHTML).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No reviewed submissions yet.</p>`}
+      </div>
+    </div>
+  `;
+}
+
+function contractReviewRowHTML(r) {
+  return `
+    <div class="client-row" style="cursor:default;">
+      <div class="client-avatar" style="background:${clientGradient('Individual')}">${(r.clientName||'?')[0]}</div>
+      <div class="client-info">
+        <div class="client-name">${r.clientName}</div>
+        <div class="client-type">${r.templateName} · RM: ${r.rmName || '—'} · Submitted ${new Date(r.submittedAt).toLocaleString()}</div>
+        ${r.status === 'rejected' && r.rejectionReason ? `<div style="font-size:12px;color:var(--accent-red);margin-top:4px;">Reason: ${r.rejectionReason}</div>` : ''}
+      </div>
+      <div class="client-meta" style="display:flex;align-items:center;gap:10px;">
+        <span class="status-badge status-${r.status}">${statusLabel(r.status)}</span>
+        <button class="btn-secondary btn-sm" onclick="cbReviewPreview('${r._id}')">Preview</button>
+        ${r.status === 'pending' ? `
+          <button class="btn-primary btn-sm" onclick="approveContractReview('${r._id}')">Approve</button>
+          <button class="btn-secondary btn-sm" style="color:var(--accent-red);" onclick="rejectContractReview('${r._id}')">Reject</button>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function cbReviewPreview(id) {
+  const r = State.contractReviews.find(x => x._id === id);
+  if (!r) return;
+  const win = window.open('', '_blank');
+  win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Loading preview…</p>');
+  try {
+    const data = await apiFetch('POST', `/contracts/preview/${r.templateId}`, { fieldValues: r.fieldValues, fieldDefs: [] });
+    win.document.open();
+    win.document.write(data.html);
+    win.document.close();
+  } catch (err) {
+    win.document.write(`<p style="font-family:Arial;padding:24px;color:red;">Error: ${err.message}</p>`);
+  }
+}
+
+async function approveContractReview(id) {
+  try {
+    const review = await apiFetch('POST', `/contracts/reviews/${id}/approve`);
+    cbMaybeCreateKycTask(review.kycDelegation, review.rmName, review.clientName, review.clientEmail);
+    State.notifications.unshift({
+      id: Date.now(), read: false, type: 'success',
+      text: `Contract for ${review.clientName} approved — client invited to the portal`,
+      time: 'just now',
+    });
+    renderNotificationDropdown();
+    showToast('success', `Approved. Invitation sent to ${review.clientEmail}.`);
+    renderContractReviews();
+  } catch (err) {
+    showToast('error', err.message || 'Failed to approve.');
+  }
+}
+
+async function rejectContractReview(id) {
+  const cached = State.contractReviews.find(x => x._id === id);
+  const reason = prompt(`Reason for rejecting the contract package for ${cached?.clientName || 'this client'}:`);
+  if (!reason || !reason.trim()) return;
+
+  try {
+    const review = await apiFetch('POST', `/contracts/reviews/${id}/reject`, { reason: reason.trim() });
+    State.notifications.unshift({
+      id: Date.now(), read: false, type: 'warning',
+      text: `Contract for ${review.clientName} was rejected by Compliance: ${review.rejectionReason}`,
+      time: 'just now',
+    });
+    renderNotificationDropdown();
+    showToast('info', `Rejected. ${review.rmName || 'The RM'} has been notified.`);
+    renderContractReviews();
+  } catch (err) {
+    showToast('error', err.message || 'Failed to reject.');
+  }
+}
+
 /* ── Step 3: Confirmation ────────────────────────────────────── */
 function cbStep3() {
   const el = document.getElementById('cb-body');
-  const { otp, clientName, clientEmail } = CB.result || {};
+  const { otp, clientName, clientEmail, reviewSubmitted } = CB.result || {};
   const tpl = CB.templates.find(t => t.id === CB.selectedId);
+
+  if (reviewSubmitted) {
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-body" style="text-align:center;padding:48px 32px;">
+          <div style="width:64px;height:64px;border-radius:50%;background:rgba(139,92,246,0.15);
+                      display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-purple)" stroke-width="2.5">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/>
+            </svg>
+          </div>
+          <h2 style="color:var(--text-primary);margin-bottom:8px;">Submitted for Review!</h2>
+          <p style="color:var(--text-secondary);margin-bottom:28px;max-width:420px;margin-left:auto;margin-right:auto;">
+            The contract package for <strong>${clientName}</strong> has been sent to the Compliance department for review.
+            Once approved, ${clientEmail} will automatically receive the portal invitation.
+          </p>
+          <button class="btn-primary" onclick="renderContractBuilding()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Build Another Contract
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   el.innerHTML = `
     <div class="card">
       <div class="card-body" style="text-align:center;padding:48px 32px;">
@@ -3122,6 +3457,8 @@ function cbCollectAllValues() {
     investment_comments:     document.getElementById('cb_investment_comments')?.value?.trim() || '',
     management_fee:          document.getElementById('cb_management_fee')?.value?.trim()      || '',
     performance_fee:         document.getElementById('cb_performance_fee')?.value?.trim()     || '',
+    performance_fee_frequency: document.getElementById('cb_performance_fee_frequency')?.value || 'semiannual',
+    client_type:              CB.clientType || 'individual',
     ccy_chf_min: String(CB.currencyWeights.CHF?.min||0), ccy_chf_max: String(CB.currencyWeights.CHF?.max||0),
     ccy_eur_min: String(CB.currencyWeights.EUR?.min||0), ccy_eur_max: String(CB.currencyWeights.EUR?.max||0),
     ccy_usd_min: String(CB.currencyWeights.USD?.min||0), ccy_usd_max: String(CB.currencyWeights.USD?.max||0),

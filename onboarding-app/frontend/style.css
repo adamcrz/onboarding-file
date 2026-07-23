@@ -941,7 +941,7 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 
 /* Role Portal Cards — login landing */
 .role-portal-grid {
-  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
   margin: 24px 0;
 }
 
@@ -968,6 +968,11 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .role-portal-compliance .role-portal-icon { background: rgba(0,80,115,0.10); color: #005073; }
 .role-portal-compliance:hover { border-color: #005073; background: rgba(0,80,115,0.04); color: #005073; }
 .role-portal-compliance:hover .role-portal-icon { background: rgba(0,80,115,0.16); }
+
+/* External Compliance — slate */
+.role-portal-compliance-external .role-portal-icon { background: rgba(100,116,139,0.10); color: #64748b; }
+.role-portal-compliance-external:hover { border-color: #64748b; background: rgba(100,116,139,0.04); color: #64748b; }
+.role-portal-compliance-external:hover .role-portal-icon { background: rgba(100,116,139,0.16); }
 
 /* Rel. Manager — mid-blue */
 .role-portal-rm .role-portal-icon { background: rgba(65,114,159,0.10); color: #41729F; }

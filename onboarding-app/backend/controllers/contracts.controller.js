@@ -1,9 +1,21 @@
 const path = require('path');
 const fs   = require('fs');
 const User = require('../models/User');
+const ContractReview = require('../models/ContractReview');
 const { sendClientInviteEmail } = require('../services/email.service');
 
 const CONTRACTS_DIR = path.join(__dirname, '..');
+const APPENDIX_DIR  = path.join(__dirname, '..', '..', 'Form A T S');
+
+// Beneficial-owner identification appendix (Swiss VSB 20) — which form applies
+// depends on the client's legal form: natural person (A), operating company (K),
+// domiciliary company / foundation (S), or trust (T).
+const APPENDICES = {
+  individual: { letter: 'A', label: 'Individual',  files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formulare A.docx',            EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare A.docx' } },
+  company:    { letter: 'K', label: 'Company',      files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formulare K.docx',            EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare K.docx' } },
+  foundation: { letter: 'S', label: 'Foundation',   files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formular S - Multi BO.docx',  EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare S - Mulit BO.docx' } },
+  trust:      { letter: 'T', label: 'Trust',        files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formular T - Multi (2).docx', EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare T - Multi BO.docx' } },
+};
 
 const TEMPLATES = [
   { id: 'de-all-in',      lang: 'DE', name: 'Vertragsset All-In',        type: 'All-In',                file: '2025_Vertragsset DE - AllesIN FINAL.docx' },
@@ -49,6 +61,45 @@ function standardFields(lang) {
 
 exports.getTemplates = (_req, res) => {
   res.json(TEMPLATES.map(({ id, lang, name, type }) => ({ id, lang, name, type })));
+};
+
+function findAppendixFile(clientType, lang) {
+  const appendix = APPENDICES[clientType];
+  if (!appendix) return null;
+  const file = appendix.files[lang];
+  if (!file) return null;
+  return { appendix, filePath: path.join(APPENDIX_DIR, file), fileName: file };
+}
+
+exports.previewAppendix = async (req, res) => {
+  const found = findAppendixFile(req.params.clientType, req.params.lang);
+  if (!found) return res.status(404).json({ error: 'No appendix for this client type / language' });
+  if (!fs.existsSync(found.filePath)) return res.status(404).json({ error: 'File not found on disk' });
+
+  try {
+    const mammoth = require('mammoth');
+    const { value: html } = await mammoth.convertToHtml({ path: found.filePath });
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Formular ${found.appendix.letter}</title>
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; max-width: 820px; margin: 40px auto;
+               padding: 0 32px 60px; line-height: 1.7; color: #1a1a1a; font-size: 13px; }
+        h1,h2,h3 { color: #111; } p { margin: 0.5em 0; }
+        table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+        td, th { border: 1px solid #d1d5db; padding: 6px 10px; }
+      </style>
+    </head><body>${html}</body></html>`;
+    res.json({ html: fullHtml, name: `Formular ${found.appendix.letter}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.downloadAppendix = (req, res) => {
+  const found = findAppendixFile(req.params.clientType, req.params.lang);
+  if (!found) return res.status(404).json({ error: 'No appendix for this client type / language' });
+  if (!fs.existsSync(found.filePath)) return res.status(404).json({ error: 'File not found on disk' });
+  res.download(found.filePath, found.fileName);
 };
 
 exports.downloadTemplate = (req, res) => {
@@ -240,15 +291,47 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   return map;
 }
 
-// Builds checkbox replacement map for the "New Contract / Replaces existing" toggle.
-function buildContractTypeCheckboxes(fieldValues) {
-  const isNew = fieldValues.contract_type !== 'replace';
-  return {
-    '☐ New Contract':                    (isNew  ? '☑' : '☐') + ' New Contract',
-    '□ New Contract':                    (isNew  ? '☑' : '□') + ' New Contract',
-    '☐ Replaces the existing Contract':  (!isNew ? '☑' : '☐') + ' Replaces the existing Contract',
-    '□ Replaces the existing Contract':  (!isNew ? '☑' : '□') + ' Replaces the existing Contract',
-  };
+// Toggles the "New Contract" / "Replaces the existing Contract" cover-page toggle.
+// These are native Word checkbox content controls (<w:sdt> + <w14:checkbox>), not
+// plain "☐ Label" text — the label is a separate run that follows the control, so a
+// literal-text replace (the previous approach) never matches anything. Both the
+// stored checked state and the displayed glyph run have to be updated for the
+// change to actually show.
+const CONTRACT_TYPE_LABELS = {
+  new:     ['new contract', 'neuer vertrag'],
+  replace: ['replaces the existing contract', 'replaces existing contract', 'ersetzt den bestehenden vertrag'],
+};
+
+function applyContractTypeCheckboxToXml(xml, fieldValues) {
+  const isNew = (fieldValues || {}).contract_type !== 'replace';
+  const sdtRe = /<w:sdt>[\s\S]*?<\/w:sdt>/g;
+  const edits = [];
+  let m;
+  while ((m = sdtRe.exec(xml)) !== null) {
+    const block = m[0];
+    if (!block.includes('<w14:checkbox>')) continue;
+
+    const blockEnd = m.index + block.length;
+    const pEnd = xml.indexOf('</w:p>', blockEnd);
+    let after = pEnd >= 0 ? xml.slice(blockEnd, pEnd) : xml.slice(blockEnd, blockEnd + 500);
+    const nextSdt = after.indexOf('<w:sdt>');
+    if (nextSdt >= 0) after = after.slice(0, nextSdt);
+    const label = [...after.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(x => x[1]).join('').trim().toLowerCase();
+    if (!label) continue;
+
+    let shouldCheck = null;
+    if (CONTRACT_TYPE_LABELS.new.some(l => label.includes(l)))          shouldCheck = isNew;
+    else if (CONTRACT_TYPE_LABELS.replace.some(l => label.includes(l))) shouldCheck = !isNew;
+    if (shouldCheck === null) continue;
+
+    let newBlock = block.replace(/<w14:checked w14:val="\d+"\/>/, `<w14:checked w14:val="${shouldCheck ? 1 : 0}"/>`);
+    newBlock = newBlock.replace(/(<w:sdtContent>[\s\S]*?<w:t[^>]*>)[^<]*(<\/w:t>)/, `$1${shouldCheck ? '☒' : '☐'}$2`);
+    edits.push({ start: m.index, end: blockEnd, text: newBlock });
+  }
+  for (let i = edits.length - 1; i >= 0; i--) {
+    xml = xml.slice(0, edits[i].start) + edits[i].text + xml.slice(edits[i].end);
+  }
+  return xml;
 }
 
 // Replaces placeholder text inside a Word XML string using Word bookmarks as
@@ -379,6 +462,84 @@ function applyAllocMinToXml(xml, fieldValues) {
   return xml;
 }
 
+// Performance-fee settlement clause (§7.2 in the DE/EN "Discretionary All-In" templates).
+// The templates contain BOTH wordings as separate paragraphs, each wrapped in its own
+// bookmark ("PerfClauseAnnual" / "PerfClauseSemi"). Exactly one is shown per generated
+// contract: whichever the fee-settlement toggle selects (default: semiannual/halbjährlich);
+// the other is blanked out. Templates without these bookmarks (Advisory, Execution Only)
+// are left untouched.
+const PERF_CLAUSE_TEXT = {
+  DE: {
+    annual: pct => `Der Vermögensverwalter hat Anspruch auf eine jährliche Performance-Gebühr in Höhe von ${pct} p.a. (zuzüglich der jeweils anwendbaren Mehrwertsteuer) der Nettokapitalzunahme. Die Nettokapitalzunahme berechnet sich aus der Wertsteigerung des Portfolios unter Berücksichtigung von Einzahlungen und Rücknahmen sowie Zins- und Dividendengutschriften, abzüglich der Vermögensverwaltungsgebühr, Bankspesen, Steuern und sonstiger Abgaben. Die Abrechnung erfolgt jährlich, jeweils zum 30.11., unter Anwendung einer High-Water-Mark-Methode. Die Performance-Gebühr von ${pct} wird ausschließlich auf den Teil der Nettokapitalzunahme bis zur Höhe von ${pct} p.a der zuvor maßgeblichen High-Water-Mark erhoben. Ein etwaiger Kapitalzuwachs über diesen Schwellenwert hinaus bleibt von der Performance-Gebühr unberührt.`,
+    semiannual: pct => `Der Vermögensverwalter hat Anspruch auf eine jährliche Performance-Gebühr in Höhe von ${pct} p.a. (zzgl. der jeweils anwendbaren Mehrwertsteuer) der Nettokapitalzunahme. Die Nettokapitalzunahme berechnet sich aus der Wertsteigerung des Portfolios unter Berücksichtigung von Einzahlungen und Rücknahmen sowie Zins- und Dividendengutschriften, abzüglich der Vermögensverwaltungsgebühr, Bankspesen, Steuern und sonstiger Abgaben. Die Abrechnung erfolgt halbjährlich, jeweils zum 30.06. und 31.12., unter Anwendung einer High-Water-Mark-Methode. Die ersten Vorab p.a. der Wertsteigerung oberhalb der High-Water-Mark gelten als sogenannte „Hurdle Rate“.`,
+  },
+  EN: {
+    annual: pct => `The Asset Manager is entitled to an annual performance fee of ${pct} p.a. (plus the applicable VAT) of the net capital growth. The net capital growth is calculated from the increase in value of the portfolio, taking into account deposits and redemptions as well as interest and dividend credits, less the asset management fee, bank charges, taxes and other levies. Settlement takes place annually, on November 30, using a high-water mark method. The performance fee of ${pct} is charged exclusively on the portion of the net capital growth up to the level of ${pct} p.a. of the previously applicable high-water mark. Any capital growth exceeding this threshold shall not be subject to the performance fee.`,
+    semiannual: pct => `The Asset Manager is entitled to an annual performance fee of ${pct} p.a. (plus the applicable VAT) of the net capital growth. The net capital growth is calculated from the increase in value of the portfolio, taking into account deposits and redemptions as well as interest and dividend credits, less the asset management fee, bank charges, taxes and other levies. Settlement takes place every six months, on June 30 and December 31, using a high-water mark method. The first Vorab p.a. of the increase in value above the high-water mark is deemed to be the hurdle rate.`,
+  },
+};
+
+// Sets the full text of a bookmarked region unconditionally (unlike applyReplacementsToXml,
+// this also blanks the region when `text` is empty — used to hide the non-selected clause).
+function setBookmarkText(xml, name, text) {
+  const startIdx = xml.indexOf(`w:name="${name}"`);
+  if (startIdx === -1) return xml;
+  const idM = xml.slice(xml.lastIndexOf('<w:bookmarkStart', startIdx), startIdx).match(/w:id="(\d+)"/);
+  if (!idM) return xml;
+  const bmStartTagEnd = xml.indexOf('/>', startIdx) + 2;
+  const endRe = new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${idM[1]}"[^>]*/>`);
+  const endMatch = endRe.exec(xml.slice(bmStartTagEnd));
+  if (!endMatch) return xml;
+  const contentStart = bmStartTagEnd;
+  const contentEnd = bmStartTagEnd + endMatch.index;
+  const segment = xml.slice(contentStart, contentEnd);
+
+  let firstDone = false;
+  const newSegment = segment.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, () => {
+    if (!firstDone) {
+      firstDone = true;
+      return `<w:t xml:space="preserve">${escXml(text)}</w:t>`;
+    }
+    return '<w:t></w:t>';
+  });
+
+  return xml.slice(0, contentStart) + newSegment + xml.slice(contentEnd);
+}
+
+function applyPerformanceFeeClauseToXml(xml, fieldValues, lang) {
+  if (!xml.includes('w:name="PerfClauseAnnual"')) return xml; // template has no toggleable clause
+  const fv = fieldValues || {};
+  const pct = fv.performance_fee ? fv.performance_fee + '%' : 'Perf';
+  const freq = fv.performance_fee_frequency === 'annual' ? 'annual' : 'semiannual';
+  const texts = PERF_CLAUSE_TEXT[lang] || PERF_CLAUSE_TEXT.DE;
+
+  xml = setBookmarkText(xml, 'PerfClauseAnnual', freq === 'annual'     ? texts.annual(pct)     : '');
+  xml = setBookmarkText(xml, 'PerfClauseSemi',   freq === 'semiannual' ? texts.semiannual(pct) : '');
+  return xml;
+}
+
+// Flags the performance-fee clause in red in the PREVIEW ONLY when Jährlich (annual)
+// is selected, since Halbjährlich (semiannual) is the standard default — annual is the
+// deviation worth calling out to the reviewer. The generated .docx keeps normal text.
+function highlightPerfClauseInPreviewHtml(html, fieldValues, lang) {
+  const fv = fieldValues || {};
+  if (fv.performance_fee_frequency !== 'annual') return html;
+  const pct = fv.performance_fee ? fv.performance_fee + '%' : 'Perf';
+  const texts = PERF_CLAUSE_TEXT[lang] || PERF_CLAUSE_TEXT.DE;
+  const clause = texts.annual(pct);
+  if (!html.includes(clause)) return html;
+  return html.replace(clause, `<span style="color:#dc2626;">${clause}</span>`);
+}
+
+// Swaps the "(Formular A)" heading in the embedded beneficial-owner declaration
+// to match the client's legal form (A/K/S/T) — see APPENDICES above.
+function applyFormularLetterToXml(xml, fieldValues) {
+  if (!xml.includes('w:name="FormularLetter"')) return xml; // template has no embedded Formular section
+  const clientType = (fieldValues || {}).client_type;
+  const letter = APPENDICES[clientType]?.letter || 'A';
+  return setBookmarkText(xml, 'FormularLetter', `${letter})`);
+}
+
 function buildCheckboxReplacements(fieldValues, fieldDefs) {
   const map = {};
   (fieldDefs || []).filter(f => f.type === 'checkbox').forEach(f => {
@@ -408,6 +569,9 @@ exports.previewContract = async (req, res) => {
       if (!zip.files[xmlFile]) return;
       let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
       xml = applyAllocMinToXml(xml, fieldValues);
+      xml = applyPerformanceFeeClauseToXml(xml, fieldValues, template.lang);
+      xml = applyFormularLetterToXml(xml, fieldValues);
+      xml = applyContractTypeCheckboxToXml(xml, fieldValues);
       zip.file(xmlFile, xml);
     });
 
@@ -431,11 +595,10 @@ exports.previewContract = async (req, res) => {
         );
       });
 
-    // Apply checkbox state in preview (field checkboxes + contract type toggle)
-    const checkboxMap = {
-      ...buildCheckboxReplacements(fieldValues, fieldDefs),
-      ...buildContractTypeCheckboxes(fieldValues),
-    };
+    // Apply checkbox state in preview (contract type toggle is already baked into
+    // the XML above, before the mammoth conversion, since it's a native checkbox
+    // content control rather than replaceable text)
+    const checkboxMap = buildCheckboxReplacements(fieldValues, fieldDefs);
     Object.entries(checkboxMap).forEach(([from, to]) => {
       const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const isChecked = to.startsWith('☑');
@@ -446,6 +609,8 @@ exports.previewContract = async (req, res) => {
           : to
       );
     });
+
+    processed = highlightPerfClauseInPreviewHtml(processed, fieldValues, template.lang);
 
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>${template.name}</title>
@@ -477,16 +642,16 @@ exports.generateContract = async (req, res) => {
 
     const content = fs.readFileSync(filePath, 'binary');
     const zip = new PizZip(content);
-    const checkboxMap = {
-      ...buildCheckboxReplacements(fieldValues, fieldDefs),
-      ...buildContractTypeCheckboxes(fieldValues),
-    };
+    const checkboxMap = buildCheckboxReplacements(fieldValues, fieldDefs);
 
     ['word/document.xml','word/header1.xml','word/footer1.xml','word/header2.xml','word/footer2.xml']
       .forEach(xmlFile => {
         if (!zip.files[xmlFile]) return;
         let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
         xml = applyAllocMinToXml(xml, fieldValues);
+        xml = applyPerformanceFeeClauseToXml(xml, fieldValues, template.lang);
+        xml = applyFormularLetterToXml(xml, fieldValues);
+        xml = applyContractTypeCheckboxToXml(xml, fieldValues);
         // Apply checkbox state
         Object.entries(checkboxMap).forEach(([from, to]) => {
           const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -504,34 +669,116 @@ exports.generateContract = async (req, res) => {
   }
 };
 
+// Creates/updates the client's portal login and emails them their OTP invite.
+// Shared by the direct-invite endpoint and the Contract Reviews approval flow.
+async function createClientInviteAndEmail(clientName, clientEmail, templateId) {
+  const template = TEMPLATES.find(t => t.id === templateId);
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const otp   = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+
+  let user = await User.findOne({ email: clientEmail.toLowerCase() });
+  if (user) {
+    user.name = clientName;
+    user.password = otp;
+    user.isEmailVerified = true;
+    user.role = 'client';
+    await user.save();
+  } else {
+    user = new User({ name: clientName, email: clientEmail.toLowerCase(),
+                      password: otp, role: 'client', isEmailVerified: true });
+    await user.save();
+  }
+
+  await sendClientInviteEmail(clientEmail, clientName, otp, template?.name || templateId);
+  return otp;
+}
+
 exports.sendInvite = async (req, res) => {
-  const { clientName, clientEmail, templateId, fieldValues } = req.body;
+  const { clientName, clientEmail, templateId } = req.body;
   if (!clientEmail || !clientName) {
     return res.status(400).json({ error: 'Client name and email are required' });
   }
 
-  const template = TEMPLATES.find(t => t.id === templateId);
+  try {
+    const otp = await createClientInviteAndEmail(clientName, clientEmail, templateId);
+    res.json({ success: true, message: `Invitation sent to ${clientEmail}`, otp });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/* ============================================================
+   CONTRACT REVIEWS — RM submits a built contract package to
+   Compliance for approval before the client is invited.
+   ============================================================ */
+exports.submitContractReview = async (req, res) => {
+  const {
+    templateId, templateName, lang, clientName, clientEmail,
+    fieldValues, kycDelegation, rmName, rmEmail,
+  } = req.body;
+
+  if (!clientEmail || !clientName) {
+    return res.status(400).json({ error: 'Client name and email are required' });
+  }
 
   try {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const otp   = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const review = await ContractReview.create({
+      templateId, templateName, lang, clientName, clientEmail,
+      fieldValues, kycDelegation, rmName, rmEmail,
+    });
+    res.json(review);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
-    let user = await User.findOne({ email: clientEmail.toLowerCase() });
-    if (user) {
-      user.name = clientName;
-      user.password = otp;
-      user.isEmailVerified = true;
-      user.role = 'client';
-      await user.save();
-    } else {
-      user = new User({ name: clientName, email: clientEmail.toLowerCase(),
-                        password: otp, role: 'client', isEmailVerified: true });
-      await user.save();
+exports.listContractReviews = async (_req, res) => {
+  try {
+    const reviews = await ContractReview.find().sort({ createdAt: -1 });
+    res.json(reviews);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.approveContractReview = async (req, res) => {
+  try {
+    const review = await ContractReview.findById(req.params.id);
+    if (!review) return res.status(404).json({ error: 'Contract review not found' });
+    if (review.status !== 'pending') {
+      return res.status(400).json({ error: 'This contract package has already been reviewed' });
     }
 
-    await sendClientInviteEmail(clientEmail, clientName, otp, template?.name || templateId);
+    const otp = await createClientInviteAndEmail(review.clientName, review.clientEmail, review.templateId);
 
-    res.json({ success: true, message: `Invitation sent to ${clientEmail}`, otp });
+    review.status = 'approved';
+    review.reviewedAt = new Date();
+    review.otp = otp;
+    await review.save();
+
+    res.json(review);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.rejectContractReview = async (req, res) => {
+  const reason = (req.body.reason || '').trim();
+  if (!reason) return res.status(400).json({ error: 'A rejection reason is required' });
+
+  try {
+    const review = await ContractReview.findById(req.params.id);
+    if (!review) return res.status(404).json({ error: 'Contract review not found' });
+    if (review.status !== 'pending') {
+      return res.status(400).json({ error: 'This contract package has already been reviewed' });
+    }
+
+    review.status = 'rejected';
+    review.reviewedAt = new Date();
+    review.rejectionReason = reason;
+    await review.save();
+
+    res.json(review);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

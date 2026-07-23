@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "wipe-users": "node scripts/wipeUsers.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
