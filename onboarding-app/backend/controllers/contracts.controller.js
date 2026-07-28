@@ -484,9 +484,10 @@ const PERF_CLAUSE_TEXT = {
 function setBookmarkText(xml, name, text) {
   const startIdx = xml.indexOf(`w:name="${name}"`);
   if (startIdx === -1) return xml;
-  const idM = xml.slice(xml.lastIndexOf('<w:bookmarkStart', startIdx), startIdx).match(/w:id="(\d+)"/);
-  if (!idM) return xml;
+  const tagStart = xml.lastIndexOf('<w:bookmarkStart', startIdx);
   const bmStartTagEnd = xml.indexOf('/>', startIdx) + 2;
+  const idM = xml.slice(tagStart, bmStartTagEnd).match(/w:id="(\d+)"/);
+  if (!idM) return xml;
   const endRe = new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${idM[1]}"[^>]*/>`);
   const endMatch = endRe.exec(xml.slice(bmStartTagEnd));
   if (!endMatch) return xml;
