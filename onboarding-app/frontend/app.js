@@ -2494,7 +2494,7 @@ const CB = {
   currencyWeights: { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } },
   investmentComments: '',
   managementFee: '', performanceFee: '', performanceFeeFrequency: 'semiannual',
-  clientType: 'individual',
+  clientType: 'individual', formularBookmark: false,
 };
 
 // Legal form of the contracting party — determines which VSB 20 beneficial-owner
@@ -2542,7 +2542,7 @@ async function renderContractBuilding() {
   CB.currencyWeights = { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } };
   CB.investmentComments = '';
   CB.managementFee = ''; CB.performanceFee = ''; CB.performanceFeeFrequency = 'semiannual';
-  CB.clientType = 'individual';
+  CB.clientType = 'individual'; CB.formularBookmark = false;
   await cbRenderStep();
 }
 
@@ -2726,10 +2726,12 @@ async function cbStep2() {
   try {
     const data = await apiFetch('GET', `/contracts/placeholders/${CB.selectedId}`);
     CB.fields = data.fields || [];
+    CB.formularBookmark = !!data.bookmarks?.includes('FormularLetter');
     if (data.bookmarks?.length) {
       console.log(`[Contract Builder] Bookmarks in "${CB.selectedId}":`, data.bookmarks);
     }
   } catch (_) {
+    CB.formularBookmark = false;
     CB.fields = [
       { key:'client_last_name',   label:'Last Name',                   type:'text',  required:true  },
       { key:'client_first_name',  label:'First Name',                  type:'text',  required:true  },
@@ -2788,14 +2790,12 @@ async function cbStep2() {
           </select>
         </div>
       </div>
-      <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">
-        Contract will reference Formular <strong id="cb_formular_letter">${CLIENT_LEGAL_FORMS.find(f=>f.value===CB.clientType)?.letter||'A'}</strong> for the VSB 20 beneficial-owner declaration.
-        <a href="#" onclick="cbPreviewAppendix();return false;" style="margin-left:8px;">Preview form</a> ·
-        <a href="#" onclick="cbDownloadAppendix();return false;">Download</a>
+      <div style="margin-top:10px;font-size:12px;color:var(--text-muted);" id="cb_formular_status">
+        ${cbFormularStatusHTML()}
       </div>
     </div>
 
-    <div style="margin-top:20px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
+    <div id="cb-uo-outer" style="display:${CB.clientType === 'individual' ? 'block' : 'none'};margin-top:20px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;">
         <input type="checkbox" id="cb-uo-toggle" ${CB.uo?'checked':''} onchange="cbToggleUO(this.checked)"
                style="width:16px;height:16px;accent-color:var(--accent-blue);">
@@ -3078,10 +3078,34 @@ function cbTogglePerfFreq() {
   if (wrap) wrap.style.display = hasFee ? 'block' : 'none';
 }
 
+// Honest status message for the Beneficial-Owner Declaration section: the letter
+// swap only actually takes effect on templates containing the FormularLetter
+// bookmark (currently DE All-In and DE Advisory) — CB.formularBookmark reflects
+// whether the currently selected template is one of those.
+function cbFormularStatusHTML() {
+  const letter = CLIENT_LEGAL_FORMS.find(f => f.value === CB.clientType)?.letter || 'A';
+  if (!CB.formularBookmark) {
+    return `<span style="color:var(--accent-amber);">⚠ The selected template has no beneficial-owner declaration section — this selection won't change the generated contract.</span>`;
+  }
+  return `Contract will reference Formular <strong>${letter}</strong> for the VSB 20 beneficial-owner declaration.
+    <a href="#" onclick="cbPreviewAppendix();return false;" style="margin-left:8px;">Preview form</a> ·
+    <a href="#" onclick="cbDownloadAppendix();return false;">Download</a>`;
+}
+
 function cbSetClientType(val) {
   CB.clientType = val;
-  const badge = document.getElementById('cb_formular_letter');
-  if (badge) badge.textContent = CLIENT_LEGAL_FORMS.find(f => f.value === val)?.letter || 'A';
+  const status = document.getElementById('cb_formular_status');
+  if (status) status.innerHTML = cbFormularStatusHTML();
+
+  const uoOuter = document.getElementById('cb-uo-outer');
+  if (uoOuter) uoOuter.style.display = val === 'individual' ? 'block' : 'none';
+  if (val !== 'individual' && CB.uo) {
+    CB.uo = false;
+    const toggle = document.getElementById('cb-uo-toggle');
+    if (toggle) toggle.checked = false;
+    const p2 = document.getElementById('cb-person2-section');
+    if (p2) p2.style.display = 'none';
+  }
 }
 
 async function cbPreviewAppendix() {
@@ -3320,18 +3344,32 @@ function contractReviewRowHTML(r) {
   `;
 }
 
+// Downloads the actual generated .docx for this submission (not the HTML/mammoth
+// approximation) so the reviewer sees exactly what Word will render — checkboxes,
+// the Formular letter, performance-fee clause, etc. — with no conversion artifacts.
 async function cbReviewPreview(id) {
   const r = State.contractReviews.find(x => x._id === id);
   if (!r) return;
-  const win = window.open('', '_blank');
-  win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Loading preview…</p>');
   try {
-    const data = await apiFetch('POST', `/contracts/preview/${r.templateId}`, { fieldValues: r.fieldValues, fieldDefs: [] });
-    win.document.open();
-    win.document.write(data.html);
-    win.document.close();
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/contracts/generate/${r.templateId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ fieldValues: r.fieldValues, fieldDefs: [] }),
+    });
+    if (!response.ok) throw new Error('Failed to generate document');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${r.clientName} - ${r.templateName}.docx`;
+    a.click();
+    URL.revokeObjectURL(url);
   } catch (err) {
-    win.document.write(`<p style="font-family:Arial;padding:24px;color:red;">Error: ${err.message}</p>`);
+    showToast('error', err.message || 'Failed to open document.');
   }
 }
 
