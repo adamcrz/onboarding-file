@@ -135,6 +135,12 @@ exports.getPlaceholders = async (req, res) => {
       const nameM = bm[0].match(/w:name="([^"]+)"/);
       if (nameM && !nameM[1].startsWith('_')) bookmarks.push(nameM[1]);
     }
+    // Some templates (the EN ones) have no FormularLetter bookmark but do have the
+    // plain-text "(Form X)" heading applyFormularLetterToXml can still swap — report
+    // it the same way so the frontend knows the letter selector actually does something.
+    if (!bookmarks.includes('FormularLetter') && hasPlainTextFormularMarker(docXml)) {
+      bookmarks.push('FormularLetter');
+    }
     const uniqueBookmarks = [...new Set(bookmarks)].sort();
     console.log(`[${template.id}] Bookmarks found:`, uniqueBookmarks);
 
@@ -532,13 +538,44 @@ function highlightPerfClauseInPreviewHtml(html, fieldValues, lang) {
   return html.replace(clause, `<span style="color:#dc2626;">${clause}</span>`);
 }
 
-// Swaps the "(Formular A)" heading in the embedded beneficial-owner declaration
-// to match the client's legal form (A/K/S/T) — see APPENDICES above.
+// Fallback for templates where "(Form(ular) X)" has no bookmark at all — the DE
+// templates wrap the letter in a "FormularLetter" bookmark (handled by
+// setBookmarkText above), but the EN templates split it across plain runs with
+// nothing to anchor to: <w:t>(Form</w:t> ... <w:t> </w:t> ... <w:t>A)</w:t>.
+// Finds the run right after the literal "(Form" run whose text contains ")" and
+// replaces its content with the new letter.
+function hasPlainTextFormularMarker(xml) {
+  return /<w:t[^>]*>\(Form<\/w:t>/.test(xml);
+}
+
+function setPlainTextFormularLetter(xml, letter) {
+  const markerRe = /<w:t[^>]*>\(Form<\/w:t>/;
+  const markerMatch = markerRe.exec(xml);
+  if (!markerMatch) return xml;
+
+  const tRe = /<w:t([^>]*)>([^<]*)<\/w:t>/g;
+  tRe.lastIndex = markerMatch.index + markerMatch[0].length;
+  let m;
+  while ((m = tRe.exec(xml)) !== null) {
+    if (m[2].includes(')')) {
+      return xml.slice(0, m.index) + `<w:t${m[1]}>${escXml(letter)})</w:t>` + xml.slice(m.index + m[0].length);
+    }
+  }
+  return xml;
+}
+
+// Swaps the "(Formular A)" / "(Form A)" heading in the embedded beneficial-owner
+// declaration to match the client's legal form (A/K/S/T) — see APPENDICES above.
 function applyFormularLetterToXml(xml, fieldValues) {
-  if (!xml.includes('w:name="FormularLetter"')) return xml; // template has no embedded Formular section
+  const hasBookmark  = xml.includes('w:name="FormularLetter"');
+  const hasPlainText = hasPlainTextFormularMarker(xml);
+  if (!hasBookmark && !hasPlainText) return xml; // template has no embedded Formular section
+
   const clientType = (fieldValues || {}).client_type;
   const letter = APPENDICES[clientType]?.letter || 'A';
-  return setBookmarkText(xml, 'FormularLetter', `${letter})`);
+  if (hasBookmark) xml = setBookmarkText(xml, 'FormularLetter', `${letter})`);
+  if (hasPlainText) xml = setPlainTextFormularLetter(xml, letter);
+  return xml;
 }
 
 function buildCheckboxReplacements(fieldValues, fieldDefs) {
