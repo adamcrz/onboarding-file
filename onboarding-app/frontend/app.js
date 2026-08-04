@@ -2472,6 +2472,16 @@ function kycDownloadTemplate() {
 /* ============================================================
    PAGE: CONTRACT BUILDING
    ============================================================ */
+// Default currency allocation: the mandate/portfolio currency (chosen in Step 1)
+// gets 0–100%, every other listed currency defaults to 0–50%.
+function defaultCurrencyWeights(mandateCcy) {
+  const keys = ['CHF','EUR','USD','GBP','AUD','JPY'];
+  const base = keys.includes(mandateCcy) ? mandateCcy : 'CHF';
+  const weights = {};
+  keys.forEach(k => { weights[k] = k === base ? { min: 0, max: 100 } : { min: 0, max: 50 }; });
+  return weights;
+}
+
 /* ============================================================
    CONTRACT BUILDER — state
    ============================================================ */
@@ -2491,7 +2501,7 @@ const CB = {
     cash:        { min:  5, max: 30 },
     other:       { min:  0, max: 15 },
   },
-  currencyWeights: { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } },
+  currencyWeights: defaultCurrencyWeights('CHF'),
   investmentComments: '',
   managementFee: '', performanceFee: '', performanceFeeFrequency: 'semiannual', vorabPct: '',
   clientType: 'individual', formularBookmark: false,
@@ -2539,7 +2549,7 @@ async function renderContractBuilding() {
   CB.investmentProfile = 'balanced';
   const bp = PROFILE_PRESETS.balanced;
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
-  CB.currencyWeights = { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } };
+  CB.currencyWeights = defaultCurrencyWeights(CB.currency);
   CB.investmentComments = '';
   CB.managementFee = ''; CB.performanceFee = ''; CB.performanceFeeFrequency = 'semiannual'; CB.vorabPct = '';
   CB.clientType = 'individual'; CB.formularBookmark = false;
@@ -2699,6 +2709,7 @@ function cbSelectTemplate(id) {
 async function cbGoStep2() {
   if (!CB.selectedId) return;
   CB.step = 2;
+  CB.currencyWeights = defaultCurrencyWeights(CB.currency); // reflect the Step 1 currency choice
   await cbStep2();
 }
 

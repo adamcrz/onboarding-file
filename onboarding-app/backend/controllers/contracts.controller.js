@@ -547,9 +547,55 @@ function blankParagraphContainingBookmark(xml, bookmarkName) {
     seg => seg.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, '<w:t$1></w:t>'));
 }
 
+// The DE template's placeholder red is FF0000; the EN template's section heading
+// specifically uses EE0000 (a template inconsistency) — strip both.
+const RED_COLOR_RE = /<w:color w:val="(?:FF0000|EE0000)"\/>/g;
+
 function stripRedInParagraphContainingBookmark(xml, bookmarkName) {
   return transformParagraphContainingBookmark(xml, bookmarkName,
-    seg => seg.replace(/<w:color w:val="FF0000"\/>/g, ''));
+    seg => seg.replace(RED_COLOR_RE, ''));
+}
+
+// Strips red from the paragraph immediately BEFORE the one containing `bookmarkName`
+// — used for the "7.2 Performancegebühr" section heading, which sits right before
+// the PerfClauseSemi paragraph but isn't itself bookmarked.
+function stripRedInHeadingBeforeBookmark(xml, bookmarkName) {
+  const nameIdx = xml.indexOf(`w:name="${bookmarkName}"`);
+  if (nameIdx === -1) return xml;
+  const ownPStart = Math.max(xml.lastIndexOf('<w:p ', nameIdx), xml.lastIndexOf('<w:p>', nameIdx));
+  if (ownPStart === -1) return xml;
+  const prevPEnd = xml.lastIndexOf('</w:p>', ownPStart);
+  if (prevPEnd === -1) return xml;
+  const prevPStart = Math.max(xml.lastIndexOf('<w:p ', prevPEnd), xml.lastIndexOf('<w:p>', prevPEnd));
+  if (prevPStart === -1) return xml;
+  const contentEnd = prevPEnd + '</w:p>'.length;
+  const region = xml.slice(prevPStart, contentEnd).replace(RED_COLOR_RE, '');
+  return xml.slice(0, prevPStart) + region + xml.slice(contentEnd);
+}
+
+// Strips red from the `count` paragraphs immediately AFTER the one containing
+// `bookmarkName` (skipping that paragraph's own close first) — used for the closing
+// sentence(s) after the performance-fee clauses, which aren't bookmarked either.
+function stripRedAfterBookmark(xml, bookmarkName, count) {
+  const nameIdx = xml.indexOf(`w:name="${bookmarkName}"`);
+  if (nameIdx === -1) return xml;
+  const tagStart = xml.lastIndexOf('<w:bookmarkStart', nameIdx);
+  const tagEnd = xml.indexOf('/>', nameIdx) + 2;
+  const idM = xml.slice(tagStart, tagEnd).match(/w:id="(\d+)"/);
+  if (!idM) return xml;
+  const endRe = new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${idM[1]}"[^>]*/>`);
+  const endMatch = endRe.exec(xml.slice(tagEnd));
+  if (!endMatch) return xml;
+  let pos = tagEnd + endMatch.index + endMatch[0].length;
+  pos = xml.indexOf('</w:p>', pos) + '</w:p>'.length; // skip the bookmark's own paragraph close
+  const regionStart = pos;
+  for (let i = 0; i < count; i++) {
+    const next = xml.indexOf('</w:p>', pos);
+    if (next === -1) break;
+    pos = next + '</w:p>'.length;
+  }
+  const region = xml.slice(regionStart, pos).replace(RED_COLOR_RE, '');
+  return xml.slice(0, regionStart) + region + xml.slice(pos);
 }
 
 // Replaces the standalone word `word` (word-boundary matched, so "Perf" won't match
@@ -605,6 +651,14 @@ function applyPerformanceFeeClauseToXml(xml, fieldValues, lang) {
     // occurrences are literal text in one run) — substitute them directly.
     xml = replaceLiteralWordInBookmarkRegion(xml, 'PerfClauseAnnual', 'Perf', pct);
     if (fv.performance_fee) xml = stripRedInParagraphContainingBookmark(xml, 'PerfClauseAnnual');
+  }
+
+  // The "7.2 Performancegebühr" heading and the closing sentence(s) after the clause(s)
+  // aren't bookmarked at all, so they're untouched by everything above — strip their
+  // red too once a real fee is present, so the whole section reads as normal black text.
+  if (fv.performance_fee) {
+    xml = stripRedInHeadingBeforeBookmark(xml, 'PerfClauseSemi');
+    xml = stripRedAfterBookmark(xml, 'PerfClauseAnnual', 2);
   }
   return xml;
 }
