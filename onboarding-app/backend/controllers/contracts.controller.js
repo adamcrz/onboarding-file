@@ -552,24 +552,59 @@ function stripRedInParagraphContainingBookmark(xml, bookmarkName) {
     seg => seg.replace(/<w:color w:val="FF0000"\/>/g, ''));
 }
 
+// Replaces the standalone word `word` (word-boundary matched, so "Perf" won't match
+// inside "Performance-Gebühr") wherever it appears inside <w:t> text nodes within the
+// given bookmark's region — used for PerfClauseAnnual's "Perf" mentions, which are
+// plain literal text (not their own nested bookmark like in PerfClauseSemi).
+function replaceLiteralWordInBookmarkRegion(xml, bookmarkName, word, replacement) {
+  const startIdx = xml.indexOf(`w:name="${bookmarkName}"`);
+  if (startIdx === -1) return xml;
+  const tagStart = xml.lastIndexOf('<w:bookmarkStart', startIdx);
+  const bmStartTagEnd = xml.indexOf('/>', startIdx) + 2;
+  const idM = xml.slice(tagStart, bmStartTagEnd).match(/w:id="(\d+)"/);
+  if (!idM) return xml;
+  const endRe = new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${idM[1]}"[^>]*/>`);
+  const endMatch = endRe.exec(xml.slice(bmStartTagEnd));
+  if (!endMatch) return xml;
+  const contentStart = bmStartTagEnd;
+  const contentEnd = bmStartTagEnd + endMatch.index;
+  const segment = xml.slice(contentStart, contentEnd);
+  const wordRe = new RegExp(`\\b${word}\\b`, 'g');
+  const newSegment = segment.replace(/(<w:t[^>]*>)([^<]*)(<\/w:t>)/g,
+    (m, open, text, close) => open + text.replace(wordRe, escXml(replacement)) + close);
+  return xml.slice(0, contentStart) + newSegment + xml.slice(contentEnd);
+}
+
+const HURDLE_RATE_SENTENCE = {
+  DE: pct => ` Die ersten ${pct} p.a. der Wertsteigerung oberhalb der High-Water-Mark gelten als sogenannte „Hurdle Rate“.`,
+  EN: pct => ` The first ${pct} p.a. of the increase in value above the high-water mark is deemed to be the hurdle rate.`,
+};
+
 function applyPerformanceFeeClauseToXml(xml, fieldValues, lang) {
   if (!xml.includes('w:name="PerfClauseAnnual"')) return xml; // template has no toggleable clause
   const fv = fieldValues || {};
-  const pct = fv.performance_fee ? fv.performance_fee + '%' : 'Perf';
+  const pct      = fv.performance_fee ? fv.performance_fee + '%' : 'Perf';
+  const vorabPct = fv.vorab_pct ? fv.vorab_pct + '%' : '';
   const freq = fv.performance_fee_frequency === 'annual' ? 'annual' : 'semiannual';
 
   if (freq === 'annual') {
-    xml = setBookmarkText(xml, 'PerfClauseAnnual', buildAnnualClauseText(lang, pct));
+    let text = buildAnnualClauseText(lang, pct);
+    if (vorabPct) text += (HURDLE_RATE_SENTENCE[lang] || HURDLE_RATE_SENTENCE.DE)(vorabPct);
+    xml = setBookmarkText(xml, 'PerfClauseAnnual', text);
     xml = stripRedInParagraphContainingBookmark(xml, 'PerfClauseAnnual');
     xml = setBookmarkText(xml, 'PerfClauseSemi', ''); // hide both semiannual paragraphs (incl. Vorab sentence)
   } else {
-    xml = setBookmarkText(xml, 'PerfClauseAnnual', ''); // hide the annual clause
-    // Semiannual is the default — keep the template's own wording; "Perf"/"Vorab" were
-    // already filled by the normal placeholder pass if provided. Only strip the red
-    // "unfilled" color once a real value exists, per field, independently.
+    // Semiannual is the default — keep BOTH paragraphs from the template (the
+    // semiannual wording and the annual wording), each with placeholders filled
+    // independently, rather than hiding either one.
     if (fv.performance_fee) xml = stripRedInParagraphContainingBookmark(xml, 'Perf');
     if (fv.vorab_pct)       xml = stripRedInParagraphContainingBookmark(xml, 'Vorab');
     else                    xml = blankParagraphContainingBookmark(xml, 'Vorab');
+
+    // PerfClauseAnnual's "Perf" mentions have no nested bookmark of their own (all 3
+    // occurrences are literal text in one run) — substitute them directly.
+    xml = replaceLiteralWordInBookmarkRegion(xml, 'PerfClauseAnnual', 'Perf', pct);
+    if (fv.performance_fee) xml = stripRedInParagraphContainingBookmark(xml, 'PerfClauseAnnual');
   }
   return xml;
 }
@@ -581,7 +616,9 @@ function highlightPerfClauseInPreviewHtml(html, fieldValues, lang) {
   const fv = fieldValues || {};
   if (fv.performance_fee_frequency !== 'annual') return html;
   const pct = fv.performance_fee ? fv.performance_fee + '%' : 'Perf';
-  const clause = buildAnnualClauseText(lang, pct);
+  const vorabPct = fv.vorab_pct ? fv.vorab_pct + '%' : '';
+  let clause = buildAnnualClauseText(lang, pct);
+  if (vorabPct) clause += (HURDLE_RATE_SENTENCE[lang] || HURDLE_RATE_SENTENCE.DE)(vorabPct);
   if (!html.includes(clause)) return html;
   return html.replace(clause, `<span style="color:#dc2626;">${clause}</span>`);
 }

@@ -2918,7 +2918,7 @@ async function cbStep2() {
           <option value="semiannual" ${CB.performanceFeeFrequency === 'semiannual' ? 'selected' : ''}>Halbjährlich</option>
         </select>
       </div>
-      <div class="form-group" id="cb_vorab_wrap" style="margin-bottom:0;display:${CB.performanceFee && CB.performanceFeeFrequency === 'semiannual' ? 'block' : 'none'};">
+      <div class="form-group" id="cb_vorab_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
         <label for="cb_vorab_pct">Hurdle Rate % <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(optional — leave blank to omit the hurdle-rate sentence)</span></label>
         <input type="number" id="cb_vorab_pct" step="0.01" min="0" max="100"
                placeholder="e.g. 5.00" value="${CB.vorabPct||''}">
@@ -3082,9 +3082,8 @@ function cbTogglePerfFreq() {
   const wrap = document.getElementById('cb_perf_freq_wrap');
   if (wrap) wrap.style.display = hasFee ? 'block' : 'none';
 
-  const freq = document.getElementById('cb_performance_fee_frequency')?.value;
   const vorabWrap = document.getElementById('cb_vorab_wrap');
-  if (vorabWrap) vorabWrap.style.display = (hasFee && freq === 'semiannual') ? 'block' : 'none';
+  if (vorabWrap) vorabWrap.style.display = hasFee ? 'block' : 'none';
 }
 
 // Honest status message for the Beneficial-Owner Declaration section: the letter
