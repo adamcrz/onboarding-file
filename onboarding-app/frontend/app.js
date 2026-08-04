@@ -207,6 +207,9 @@ const State = {
 
   kycTasks: [],
   _activeKycTask: null,
+  _activeKycCorrectionId: null,
+
+  documentCorrections: [],
 
   contractReviews: [],
 
@@ -234,6 +237,7 @@ const ROLES = {
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
+      { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
@@ -251,6 +255,7 @@ const ROLES = {
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
+      { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
@@ -266,7 +271,7 @@ const ROLES = {
     nav: [
       { section: 'My Clients' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
-      { id: 'kyc-corrections', label: 'KYC Corrections', icon: checklistIcon(), badge: '3' },
+      { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon(), badge: '3' },
       { id: 'clients', label: 'My Clients', icon: usersIcon(), badge: '2' },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
@@ -476,13 +481,6 @@ function registerFormHTML() {
       <input type="password" id="reg-confirm" placeholder="Repeat password"
              autocomplete="new-password" onkeydown="if(event.key==='Enter')register()" />
     </div>
-    <div class="form-group">
-      <label for="reg-role">Role</label>
-      <select id="reg-role">
-        ${Object.entries(ROLE_META).map(([value, meta]) => `<option value="${value}">${meta.name}</option>`).join('')}
-      </select>
-    </div>
-
     <button class="btn-primary btn-full" id="register-btn" onclick="register()">
       Create Account
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -693,7 +691,7 @@ async function register() {
   const email    = (document.getElementById('reg-email')?.value || '').trim();
   const password = document.getElementById('reg-password')?.value || '';
   const confirm  = document.getElementById('reg-confirm')?.value  || '';
-  const role     = document.getElementById('reg-role')?.value     || 'client';
+  const role     = 'client'; // public self-registration is client-only; staff accounts are provisioned separately
   const btn      = document.getElementById('register-btn');
 
   if (!name || !email || !password) {
@@ -999,6 +997,7 @@ function navigateTo(page) {
     'new-client': 'New Client Onboarding',
     'kyc-form': 'KYC Questionnaire',
     'kyc-corrections': 'KYC Corrections',
+    'kyc-correction-detail': 'KYC Correction',
     'client-contract': 'Contract Package',
     'client-upload': 'Upload Signed Documents',
     risk: 'Risk Ratings',
@@ -1023,6 +1022,7 @@ function navigateTo(page) {
     case 'new-client': renderNewClient(); break;
     case 'kyc-form': renderKycForm(); break;
     case 'kyc-corrections': renderKycCorrections(); break;
+    case 'kyc-correction-detail': renderKycCorrectionDetail(); break;
     case 'client-contract': renderClientContract(); break;
     case 'client-upload': renderClientUpload(); break;
     case 'risk': renderRiskRatings(); break;
@@ -1353,7 +1353,7 @@ function renderKycFill() {
 /* --- RM Dashboard --- */
 function renderRMDashboard() {
   const content = document.getElementById('page-content');
-  const myClients = State.clients.filter(c => c.rm === 'Sarah Mitchell');
+  const myClients = State.clients.filter(c => c.rm === currentRmName());
   const myKycTasks = State.kycTasks.filter(t => t.delegateTo === 'rm' && t.status === 'pending');
 
   content.innerHTML = `
@@ -1392,7 +1392,7 @@ function renderRMDashboard() {
     <div class="card">
       <div class="card-header">
         <div class="card-title">My Clients</div>
-        <button class="btn-primary btn-sm" onclick="navigateTo('new-client')">+ New Client</button>
+        <button class="btn-primary btn-sm" onclick="navigateTo('contract-building')">+ New Client</button>
       </div>
       <div>
         ${myClients.map(c => `
@@ -1545,10 +1545,14 @@ function renderClientDashboard() {
 /* ============================================================
    PAGE: CLIENTS LIST
    ============================================================ */
+// The RM's own display name (ROLES.rm.label) — a client only ever belongs to "my"
+// list when its rm field matches this, so RMs can never see another RM's clients.
+function currentRmName() { return ROLES.rm.label; }
+
 function renderClients() {
   const content = document.getElementById('page-content');
   const showAll = State.currentRole !== 'rm';
-  let clients = showAll ? State.clients : State.clients.filter(c => c.rm === 'Sarah Mitchell');
+  let clients = showAll ? State.clients : State.clients.filter(c => c.rm === currentRmName());
 
   content.innerHTML = `
     <div class="page-header">
@@ -1584,12 +1588,14 @@ function renderClients() {
             <option value="Medium">Medium</option>
             <option value="High">High</option>
           </select>
+          ${showAll ? `
           <select class="filter-select" id="rm-filter" onchange="filterClients()">
             <option value="">All Kundenberater</option>
             ${[...new Set(State.clients.map(c=>c.rm))].sort().map(rm=>`<option value="${rm}">${rm}</option>`).join('')}
           </select>
+          ` : ''}
         </div>
-        ${State.currentRole === 'rm' ? '<button class="btn-primary btn-sm" onclick="navigateTo(\'new-client\')">+ New Client</button>' : ''}
+        ${State.currentRole === 'rm' ? '<button class="btn-primary btn-sm" onclick="navigateTo(\'contract-building\')">+ New Client</button>' : ''}
       </div>
       <div style="overflow-x:auto;">
         <table class="data-table" id="clients-table">
@@ -1658,7 +1664,7 @@ function filterClients() {
   const risk = document.getElementById('risk-filter').value;
   const rm = document.getElementById('rm-filter')?.value || '';
   const showAll = State.currentRole !== 'rm';
-  let clients = showAll ? State.clients : State.clients.filter(c => c.rm === 'Sarah Mitchell');
+  let clients = showAll ? State.clients : State.clients.filter(c => c.rm === currentRmName());
   if (search) clients = clients.filter(c => c.name.toLowerCase().includes(search) || c.country.toLowerCase().includes(search));
   if (status) clients = clients.filter(c => c.status === status);
   if (type) clients = clients.filter(c => c.type === type);
@@ -1721,7 +1727,7 @@ function renderClientDetail() {
           <button class="btn-danger btn-sm" onclick="rejectClientFromDetail('${client.id}')">✗ Reject</button>
           <button class="btn-warning btn-sm" onclick="requestInfo('${client.id}')">Request Info</button>
         ` : ''}
-        ${State.currentRole === 'rm' ? `<button class="btn-secondary btn-sm" onclick="navigateTo('new-client')">Edit Case</button>` : ''}
+        ${State.currentRole === 'rm' ? `<button class="btn-secondary btn-sm" onclick="switchTab('kyc')">Edit KYC</button>` : ''}
       </div>
     </div>
 
@@ -1799,6 +1805,42 @@ function renderClientOverviewTab(client) {
 }
 
 function renderClientKycTab(client) {
+  // RM gets an editable form (same missing-field glow as the correction detail view)
+  // instead of the read-only display, for any client type we have a field list for.
+  if (State.currentRole === 'rm' && REQUIRED_KYC_FIELDS[client.type]) {
+    if (!client.kyc) client.kyc = {};
+    const fields = REQUIRED_KYC_FIELDS[client.type];
+    const k = client.kyc;
+    return `
+      <div class="card">
+        <div class="card-header"><div class="card-title">${client.type} KYC Information</div></div>
+        <div class="card-body">
+          <div class="cb-fields-grid">
+            ${fields.map(([key,label]) => {
+              const val = k[key] || '';
+              const missing = !String(val).trim();
+              return `
+                <div class="form-group" style="margin-bottom:0;">
+                  <label for="clientkyc_${key}">${label}</label>
+                  <input type="text" id="clientkyc_${key}" value="${String(val).replace(/"/g,'&quot;')}" class="${missing?'kyc-field-missing':''}"
+                         oninput="kycCorrFieldInput('${client.id}','${key}', this)">
+                </div>
+              `;
+            }).join('')}
+          </div>
+          ${(k.pep || k.sanctions || k.adverse) ? `
+            <hr class="divider" />
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+              ${screeningBadge('PEP Status', k.pep)}
+              ${screeningBadge('Sanctions', k.sanctions)}
+              ${screeningBadge('Adverse Media', k.adverse)}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }
+
   if (!client.kyc || !Object.keys(client.kyc).length) {
     return `<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg><p>No KYC data available for this client.</p></div>`;
   }
@@ -1969,6 +2011,13 @@ function renderClientDocsTab(client) {
       <div class="card">
         <div class="card-header"><div class="card-title">Upload Signed Document</div></div>
         <div class="card-body">
+          <div class="form-group" style="margin-bottom:14px;max-width:360px;">
+            <label for="upload-doc-type">Document Type</label>
+            <select id="upload-doc-type">
+              <option value="Uploaded Document">Other Signed Document</option>
+              <option value="ID Document">ID Document (Passport / Ausweis)</option>
+            </select>
+          </div>
           <div class="upload-zone" id="upload-zone" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)" onclick="triggerFileInput()">
             <div style="font-size:36px;margin-bottom:12px;">🗂️</div>
             <div class="upload-zone-text">Drag &amp; drop signed PDF here or click to browse</div>
@@ -2107,19 +2156,79 @@ function handleFileSelect(event) {
   files.forEach(f => simulateUpload(f));
 }
 
-function simulateUpload(file) {
+// Automatic check for ID/passport uploads: a genuine signed scan should have a
+// stamp/signature (with a date beside it) in the bottom-right corner. We sample
+// that region's actual pixels and look for a meaningful amount of non-background
+// ink — if there isn't any, the document gets auto-flagged into Document
+// Corrections instead of relying on someone remembering to check by eye.
+// Only works for image uploads (jpg/png) — client-side PDF rendering isn't
+// available, so PDFs are conservatively treated as "unable to verify".
+function detectSignatureStamp(file) {
+  return new Promise((resolve) => {
+    if (!/^image\//.test(file.type)) { resolve(false); return; }
+    const reader = new FileReader();
+    reader.onerror = () => resolve(false);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => resolve(false);
+      img.onload = () => {
+        try {
+          const w = img.naturalWidth, h = img.naturalHeight;
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          // Bottom-right corner: last 28% of width, last 22% of height
+          const rx = Math.floor(w * 0.72), ry = Math.floor(h * 0.78);
+          const rw = w - rx, rh = h - ry;
+          if (rw <= 0 || rh <= 0) { resolve(false); return; }
+          const data = ctx.getImageData(rx, ry, rw, rh).data;
+          let inkPixels = 0;
+          const totalPixels = rw * rh;
+          for (let i = 0; i < data.length; i += 4) {
+            const brightness = (data[i] + data[i+1] + data[i+2]) / 3;
+            if (brightness < 190) inkPixels++; // darker than plain paper background
+          }
+          resolve((inkPixels / totalPixels) > 0.015); // >1.5% ink in the corner = stamp/signature present
+        } catch (_) { resolve(false); } // e.g. tainted canvas
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function flagDocumentCorrection(clientId, docName, issue) {
+  State.documentCorrections.push({
+    id: 'doc-c-' + Date.now() + Math.random().toString(36).slice(2,6),
+    clientId, docName, issue, status: 'pending',
+  });
+}
+
+async function simulateUpload(file) {
   const client = getActiveClientForUpload();
   if (!client) {
     showToast('warning', 'No active client selected for upload.');
     return;
   }
   State.selectedClientId = client.id;
+  const docType = document.getElementById('upload-doc-type')?.value || 'Uploaded Document';
   const newDoc = {
-    id: 'D' + Date.now(), name: file.name, type: 'Uploaded Document',
+    id: 'D' + Date.now(), name: file.name, type: docType,
     status: 'pending', uploadedBy: State.currentRole === 'client' ? 'Client' : 'RM',
     date: new Date().toISOString().slice(0,10), size: (file.size/1024/1024).toFixed(1)+' MB', required: false,
     signedVersion: true, templateAvailable: false
   };
+
+  if (docType === 'ID Document') {
+    const hasStamp = await detectSignatureStamp(file);
+    if (!hasStamp) {
+      newDoc.missingNote = 'Automatic check found no signature/stamp with date in the bottom-right corner — please re-upload a clearer scan.';
+      flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
+      showToast('warning', `${file.name} uploaded, but no signature/stamp was detected — flagged for correction.`);
+    }
+  }
+
   client.documents.push(newDoc);
   const submissions = ensureClientSubmissionBucket(client.id);
   submissions.unshift({
@@ -2131,7 +2240,7 @@ function simulateUpload(file) {
   });
   client.progress = Math.min(client.progress + 10, 95);
   addClientAudit(client.id, `Document uploaded: ${file.name}`, 'uploaded');
-  showToast('success', `${file.name} uploaded successfully.`);
+  if (!newDoc.missingNote) showToast('success', `${file.name} uploaded successfully.`);
   if (State.currentPage === 'client-upload') {
     renderClientUpload();
     return;
@@ -4605,73 +4714,235 @@ function _kycFormStubEnd_placeholder() {
 /* ============================================================
    PAGE: KYC CORRECTIONS (RM view - simplified)
    ============================================================ */
+// Required client.kyc fields per client type, shown/editable on the KYC correction
+// detail view. Any of these left empty glows orange until the RM fills it in.
+const REQUIRED_KYC_FIELDS = {
+  Individual: [
+    ['firstName','First Name'], ['lastName','Last Name'], ['dob','Date of Birth'],
+    ['nationality','Nationality'], ['residency','Residency'], ['taxResidency','Tax Residency'],
+    ['taxId','Tax ID / SSN'], ['passportNumber','Passport Number'], ['passportExpiry','Passport Expiry'],
+    ['address','Address'], ['employmentStatus','Employment Status'], ['occupation','Occupation'],
+    ['annualIncome','Annual Income'], ['sourceOfWealth','Source of Wealth'],
+  ],
+  Corporate: [
+    ['legalName','Legal Name'], ['tradingName','Trading Name'], ['registrationNumber','Registration Number'],
+    ['registrationDate','Registration Date'], ['registrationCountry','Registration Country'], ['jurisdiction','Jurisdiction'],
+    ['businessType','Business Type'], ['industry','Industry'], ['annualTurnover','Annual Turnover'],
+    ['netAssets','Net Assets'], ['employees','Employees'], ['website','Website'],
+    ['address','Registered Address'], ['purpose','Purpose of Account'],
+  ],
+};
+
 function renderKycCorrections() {
   const content = document.getElementById('page-content');
-  const corrections = State.kycCorrections.map(item => ({
+  const scopeToOwn = c => State.currentRole !== 'rm' || State.clients.find(cl => cl.id === c.clientId)?.rm === currentRmName();
+
+  const kycItems = State.kycCorrections.filter(scopeToOwn).map(item => ({
     ...item,
     clientName: State.clients.find(c => c.id === item.clientId)?.name || 'Unknown',
-    mandateLabel: item.mandateId.toUpperCase(),
+  }));
+  const docItems = State.documentCorrections.filter(scopeToOwn).map(item => ({
+    ...item,
+    clientName: State.clients.find(c => c.id === item.clientId)?.name || 'Unknown',
   }));
 
   content.innerHTML = `
     <div class="page-header">
-      <h1>KYC Corrections</h1>
-      <p>Items flagged by Compliance that require client follow-up. You are responsible for coordinating corrections.</p>
+      <h1>Corrections</h1>
+      <p>KYC and document items flagged for follow-up${State.currentRole==='rm' ? ' on your clients' : ''}. Fill in what's missing, then mark it resubmitted for Compliance to confirm.</p>
     </div>
 
-    <div class="info-box" style="margin-bottom:20px;">
-      <p>This view shows only the mandate ID and KYC items that must be corrected. Contact the client directly to resolve each issue and update the status once corrected.</p>
+    <div class="tabs">
+      <button class="tab-btn active" id="corrtab-btn-kyc" onclick="switchCorrectionsTab('kyc')">KYC Corrections (${kycItems.filter(c=>c.status==='pending').length})</button>
+      <button class="tab-btn" id="corrtab-btn-docs" onclick="switchCorrectionsTab('docs')">Document Corrections (${docItems.filter(c=>c.status==='pending').length})</button>
     </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">KYC Correction Items</div>
-        <div class="card-subtitle">${corrections.filter(c=>c.status==='pending').length} pending · ${corrections.filter(c=>c.status==='corrected').length} corrected</div>
-      </div>
-      <div class="card-body" style="padding:0;">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Mandate ID</th>
-              <th>Client</th>
-              <th>KYC Issue</th>
-              <th>Page Ref.</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${corrections.map(c => `
-              <tr style="${c.status==='pending'?'background:rgba(249,115,22,0.04);':''}">
-                <td style="font-weight:600;color:var(--accent-purple-light);">${c.mandateId}</td>
-                <td>${c.clientName}</td>
-                <td style="color:${c.status==='pending'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
-                <td><span style="color:var(--accent-orange);font-size:12px;">${c.page}</span></td>
-                <td>
-                  <span class="status-badge ${c.status==='pending'?'status-pending':c.status==='corrected'?'status-approved':'status-under-review'}">
-                    ${c.status==='pending'?'Pending':c.status==='corrected'?'Corrected':'Resubmitted'}
-                  </span>
-                </td>
-                <td>
-                  ${c.status==='pending' ? `<button class="btn-secondary btn-xs" onclick="updateKycCorrectionStatus('${c.id}','resubmitted')">Mark Resubmitted</button>` : ''}
-                  ${c.status==='resubmitted' ? `<button class="btn-success btn-xs" onclick="updateKycCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>` : ''}
-                </td>
+    <div id="corrtab-kyc" class="tab-content active">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">KYC Correction Items</div>
+          <div class="card-subtitle">${kycItems.filter(c=>c.status==='pending').length} pending · ${kycItems.filter(c=>c.status==='corrected').length} corrected</div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Mandate ID</th>
+                <th>Client</th>
+                <th>KYC Issue</th>
+                <th>Page Ref.</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${kycItems.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">No KYC corrections.</td></tr>` : kycItems.map(c => `
+                <tr style="${c.status==='pending'?'background:rgba(249,115,22,0.04);':''}cursor:pointer;" onclick="openKycCorrectionDetail('${c.id}')">
+                  <td style="font-weight:600;color:var(--accent-purple-light);">${c.mandateId}</td>
+                  <td>${c.clientName}</td>
+                  <td style="color:${c.status==='pending'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
+                  <td><span style="color:var(--accent-orange);font-size:12px;">${c.page}</span></td>
+                  <td>
+                    <span class="status-badge ${c.status==='pending'?'status-pending':c.status==='corrected'?'status-approved':'status-under-review'}">
+                      ${c.status==='pending'?'Pending':c.status==='corrected'?'Corrected':'Resubmitted'}
+                    </span>
+                  </td>
+                  <td onclick="event.stopPropagation()">
+                    ${c.status==='pending' && State.currentRole==='rm' ? `<button class="btn-secondary btn-xs" onclick="updateKycCorrectionStatus('${c.id}','resubmitted')">Mark Resubmitted</button>` : ''}
+                    ${c.status==='resubmitted' && isCompliance(State.currentRole) ? `<button class="btn-success btn-xs" onclick="updateKycCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>` : ''}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="corrtab-docs" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Document Correction Items</div>
+          <div class="card-subtitle">${docItems.filter(c=>c.status==='pending').length} pending · ${docItems.filter(c=>c.status==='corrected').length} corrected</div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Document</th>
+                <th>Issue</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${docItems.length === 0 ? `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">No document corrections.</td></tr>` : docItems.map(c => `
+                <tr style="${c.status==='pending'?'background:rgba(249,115,22,0.04);':''}">
+                  <td>${c.clientName}</td>
+                  <td style="font-weight:600;">${c.docName}</td>
+                  <td style="color:${c.status==='pending'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
+                  <td>
+                    <span class="status-badge ${c.status==='pending'?'status-pending':c.status==='corrected'?'status-approved':'status-under-review'}">
+                      ${c.status==='pending'?'Pending':c.status==='corrected'?'Corrected':'Resubmitted'}
+                    </span>
+                  </td>
+                  <td>
+                    ${c.status==='pending' && State.currentRole==='rm' ? `<button class="btn-secondary btn-xs" onclick="updateDocumentCorrectionStatus('${c.id}','resubmitted')">Mark Resubmitted</button>` : ''}
+                    ${c.status==='resubmitted' && isCompliance(State.currentRole) ? `<button class="btn-success btn-xs" onclick="updateDocumentCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>` : ''}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   `;
 }
 
+function switchCorrectionsTab(name) {
+  ['kyc','docs'].forEach(n => {
+    document.getElementById(`corrtab-btn-${n}`)?.classList.toggle('active', n === name);
+    document.getElementById(`corrtab-${n}`)?.classList.toggle('active', n === name);
+  });
+}
+
+// RM may only move an item to 'resubmitted'; only Compliance may confirm 'corrected'.
 function updateKycCorrectionStatus(correctionId, status) {
+  if (status === 'resubmitted' && State.currentRole !== 'rm') return;
+  if (status === 'corrected' && !isCompliance(State.currentRole)) return;
   const correction = State.kycCorrections.find(c => c.id === correctionId);
   if (!correction) return;
   correction.status = status;
-  addClientAudit(correction.clientId, `KYC correction "${correction.issue}" marked ${status}`, status === 'corrected' ? 'approved' : 'submitted', 'Relationship Manager');
+  addClientAudit(correction.clientId, `KYC correction "${correction.issue}" marked ${status}`, status === 'corrected' ? 'approved' : 'submitted');
   showToast('success', `KYC correction updated to ${status}.`);
   renderKycCorrections();
+}
+
+function updateDocumentCorrectionStatus(correctionId, status) {
+  if (status === 'resubmitted' && State.currentRole !== 'rm') return;
+  if (status === 'corrected' && !isCompliance(State.currentRole)) return;
+  const correction = State.documentCorrections.find(c => c.id === correctionId);
+  if (!correction) return;
+  correction.status = status;
+  addClientAudit(correction.clientId, `Document correction "${correction.docName}" marked ${status}`, status === 'corrected' ? 'approved' : 'submitted');
+  showToast('success', `Document correction updated to ${status}.`);
+  renderKycCorrections();
+}
+
+/* ── KYC Correction detail — per-client editable KYC fields, missing ones glow orange ── */
+function openKycCorrectionDetail(correctionId) {
+  State._activeKycCorrectionId = correctionId;
+  navigateTo('kyc-correction-detail');
+}
+
+function renderKycCorrectionDetail() {
+  const content = document.getElementById('page-content');
+  const correction = State.kycCorrections.find(c => c.id === State._activeKycCorrectionId);
+  if (!correction) { content.innerHTML = `<p style="padding:20px;color:var(--text-muted);">Correction not found.</p>`; return; }
+  const client = State.clients.find(c => c.id === correction.clientId);
+  if (!client) { content.innerHTML = `<p style="padding:20px;color:var(--text-muted);">Client not found.</p>`; return; }
+
+  const fields = REQUIRED_KYC_FIELDS[client.type] || [];
+  if (!client.kyc) client.kyc = {};
+  const k = client.kyc;
+  const missingCount = fields.filter(([key]) => !String(k[key]||'').trim()).length;
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button class="btn-secondary btn-sm" onclick="navigateTo('kyc-corrections')">← Back</button>
+      <div>
+        <h1 style="font-size:18px;font-weight:700;">${client.name} — KYC Correction</h1>
+        <div style="color:var(--text-secondary);font-size:13px;">${correction.mandateId.toUpperCase()} · ${correction.issue}</div>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-bottom:20px;">
+      <p>Fields glowing orange are missing or incomplete${missingCount ? ` (${missingCount} remaining)` : ''}. Fill them in — you can save progress and come back later — then mark this item resubmitted once everything is complete. Compliance will confirm it as corrected.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">${client.type} KYC Information</div></div>
+      <div class="card-body">
+        ${fields.length ? `<div class="cb-fields-grid" id="kyccorr-fields">
+          ${fields.map(([key,label]) => {
+            const val = k[key] || '';
+            const missing = !String(val).trim();
+            return `
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="kyccorr_${key}">${label}</label>
+                <input type="text" id="kyccorr_${key}" value="${String(val).replace(/"/g,'&quot;')}" class="${missing?'kyc-field-missing':''}"
+                       oninput="kycCorrFieldInput('${client.id}','${key}', this)">
+              </div>
+            `;
+          }).join('')}
+        </div>` : `<p style="color:var(--text-muted);">No structured KYC fields are defined for this client type — coordinate directly with Compliance.</p>`}
+      </div>
+    </div>
+
+    <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
+      ${State.currentRole === 'rm' && correction.status === 'pending' ? `
+        <button class="btn-primary" onclick="submitKycCorrectionFromDetail('${correction.id}')">Mark Resubmitted</button>
+      ` : ''}
+      ${isCompliance(State.currentRole) && correction.status === 'resubmitted' ? `
+        <button class="btn-success" onclick="updateKycCorrectionStatus('${correction.id}','corrected');navigateTo('kyc-corrections');">Mark Corrected</button>
+      ` : ''}
+    </div>
+  `;
+}
+
+function kycCorrFieldInput(clientId, key, el) {
+  const client = State.clients.find(c => c.id === clientId);
+  if (!client) return;
+  if (!client.kyc) client.kyc = {};
+  client.kyc[key] = el.value;
+  el.classList.toggle('kyc-field-missing', !el.value.trim());
+}
+
+function submitKycCorrectionFromDetail(correctionId) {
+  updateKycCorrectionStatus(correctionId, 'resubmitted');
+  navigateTo('kyc-corrections');
 }
 
 /* ============================================================

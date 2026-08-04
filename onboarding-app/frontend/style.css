@@ -1101,6 +1101,16 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 }
 @media (max-width: 700px) { .cb-fields-grid { grid-template-columns: 1fr; } }
 
+/* Missing/incomplete field indicator — used on KYC correction detail views */
+@keyframes kyc-field-glow {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(249,115,22,0.28); }
+  50%      { box-shadow: 0 0 0 5px rgba(249,115,22,0.15); }
+}
+.kyc-field-missing {
+  border-color: var(--accent-orange) !important;
+  animation: kyc-field-glow 1.8s ease-in-out infinite;
+}
+
 /* Currency selector */
 .cb-currency-selector { display: flex; flex-wrap: wrap; gap: 8px; }
 .cb-currency-btn {
