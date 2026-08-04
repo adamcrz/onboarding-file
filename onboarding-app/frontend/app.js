@@ -2493,7 +2493,7 @@ const CB = {
   },
   currencyWeights: { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } },
   investmentComments: '',
-  managementFee: '', performanceFee: '', performanceFeeFrequency: 'semiannual',
+  managementFee: '', performanceFee: '', performanceFeeFrequency: 'semiannual', vorabPct: '',
   clientType: 'individual', formularBookmark: false,
 };
 
@@ -2541,7 +2541,7 @@ async function renderContractBuilding() {
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
   CB.currencyWeights = { CHF: { min: 0, max: 100 }, EUR: { min: 0, max: 0 }, USD: { min: 0, max: 0 }, GBP: { min: 0, max: 0 }, AUD: { min: 0, max: 0 }, JPY: { min: 0, max: 0 } };
   CB.investmentComments = '';
-  CB.managementFee = ''; CB.performanceFee = ''; CB.performanceFeeFrequency = 'semiannual';
+  CB.managementFee = ''; CB.performanceFee = ''; CB.performanceFeeFrequency = 'semiannual'; CB.vorabPct = '';
   CB.clientType = 'individual'; CB.formularBookmark = false;
   await cbRenderStep();
 }
@@ -2913,10 +2913,15 @@ async function cbStep2() {
       </div>
       <div class="form-group" id="cb_perf_freq_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
         <label for="cb_performance_fee_frequency">Performance Fee Settlement</label>
-        <select id="cb_performance_fee_frequency">
+        <select id="cb_performance_fee_frequency" onchange="cbTogglePerfFreq()">
           <option value="annual"     ${CB.performanceFeeFrequency !== 'semiannual' ? 'selected' : ''}>Jährlich</option>
           <option value="semiannual" ${CB.performanceFeeFrequency === 'semiannual' ? 'selected' : ''}>Halbjährlich</option>
         </select>
+      </div>
+      <div class="form-group" id="cb_vorab_wrap" style="margin-bottom:0;display:${CB.performanceFee && CB.performanceFeeFrequency === 'semiannual' ? 'block' : 'none'};">
+        <label for="cb_vorab_pct">Hurdle Rate % <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(optional — leave blank to omit the hurdle-rate sentence)</span></label>
+        <input type="number" id="cb_vorab_pct" step="0.01" min="0" max="100"
+               placeholder="e.g. 5.00" value="${CB.vorabPct||''}">
       </div>
     </div>
 
@@ -3076,6 +3081,10 @@ function cbTogglePerfFreq() {
   const hasFee = !!document.getElementById('cb_performance_fee')?.value?.trim();
   const wrap = document.getElementById('cb_perf_freq_wrap');
   if (wrap) wrap.style.display = hasFee ? 'block' : 'none';
+
+  const freq = document.getElementById('cb_performance_fee_frequency')?.value;
+  const vorabWrap = document.getElementById('cb_vorab_wrap');
+  if (vorabWrap) vorabWrap.style.display = (hasFee && freq === 'semiannual') ? 'block' : 'none';
 }
 
 // Honest status message for the Beneficial-Owner Declaration section: the letter
@@ -3536,6 +3545,7 @@ function cbCollectAllValues() {
     management_fee:          document.getElementById('cb_management_fee')?.value?.trim()      || '',
     performance_fee:         document.getElementById('cb_performance_fee')?.value?.trim()     || '',
     performance_fee_frequency: document.getElementById('cb_performance_fee_frequency')?.value || 'semiannual',
+    vorab_pct:                document.getElementById('cb_vorab_pct')?.value?.trim()          || '',
     client_type:              CB.clientType || 'individual',
     ccy_chf_min: String(CB.currencyWeights.CHF?.min||0), ccy_chf_max: String(CB.currencyWeights.CHF?.max||0),
     ccy_eur_min: String(CB.currencyWeights.EUR?.min||0), ccy_eur_max: String(CB.currencyWeights.EUR?.max||0),

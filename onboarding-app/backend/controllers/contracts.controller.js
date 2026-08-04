@@ -255,11 +255,13 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   if (depotBank)   map['Depotbank']        = depotBank;
   if (portfolioNo) { map['Portfolionummer'] = portfolioNo; map['Portfolionummer1'] = portfolioNo; }
 
-  // Fees — actual bookmark names in templates: Fee, Perf
-  const mgmtFee = fv.management_fee  ? fv.management_fee  + '%' : '';
-  const perfFee = fv.performance_fee ? fv.performance_fee + '%' : '';
-  if (mgmtFee) map['Fee']  = mgmtFee;
-  if (perfFee) map['Perf'] = perfFee;
+  // Fees — actual bookmark names in templates: Fee, Perf, Vorab
+  const mgmtFee  = fv.management_fee ? fv.management_fee + '%' : '';
+  const perfFee  = fv.performance_fee ? fv.performance_fee + '%' : '';
+  const vorabPct = fv.vorab_pct ? fv.vorab_pct + '%' : '';
+  if (mgmtFee)  map['Fee']   = mgmtFee;
+  if (perfFee)  map['Perf']  = perfFee;
+  if (vorabPct) map['Vorab'] = vorabPct;
 
   // Portfolio currency — bookmark: Currency
   const ccy = fv.portfolio_currency || '';
@@ -469,21 +471,34 @@ function applyAllocMinToXml(xml, fieldValues) {
 }
 
 // Performance-fee settlement clause (§7.2 in the DE/EN "Discretionary All-In" templates).
-// The templates contain BOTH wordings as separate paragraphs, each wrapped in its own
-// bookmark ("PerfClauseAnnual" / "PerfClauseSemi"). Exactly one is shown per generated
-// contract: whichever the fee-settlement toggle selects (default: semiannual/halbjährlich);
-// the other is blanked out. Templates without these bookmarks (Advisory, Execution Only)
-// are left untouched.
-const PERF_CLAUSE_TEXT = {
-  DE: {
-    annual: pct => `Der Vermögensverwalter hat Anspruch auf eine jährliche Performance-Gebühr in Höhe von ${pct} p.a. (zuzüglich der jeweils anwendbaren Mehrwertsteuer) der Nettokapitalzunahme. Die Nettokapitalzunahme berechnet sich aus der Wertsteigerung des Portfolios unter Berücksichtigung von Einzahlungen und Rücknahmen sowie Zins- und Dividendengutschriften, abzüglich der Vermögensverwaltungsgebühr, Bankspesen, Steuern und sonstiger Abgaben. Die Abrechnung erfolgt jährlich, jeweils zum 30.11., unter Anwendung einer High-Water-Mark-Methode. Die Performance-Gebühr von ${pct} wird ausschließlich auf den Teil der Nettokapitalzunahme bis zur Höhe von ${pct} p.a der zuvor maßgeblichen High-Water-Mark erhoben. Ein etwaiger Kapitalzuwachs über diesen Schwellenwert hinaus bleibt von der Performance-Gebühr unberührt.`,
-    semiannual: pct => `Der Vermögensverwalter hat Anspruch auf eine jährliche Performance-Gebühr in Höhe von ${pct} p.a. (zzgl. der jeweils anwendbaren Mehrwertsteuer) der Nettokapitalzunahme. Die Nettokapitalzunahme berechnet sich aus der Wertsteigerung des Portfolios unter Berücksichtigung von Einzahlungen und Rücknahmen sowie Zins- und Dividendengutschriften, abzüglich der Vermögensverwaltungsgebühr, Bankspesen, Steuern und sonstiger Abgaben. Die Abrechnung erfolgt halbjährlich, jeweils zum 30.06. und 31.12., unter Anwendung einer High-Water-Mark-Methode. Die ersten ${pct} p.a. der Wertsteigerung oberhalb der High-Water-Mark gelten als sogenannte „Hurdle Rate“.`,
-  },
-  EN: {
-    annual: pct => `The Asset Manager is entitled to an annual performance fee of ${pct} p.a. (plus the applicable VAT) of the net capital growth. The net capital growth is calculated from the increase in value of the portfolio, taking into account deposits and redemptions as well as interest and dividend credits, less the asset management fee, bank charges, taxes and other levies. Settlement takes place annually, on November 30, using a high-water mark method. The performance fee of ${pct} is charged exclusively on the portion of the net capital growth up to the level of ${pct} p.a. of the previously applicable high-water mark. Any capital growth exceeding this threshold shall not be subject to the performance fee.`,
-    semiannual: pct => `The Asset Manager is entitled to an annual performance fee of ${pct} p.a. (plus the applicable VAT) of the net capital growth. The net capital growth is calculated from the increase in value of the portfolio, taking into account deposits and redemptions as well as interest and dividend credits, less the asset management fee, bank charges, taxes and other levies. Settlement takes place every six months, on June 30 and December 31, using a high-water mark method. The first ${pct} p.a. of the increase in value above the high-water mark is deemed to be the hurdle rate.`,
-  },
+// Halbjährlich (semiannual) is the default — for that one we leave the template's own
+// red placeholder text in place untouched (its nested "Perf"/"Vorab" bookmarks already
+// get filled by the normal placeholder pass in buildReplacementMap/applyReplacementsToXml
+// above); we only strip the red color once a real value exists, and blank the hurdle-rate
+// ("Vorab") sentence entirely when no hurdle-rate % was given.
+//
+// Jährlich (annual) is a full replacement: compliance maintains the wording in
+// performance_fee_jährlich.txt (DE) / performance_fee_annual.txt (EN) in this folder —
+// read live at request time — with the example "10%"/"10 %" swapped for the real fee.
+// Falls back to PERF_CLAUSE_ANNUAL_FALLBACK if a file is missing or empty.
+const PERF_CLAUSE_ANNUAL_FALLBACK = {
+  DE: pct => `Der Vermögensverwalter hat Anspruch auf eine jährliche Performance-Gebühr in Höhe von ${pct} p.a. (zuzüglich der jeweils anwendbaren Mehrwertsteuer) der Nettokapitalzunahme. Die Nettokapitalzunahme berechnet sich aus der Wertsteigerung des Portfolios unter Berücksichtigung von Einzahlungen und Rücknahmen sowie Zins- und Dividendengutschriften, abzüglich der Vermögensverwaltungsgebühr, Bankspesen, Steuern und sonstiger Abgaben. Die Abrechnung erfolgt jährlich, jeweils zum 30.11., unter Anwendung einer High-Water-Mark-Methode. Die Performance-Gebühr von ${pct} wird ausschließlich auf den Teil der Nettokapitalzunahme bis zur Höhe von ${pct} p.a der zuvor maßgeblichen High-Water-Mark erhoben. Ein etwaiger Kapitalzuwachs über diesen Schwellenwert hinaus bleibt von der Performance-Gebühr unberührt.`,
+  EN: pct => `The Asset Manager is entitled to an annual performance fee of ${pct} p.a. (plus the applicable VAT) of the net capital growth. The net capital growth is calculated from the increase in value of the portfolio, taking into account deposits and redemptions as well as interest and dividend credits, less the asset management fee, bank charges, taxes and other levies. Settlement takes place annually, on November 30, using a high-water mark method. The performance fee of ${pct} is charged exclusively on the portion of the net capital growth up to the level of ${pct} p.a. of the previously applicable high-water mark. Any capital growth exceeding this threshold shall not be subject to the performance fee.`,
 };
+
+const PERF_CLAUSE_FILES = {
+  DE: 'performance_fee_jährlich.txt',
+  EN: 'performance_fee_annual.txt',
+};
+
+function buildAnnualClauseText(lang, pct) {
+  const fileName = PERF_CLAUSE_FILES[lang] || PERF_CLAUSE_FILES.DE;
+  try {
+    const raw = fs.readFileSync(path.join(CONTRACTS_DIR, fileName), 'utf8').trim();
+    if (raw) return raw.replace(/10\s?%/g, pct);
+  } catch (_) { /* fall through to built-in fallback */ }
+  return (PERF_CLAUSE_ANNUAL_FALLBACK[lang] || PERF_CLAUSE_ANNUAL_FALLBACK.DE)(pct);
+}
 
 // Sets the full text of a bookmarked region unconditionally (unlike applyReplacementsToXml,
 // this also blanks the region when `text` is empty — used to hide the non-selected clause).
@@ -513,15 +528,49 @@ function setBookmarkText(xml, name, text) {
   return xml.slice(0, contentStart) + newSegment + xml.slice(contentEnd);
 }
 
+// Applies `transformFn` to just the <w:p>...</w:p> paragraph that contains the given
+// bookmark, rather than a whole bookmark region — used for "Perf" and "Vorab", which
+// are single-word bookmarks nested inside their sentence, not sentence-wide ones.
+function transformParagraphContainingBookmark(xml, bookmarkName, transformFn) {
+  const nameIdx = xml.indexOf(`w:name="${bookmarkName}"`);
+  if (nameIdx === -1) return xml;
+  const pStart = Math.max(xml.lastIndexOf('<w:p ', nameIdx), xml.lastIndexOf('<w:p>', nameIdx));
+  if (pStart === -1) return xml;
+  const pEnd = xml.indexOf('</w:p>', nameIdx);
+  if (pEnd === -1) return xml;
+  const contentEnd = pEnd + '</w:p>'.length;
+  return xml.slice(0, pStart) + transformFn(xml.slice(pStart, contentEnd)) + xml.slice(contentEnd);
+}
+
+function blankParagraphContainingBookmark(xml, bookmarkName) {
+  return transformParagraphContainingBookmark(xml, bookmarkName,
+    seg => seg.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, '<w:t$1></w:t>'));
+}
+
+function stripRedInParagraphContainingBookmark(xml, bookmarkName) {
+  return transformParagraphContainingBookmark(xml, bookmarkName,
+    seg => seg.replace(/<w:color w:val="FF0000"\/>/g, ''));
+}
+
 function applyPerformanceFeeClauseToXml(xml, fieldValues, lang) {
   if (!xml.includes('w:name="PerfClauseAnnual"')) return xml; // template has no toggleable clause
   const fv = fieldValues || {};
   const pct = fv.performance_fee ? fv.performance_fee + '%' : 'Perf';
   const freq = fv.performance_fee_frequency === 'annual' ? 'annual' : 'semiannual';
-  const texts = PERF_CLAUSE_TEXT[lang] || PERF_CLAUSE_TEXT.DE;
 
-  xml = setBookmarkText(xml, 'PerfClauseAnnual', freq === 'annual'     ? texts.annual(pct)     : '');
-  xml = setBookmarkText(xml, 'PerfClauseSemi',   freq === 'semiannual' ? texts.semiannual(pct) : '');
+  if (freq === 'annual') {
+    xml = setBookmarkText(xml, 'PerfClauseAnnual', buildAnnualClauseText(lang, pct));
+    xml = stripRedInParagraphContainingBookmark(xml, 'PerfClauseAnnual');
+    xml = setBookmarkText(xml, 'PerfClauseSemi', ''); // hide both semiannual paragraphs (incl. Vorab sentence)
+  } else {
+    xml = setBookmarkText(xml, 'PerfClauseAnnual', ''); // hide the annual clause
+    // Semiannual is the default — keep the template's own wording; "Perf"/"Vorab" were
+    // already filled by the normal placeholder pass if provided. Only strip the red
+    // "unfilled" color once a real value exists, per field, independently.
+    if (fv.performance_fee) xml = stripRedInParagraphContainingBookmark(xml, 'Perf');
+    if (fv.vorab_pct)       xml = stripRedInParagraphContainingBookmark(xml, 'Vorab');
+    else                    xml = blankParagraphContainingBookmark(xml, 'Vorab');
+  }
   return xml;
 }
 
@@ -532,8 +581,7 @@ function highlightPerfClauseInPreviewHtml(html, fieldValues, lang) {
   const fv = fieldValues || {};
   if (fv.performance_fee_frequency !== 'annual') return html;
   const pct = fv.performance_fee ? fv.performance_fee + '%' : 'Perf';
-  const texts = PERF_CLAUSE_TEXT[lang] || PERF_CLAUSE_TEXT.DE;
-  const clause = texts.annual(pct);
+  const clause = buildAnnualClauseText(lang, pct);
   if (!html.includes(clause)) return html;
   return html.replace(clause, `<span style="color:#dc2626;">${clause}</span>`);
 }
