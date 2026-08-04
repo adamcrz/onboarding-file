@@ -292,9 +292,8 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   map['USD'] = ccyActive('ccy_usd_min','ccy_usd_max') ? pctVal(fv.ccy_usd_max) : '';
   map['GBP'] = ccyActive('ccy_gbp_min','ccy_gbp_max') ? pctVal(fv.ccy_gbp_max) : '';
   map['AUD'] = ccyActive('ccy_aud_min','ccy_aud_max') ? pctVal(fv.ccy_aud_max) : '';
-
-  // Additional investment category (last row of the investment table) — bookmark: And
-  if (fv.additional_category) map['And'] = fv.additional_category;
+  // "Andere"/"Others" row (last row of the currency table) — bookmark: And
+  map['And'] = ccyActive('ccy_other_min','ccy_other_max') ? pctVal(fv.ccy_other_max) : '';
 
   return map;
 }
@@ -422,6 +421,7 @@ function applyAllocMinToXml(xml, fieldValues) {
     { bm: 'USD', min: fv.ccy_usd_min, suppress: !ccyActive('ccy_usd_min','ccy_usd_max') },
     { bm: 'GBP', min: fv.ccy_gbp_min, suppress: !ccyActive('ccy_gbp_min','ccy_gbp_max') },
     { bm: 'AUD', min: fv.ccy_aud_min, suppress: !ccyActive('ccy_aud_min','ccy_aud_max') },
+    { bm: 'And', min: fv.ccy_other_min, suppress: !ccyActive('ccy_other_min','ccy_other_max') },
   ];
 
   // Track replaced bookmarks so we don't double-replace the typo pair
