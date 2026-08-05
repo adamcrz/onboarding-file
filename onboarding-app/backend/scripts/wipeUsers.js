@@ -1,5 +1,6 @@
 /**
- * Wipe all User accounts from MongoDB except the 3 seeded demo accounts.
+ * Wipe all User accounts (and their Client records) from MongoDB except the
+ * 3 seeded demo accounts.
  * Run: npm run wipe-users
  *
  * Preserved:
@@ -10,6 +11,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const User     = require('../models/User');
+const Client   = require('../models/Client');
 
 const KEEP_EMAILS = ['compliance@demo.com', 'rm@demo.com', 'client@demo.com'];
 
@@ -23,9 +25,13 @@ async function wipe() {
   console.log('✅  Connected to MongoDB\n');
 
   const kept = await User.find({ email: { $in: KEEP_EMAILS } }).select('email');
-  const result = await User.deleteMany({ email: { $nin: KEEP_EMAILS } });
+  const toDelete = await User.find({ email: { $nin: KEEP_EMAILS } }).select('_id');
+  const idsToDelete = toDelete.map(u => u._id);
 
-  console.log(`🗑️   Deleted ${result.deletedCount} user(s).`);
+  const clientResult = await Client.deleteMany({ userId: { $in: idsToDelete } });
+  const userResult = await User.deleteMany({ _id: { $in: idsToDelete } });
+
+  console.log(`🗑️   Deleted ${userResult.deletedCount} user(s) and ${clientResult.deletedCount} client record(s).`);
   console.log(`✓  Kept ${kept.length} demo account(s): ${kept.map(u => u.email).join(', ') || '(none found)'}`);
 
   await mongoose.disconnect();
