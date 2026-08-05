@@ -21,7 +21,7 @@ function safeUser(user) {
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
     if (!name || !email || !password)
       return res.status(400).json({ error: 'Name, email and password are required.' });
@@ -29,15 +29,20 @@ const register = async (req, res) => {
     if (password.length < 8)
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
-    // Public self-registration always creates a client account — staff roles
-    // (RM/Compliance) are never self-assignable, regardless of what a caller
-    // sends. Uniqueness is scoped per role, so this email may already exist
-    // as an RM/Compliance account without blocking a new client account.
-    const existing = await User.findOne({ email: email.toLowerCase(), role: 'client' });
+    // Which portal (role) the account is created for is decided by which
+    // portal card the user picked on the login screen before reaching this
+    // form, not a raw dropdown — but the value still arrives here as a plain
+    // field, so it's validated against the allowed set the same way.
+    // Uniqueness is scoped per role, so this email may already have an
+    // account under a different role category without blocking this one.
+    const allowedRoles = ['compliance', 'compliance_external', 'rm', 'client'];
+    const resolvedRole = allowedRoles.includes(role) ? role : 'client';
+
+    const existing = await User.findOne({ email: email.toLowerCase(), role: resolvedRole });
     if (existing)
       return res.status(400).json({ error: 'An account with that email already exists.' });
 
-    const user = new User({ name, email, password, role: 'client' });
+    const user = new User({ name, email, password, role: resolvedRole });
 
     const verificationToken = user.createEmailVerificationToken();
     await user.save();

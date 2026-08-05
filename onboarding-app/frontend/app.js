@@ -378,9 +378,7 @@ function loginFormHTML() {
       </button>
     </div>
 
-    <div style="text-align:center;margin-top:8px;">
-      <button class="auth-link-btn" onclick="setAuthPanel('register')">New to the portal? Create account</button>
-    </div>
+    <p class="login-subtitle" style="text-align:center;margin-top:8px;font-size:12.5px;">Pick a portal above to sign in or create an account for it.</p>
 
     <p class="login-footer" style="margin-top:24px;">SHA cryptography &nbsp;·&nbsp; Protected by 256-bit TLS encryption</p>
   `;
@@ -455,14 +453,27 @@ function roleLoginFormHTML() {
 }
 
 function registerFormHTML() {
+  const role = AuthState.selectedRole;
+  const meta = ROLE_META[role];
   return `
+    <button class="auth-back-btn" onclick="setAuthPanel('login')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </button>
+
+    ${meta ? `
+      <div class="role-login-badge-row">
+        <span class="role-login-badge">${meta.icon} ${meta.portal}</span>
+      </div>
+    ` : ''}
+
     <div class="auth-tabs">
-      <button class="auth-tab"         onclick="setAuthPanel('login')">Sign In</button>
+      <button class="auth-tab"         onclick="setAuthPanel('${role ? 'role-login' : 'login'}')">Sign In</button>
       <button class="auth-tab active"  onclick="setAuthPanel('register')">Create Account</button>
     </div>
 
     <h1 class="login-title">Create account</h1>
-    <p class="login-subtitle">Join your compliance portal</p>
+    <p class="login-subtitle">${meta ? `Creating a new ${meta.name} account` : 'Join your compliance portal'}</p>
 
     <div class="form-group">
       <label for="reg-name">Full Name *</label>
@@ -687,7 +698,7 @@ async function register() {
   const email    = (document.getElementById('reg-email')?.value || '').trim();
   const password = document.getElementById('reg-password')?.value || '';
   const confirm  = document.getElementById('reg-confirm')?.value  || '';
-  const role     = 'client'; // public self-registration is client-only; staff accounts are provisioned separately
+  const role     = AuthState.selectedRole || 'client'; // determined by which portal card was selected on the login screen
   const btn      = document.getElementById('register-btn');
 
   if (!name || !email || !password) {
