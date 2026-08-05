@@ -3000,11 +3000,18 @@ async function cbStep2() {
     const data = await apiFetch('GET', `/contracts/placeholders/${CB.selectedId}`);
     CB.fields = data.fields || [];
     CB.formularBookmark = !!data.bookmarks?.includes('FormularLetter');
+    // Not every template has a performance-fee clause or a currency allocation
+    // table (e.g. Advisory contracts have neither) — only show those sections
+    // when the template actually has somewhere to put the values.
+    CB.hasPerfFee = !!data.bookmarks?.includes('PerfClauseAnnual');
+    CB.hasCurrencyTable = !!data.bookmarks?.includes('CHF');
     if (data.bookmarks?.length) {
       console.log(`[Contract Builder] Bookmarks in "${CB.selectedId}":`, data.bookmarks);
     }
   } catch (_) {
     CB.formularBookmark = false;
+    CB.hasPerfFee = false;
+    CB.hasCurrencyTable = false;
     CB.fields = [
       { key:'client_last_name',   label:'Last Name',                   type:'text',  required:true  },
       { key:'client_first_name',  label:'First Name',                  type:'text',  required:true  },
@@ -3172,72 +3179,76 @@ async function cbStep2() {
                 placeholder="Additional instructions, restrictions, or specific remarks…">${CB.investmentComments}</textarea>
     </div>
 
-    <div class="cb-section-label" style="margin-top:28px;">Fee Structure</div>
-    <div class="cb-fields-grid" style="margin-top:12px;max-width:500px;">
-      <div class="form-group" style="margin-bottom:0;">
-        <label for="cb_management_fee">Annual Management Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% p.a.</span></label>
-        <input type="number" id="cb_management_fee" step="0.01" min="0" max="100"
-               placeholder="e.g. 1.00" value="${CB.managementFee||''}">
+    ${CB.hasPerfFee ? `
+      <div class="cb-section-label" style="margin-top:28px;">Fee Structure</div>
+      <div class="cb-fields-grid" style="margin-top:12px;max-width:500px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label for="cb_management_fee">Annual Management Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% p.a.</span></label>
+          <input type="number" id="cb_management_fee" step="0.01" min="0" max="100"
+                 placeholder="e.g. 1.00" value="${CB.managementFee||''}">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label for="cb_performance_fee">Performance Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% (optional)</span></label>
+          <input type="number" id="cb_performance_fee" step="0.01" min="0" max="100"
+                 placeholder="e.g. 10.00" value="${CB.performanceFee||''}" oninput="cbTogglePerfFreq()">
+        </div>
+        <div class="form-group" id="cb_perf_freq_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
+          <label for="cb_performance_fee_frequency">Performance Fee Settlement</label>
+          <select id="cb_performance_fee_frequency" onchange="cbTogglePerfFreq()">
+            <option value="annual"     ${CB.performanceFeeFrequency !== 'semiannual' ? 'selected' : ''}>Jährlich</option>
+            <option value="semiannual" ${CB.performanceFeeFrequency === 'semiannual' ? 'selected' : ''}>Halbjährlich</option>
+          </select>
+        </div>
+        <div class="form-group" id="cb_vorab_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
+          <label for="cb_vorab_pct">Hurdle Rate % <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(optional — leave blank to omit the hurdle-rate sentence)</span></label>
+          <input type="number" id="cb_vorab_pct" step="0.01" min="0" max="100"
+                 placeholder="e.g. 5.00" value="${CB.vorabPct||''}">
+        </div>
       </div>
-      <div class="form-group" style="margin-bottom:0;">
-        <label for="cb_performance_fee">Performance Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% (optional)</span></label>
-        <input type="number" id="cb_performance_fee" step="0.01" min="0" max="100"
-               placeholder="e.g. 10.00" value="${CB.performanceFee||''}" oninput="cbTogglePerfFreq()">
-      </div>
-      <div class="form-group" id="cb_perf_freq_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
-        <label for="cb_performance_fee_frequency">Performance Fee Settlement</label>
-        <select id="cb_performance_fee_frequency" onchange="cbTogglePerfFreq()">
-          <option value="annual"     ${CB.performanceFeeFrequency !== 'semiannual' ? 'selected' : ''}>Jährlich</option>
-          <option value="semiannual" ${CB.performanceFeeFrequency === 'semiannual' ? 'selected' : ''}>Halbjährlich</option>
-        </select>
-      </div>
-      <div class="form-group" id="cb_vorab_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
-        <label for="cb_vorab_pct">Hurdle Rate % <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(optional — leave blank to omit the hurdle-rate sentence)</span></label>
-        <input type="number" id="cb_vorab_pct" step="0.01" min="0" max="100"
-               placeholder="e.g. 5.00" value="${CB.vorabPct||''}">
-      </div>
-    </div>
+    ` : ''}
 
-    <div class="cb-section-label" style="margin-top:28px;">Currency Allocation</div>
-    <div class="cb-alloc-wrap" style="margin-top:12px;">
-      <table class="cb-alloc-table">
-        <thead>
-          <tr>
-            <th>Currency</th>
-            <th style="text-align:right;">Min %</th>
-            <th style="text-align:right;">Max %</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${[
-            ['ccy_CHF', 'CHF — Swiss Franc',      CB.currencyWeights.CHF || {min:0,max:0}],
-            ['ccy_EUR', 'EUR — Euro',              CB.currencyWeights.EUR || {min:0,max:0}],
-            ['ccy_USD', 'USD — US Dollar',         CB.currencyWeights.USD || {min:0,max:0}],
-            ['ccy_GBP', 'GBP — Pound Sterling',   CB.currencyWeights.GBP || {min:0,max:0}],
-            ['ccy_AUD',   'AUD — Australian Dollar', CB.currencyWeights.AUD   || {min:0,max:0}],
-            ['ccy_JPY',   'JPY — Japanese Yen',      CB.currencyWeights.JPY   || {min:0,max:0}],
-            ['ccy_Other', 'Other',                   CB.currencyWeights.Other || {min:0,max:30}],
-          ].map(([id, lbl, vals]) => `
+    ${CB.hasCurrencyTable ? `
+      <div class="cb-section-label" style="margin-top:28px;">Currency Allocation</div>
+      <div class="cb-alloc-wrap" style="margin-top:12px;">
+        <table class="cb-alloc-table">
+          <thead>
             <tr>
-              <td style="font-size:13px;">${lbl}</td>
-              <td><div class="cb-alloc-input-wrap">
-                <input type="number" id="${id}_min" value="${vals.min}" min="0" max="100" step="1" oninput="cbUpdateCcyTotal()">
-                <span class="cb-pct-label">%</span>
-              </div></td>
-              <td><div class="cb-alloc-input-wrap">
-                <input type="number" id="${id}_max" value="${vals.max}" min="0" max="100" step="1" oninput="cbUpdateCcyTotal()">
-                <span class="cb-pct-label">%</span>
-              </div></td>
+              <th>Currency</th>
+              <th style="text-align:right;">Min %</th>
+              <th style="text-align:right;">Max %</th>
             </tr>
-          `).join('')}
-          <tr class="cb-alloc-total" id="ccy-total-row">
-            <td style="font-size:13px;font-weight:700;">Total</td>
-            <td style="text-align:right;"><strong id="ccy-total-min">${['CHF','EUR','USD','GBP','AUD','JPY','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.min||0),0)}%</strong></td>
-            <td style="text-align:right;"><strong id="ccy-total-max">${['CHF','EUR','USD','GBP','AUD','JPY','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.max||0),0)}%</strong></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            ${[
+              ['ccy_CHF', 'CHF — Swiss Franc',      CB.currencyWeights.CHF || {min:0,max:0}],
+              ['ccy_EUR', 'EUR — Euro',              CB.currencyWeights.EUR || {min:0,max:0}],
+              ['ccy_USD', 'USD — US Dollar',         CB.currencyWeights.USD || {min:0,max:0}],
+              ['ccy_GBP', 'GBP — Pound Sterling',   CB.currencyWeights.GBP || {min:0,max:0}],
+              ['ccy_AUD',   'AUD — Australian Dollar', CB.currencyWeights.AUD   || {min:0,max:0}],
+              ['ccy_JPY',   'JPY — Japanese Yen',      CB.currencyWeights.JPY   || {min:0,max:0}],
+              ['ccy_Other', 'Other',                   CB.currencyWeights.Other || {min:0,max:30}],
+            ].map(([id, lbl, vals]) => `
+              <tr>
+                <td style="font-size:13px;">${lbl}</td>
+                <td><div class="cb-alloc-input-wrap">
+                  <input type="number" id="${id}_min" value="${vals.min}" min="0" max="100" step="1" oninput="cbUpdateCcyTotal()">
+                  <span class="cb-pct-label">%</span>
+                </div></td>
+                <td><div class="cb-alloc-input-wrap">
+                  <input type="number" id="${id}_max" value="${vals.max}" min="0" max="100" step="1" oninput="cbUpdateCcyTotal()">
+                  <span class="cb-pct-label">%</span>
+                </div></td>
+              </tr>
+            `).join('')}
+            <tr class="cb-alloc-total" id="ccy-total-row">
+              <td style="font-size:13px;font-weight:700;">Total</td>
+              <td style="text-align:right;"><strong id="ccy-total-min">${['CHF','EUR','USD','GBP','AUD','JPY','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.min||0),0)}%</strong></td>
+              <td style="text-align:right;"><strong id="ccy-total-max">${['CHF','EUR','USD','GBP','AUD','JPY','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.max||0),0)}%</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    ` : ''}
 
     <div style="margin-top:28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;">
       <button class="btn-secondary" style="display:inline-flex;align-items:center;gap:7px;" onclick="cbViewPreview()">
