@@ -21,7 +21,7 @@ function safeUser(user) {
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password)
       return res.status(400).json({ error: 'Name, email and password are required.' });
@@ -29,17 +29,15 @@ const register = async (req, res) => {
     if (password.length < 8)
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
-    const existing = await User.findOne({ email: email.toLowerCase() });
+    // Public self-registration always creates a client account — staff roles
+    // (RM/Compliance) are never self-assignable, regardless of what a caller
+    // sends. Uniqueness is scoped per role, so this email may already exist
+    // as an RM/Compliance account without blocking a new client account.
+    const existing = await User.findOne({ email: email.toLowerCase(), role: 'client' });
     if (existing)
       return res.status(400).json({ error: 'An account with that email already exists.' });
 
-    const allowedRoles = ['compliance', 'compliance_external', 'rm', 'client'];
-    const user = new User({
-      name,
-      email,
-      password,
-      role: allowedRoles.includes(role) ? role : 'client',
-    });
+    const user = new User({ name, email, password, role: 'client' });
 
     const verificationToken = user.createEmailVerificationToken();
     await user.save();
@@ -76,14 +74,34 @@ const register = async (req, res) => {
 // POST /api/auth/login
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
     if (!email || !password)
       return res.status(400).json({ error: 'Email and password are required.' });
 
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user)
+    // The same email can hold an account in more than one role category, so
+    // the portal the user picked (sent as `role`) disambiguates which
+    // account to check. Without it, fall back to whichever account matches
+    // (pre-existing callers that don't send a portal yet).
+    const user = await User.findOne(role ? { email: email.toLowerCase(), role } : { email: email.toLowerCase() });
+    if (!user) {
+      // No account in the selected portal — but the same email might have an
+      // account under a *different* category (e.g. an RM logging into the
+      // Compliance portal by mistake). Only reveal that if the password
+      // actually matches that other account, same as a normal login would.
+      if (role) {
+        const otherAccounts = await User.find({ email: email.toLowerCase(), role: { $ne: role } });
+        for (const other of otherAccounts) {
+          if (await other.comparePassword(password)) {
+            const names = { compliance: 'Internal Compliance', compliance_external: 'External Compliance', rm: 'Rel. Manager', client: 'Client' };
+            return res.status(401).json({
+              error: `These credentials belong to the ${names[other.role] || other.role} portal. Please go back and select the correct portal.`,
+            });
+          }
+        }
+      }
       return res.status(401).json({ error: 'Invalid email or password.' });
+    }
 
     const match = await user.comparePassword(password);
     if (!match)

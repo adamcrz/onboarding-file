@@ -4,7 +4,7 @@ const crypto   = require('crypto');
 
 const userSchema = new mongoose.Schema({
   name:     { type: String, required: true, trim: true },
-  email:    { type: String, required: true, unique: true, lowercase: true, trim: true },
+  email:    { type: String, required: true, lowercase: true, trim: true },
   password: { type: String, required: true },
   role:     { type: String, enum: ['compliance', 'compliance_external', 'rm', 'client', 'admin'], default: 'client' },
 
@@ -15,6 +15,10 @@ const userSchema = new mongoose.Schema({
   passwordResetToken:   { type: String },
   passwordResetExpires: { type: Date },
 }, { timestamps: true });
+
+// One account per email PER ROLE — the same email may hold, say, both an RM
+// account and a Client account, but not two accounts in the same category.
+userSchema.index({ email: 1, role: 1 }, { unique: true });
 
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;

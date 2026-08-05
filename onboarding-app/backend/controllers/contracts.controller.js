@@ -853,12 +853,14 @@ async function createClientInviteAndEmail(clientName, clientEmail, templateId) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const otp   = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 
-  let user = await User.findOne({ email: clientEmail.toLowerCase() });
+  // Scoped to role:'client' — the same email may already belong to a staff
+  // (RM/Compliance) account, which must never be overwritten into a client
+  // login here.
+  let user = await User.findOne({ email: clientEmail.toLowerCase(), role: 'client' });
   if (user) {
     user.name = clientName;
     user.password = otp;
     user.isEmailVerified = true;
-    user.role = 'client';
     await user.save();
   } else {
     user = new User({ name: clientName, email: clientEmail.toLowerCase(),

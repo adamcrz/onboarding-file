@@ -621,7 +621,7 @@ async function login() {
     const res = await fetch('http://localhost:5000/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, role: demoRole }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -636,19 +636,15 @@ async function login() {
     }
 
     if (!res.ok) {
+      // The backend already checks the account for the selected portal and,
+      // if the credentials match a different-category account instead,
+      // returns a "wrong portal" message — surface whatever it says.
       showToast('error', data.error || 'Login failed.');
       resetLoginBtn();
       return;
     }
 
     const backendRole = data.user.role;
-    if (AuthState.selectedRole && backendRole !== AuthState.selectedRole) {
-      const names = { compliance: 'Internal Compliance', compliance_external: 'External Compliance', rm: 'Rel. Manager', client: 'Client' };
-      const correct = names[backendRole] || backendRole;
-      showToast('error', `These credentials belong to the ${correct} portal. Please go back and select the correct portal.`);
-      resetLoginBtn();
-      return;
-    }
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     enterApp(backendRole);
