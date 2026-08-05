@@ -2013,9 +2013,16 @@ function renderClientDocsTab(client) {
         <div class="card-body">
           <div class="form-group" style="margin-bottom:14px;max-width:360px;">
             <label for="upload-doc-type">Document Type</label>
-            <select id="upload-doc-type">
+            <select id="upload-doc-type" onchange="cbToggleContractTemplateSelect()">
               <option value="Uploaded Document">Other Signed Document</option>
               <option value="ID Document">ID Document (Passport / Ausweis)</option>
+              <option value="Signed Contract">Signed Contract Package</option>
+            </select>
+          </div>
+          <div class="form-group" id="upload-contract-template-wrap" style="margin-bottom:14px;max-width:360px;display:none;">
+            <label for="upload-contract-template">Contract Template Used</label>
+            <select id="upload-contract-template">
+              ${Object.entries(CONTRACT_VALIDATION_MAPS).map(([id, m]) => `<option value="${id}">${m.label}</option>`).join('')}
             </select>
           </div>
           <div class="upload-zone" id="upload-zone" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)" onclick="triggerFileInput()">
@@ -2198,11 +2205,132 @@ function detectSignatureStamp(file) {
   });
 }
 
+function cbToggleContractTemplateSelect() {
+  const isContract = document.getElementById('upload-doc-type')?.value === 'Signed Contract';
+  const wrap = document.getElementById('upload-contract-template-wrap');
+  if (wrap) wrap.style.display = isContract ? 'block' : 'none';
+}
+
+function contractCheckFailureReason(result, templateId) {
+  if (result.reason === 'page not found in upload') return 'expected page not found in the uploaded PDF — please re-upload the complete package.';
+  const region = CONTRACT_VALIDATION_MAPS[templateId]?.regions.find(r => r.id === result.id);
+  if (region?.rule === 'at-most-one') return 'more than one option is ticked — only one should be selected.';
+  return 'no option appears to be ticked.';
+}
+
 function flagDocumentCorrection(clientId, docName, issue) {
   State.documentCorrections.push({
     id: 'doc-c-' + Date.now() + Math.random().toString(36).slice(2,6),
     clientId, docName, issue, status: 'pending',
   });
+}
+
+/* ============================================================
+   SIGNED CONTRACT VALIDATION — checks a client's uploaded, physically-signed
+   contract scan for required initials/checkboxes/signatures, the same way
+   detectSignatureStamp() checks ID documents: real pixel-ink analysis, not a
+   stub. Box coordinates were extracted once (via PyMuPDF, offline) from an
+   actual generated+rendered contract for each template, as fractions of page
+   width/height so they hold regardless of render DPI. This only covers the
+   pages/sections that were mapped — extend CONTRACT_VALIDATION_MAPS with the
+   same coordinate-extraction approach to cover more templates/regions.
+   ============================================================ */
+const CONTRACT_VALIDATION_MAPS = {
+  'en-disc-all-in': {
+    label: 'Discretionary All-In (EN)',
+    regions: [
+      { id: 'investment_strategy', label: 'Investment Strategy selection', page: 18, rule: 'at-least-one', boxes: [
+        {x0:0.1237,y0:0.1541,x1:0.1311,y1:0.1593}, {x0:0.1237,y0:0.1709,x1:0.1311,y1:0.1761},
+      ]},
+      { id: 'risk_capacity', label: 'Risk Capacity assessment', page: 14, rule: 'at-most-one', boxes: [
+        {x0:0.1479,y0:0.1597,x1:0.1539,y1:0.1661}, {x0:0.1493,y0:0.1829,x1:0.1553,y1:0.1893},
+        {x0:0.1495,y0:0.2058,x1:0.1555,y1:0.2122}, {x0:0.1497,y0:0.2291,x1:0.1557,y1:0.2355},
+        {x0:0.1497,y0:0.2523,x1:0.1558,y1:0.2587},
+      ]},
+      { id: 'risk_tolerance', label: 'Risk Tolerance assessment', page: 14, rule: 'at-most-one', boxes: [
+        {x0:0.5435,y0:0.1597,x1:0.5495,y1:0.1661}, {x0:0.5449,y0:0.1829,x1:0.5509,y1:0.1893},
+        {x0:0.5451,y0:0.2058,x1:0.5511,y1:0.2122}, {x0:0.5453,y0:0.2291,x1:0.5513,y1:0.2355},
+        {x0:0.5453,y0:0.2523,x1:0.5514,y1:0.2587},
+      ]},
+      { id: 'suitable_mandate', label: 'Suitable Mandate selection', page: 14, rule: 'at-most-one', boxes: [
+        {x0:0.1673,y0:0.3287,x1:0.1733,y1:0.3351}, {x0:0.1672,y0:0.3659,x1:0.1731,y1:0.3723},
+        {x0:0.1672,y0:0.4209,x1:0.1731,y1:0.4273}, {x0:0.1672,y0:0.4707,x1:0.1731,y1:0.4771},
+        {x0:0.1672,y0:0.5375,x1:0.1731,y1:0.5439},
+      ]},
+    ],
+  },
+  'en-advisory': {
+    label: 'Advisory Contract (EN)',
+    regions: [
+      { id: 'initials_p4', label: 'Client initials (p.4 — third-party compensation waiver)', page: 4, rule: 'ink-present', boxes: [
+        {x0:0.7382,y0:0.1683,x1:0.9282,y1:0.1922},
+      ]},
+    ],
+  },
+};
+
+// Renders one PDF page to a canvas and returns its 2D context + dimensions.
+async function renderPdfPageToCanvas(pdfDoc, pageNum) {
+  const page = await pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 2 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return { ctx, width: canvas.width, height: canvas.height };
+}
+
+// Same ink-density heuristic as detectSignatureStamp, applied to an arbitrary
+// normalized region of an already-rendered page.
+function regionHasInk(ctx, width, height, box, threshold) {
+  const x0 = Math.max(0, Math.floor(box.x0 * width));
+  const y0 = Math.max(0, Math.floor(box.y0 * height));
+  const x1 = Math.min(width, Math.ceil(box.x1 * width));
+  const y1 = Math.min(height, Math.ceil(box.y1 * height));
+  const w = x1 - x0, h = y1 - y0;
+  if (w <= 0 || h <= 0) return false;
+  let data;
+  try { data = ctx.getImageData(x0, y0, w, h).data; } catch (_) { return false; }
+  let ink = 0;
+  const total = w * h;
+  for (let i = 0; i < data.length; i += 4) {
+    const brightness = (data[i] + data[i+1] + data[i+2]) / 3;
+    if (brightness < 190) ink++;
+  }
+  return (ink / total) > (threshold ?? 0.15); // boxes are shrunk to each checkbox's interior (border excluded), so an empty box reads near-0% and a real tick reads near-100%
+}
+
+// Validates an uploaded signed contract PDF against the template's mapped
+// regions. Returns { supported, results: [{id, label, ok}] }.
+async function validateSignedContractPdf(file, templateId) {
+  const map = CONTRACT_VALIDATION_MAPS[templateId];
+  if (!map) return { supported: false, results: [] };
+  if (file.type !== 'application/pdf' || !window.pdfjsLib) return { supported: false, results: [] };
+
+  const buf = await file.arrayBuffer();
+  const pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+
+  const pageCache = {};
+  const getPage = async (n) => {
+    if (n > pdfDoc.numPages) return null;
+    if (!pageCache[n]) pageCache[n] = await renderPdfPageToCanvas(pdfDoc, n);
+    return pageCache[n];
+  };
+
+  const results = [];
+  for (const region of map.regions) {
+    const rendered = await getPage(region.page);
+    if (!rendered) { results.push({ id: region.id, label: region.label, ok: false, reason: 'page not found in upload' }); continue; }
+    const ticked = region.boxes.map(b => regionHasInk(rendered.ctx, rendered.width, rendered.height, b));
+    const tickedCount = ticked.filter(Boolean).length;
+    let ok;
+    if (region.rule === 'at-least-one') ok = tickedCount >= 1;
+    else if (region.rule === 'at-most-one') ok = tickedCount <= 1;
+    else ok = tickedCount >= 1; // 'ink-present' — single box, same test
+    results.push({ id: region.id, label: region.label, ok, tickedCount });
+  }
+  return { supported: true, results };
 }
 
 async function simulateUpload(file) {
@@ -2226,6 +2354,23 @@ async function simulateUpload(file) {
       newDoc.missingNote = 'Automatic check found no signature/stamp with date in the bottom-right corner — please re-upload a clearer scan.';
       flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
       showToast('warning', `${file.name} uploaded, but no signature/stamp was detected — flagged for correction.`);
+    }
+  }
+
+  if (docType === 'Signed Contract') {
+    const templateId = document.getElementById('upload-contract-template')?.value;
+    const { supported, results } = await validateSignedContractPdf(file, templateId);
+    if (!supported) {
+      newDoc.missingNote = 'Automatic verification isn\'t available for this template/file type yet — please review manually.';
+      flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
+      showToast('warning', `${file.name} uploaded — automatic verification not available for this template, flagged for manual review.`);
+    } else {
+      const failed = results.filter(r => !r.ok);
+      if (failed.length) {
+        newDoc.missingNote = 'Automatic check found issues: ' + failed.map(r => r.label).join('; ') + '.';
+        failed.forEach(r => flagDocumentCorrection(client.id, newDoc.name, `${r.label}: ${contractCheckFailureReason(r, templateId)}`));
+        showToast('warning', `${file.name} uploaded, but ${failed.length} check(s) failed — flagged for correction.`);
+      }
     }
   }
 
