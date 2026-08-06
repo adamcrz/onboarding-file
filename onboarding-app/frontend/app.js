@@ -237,6 +237,7 @@ const ROLES = {
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
+      { id: 'review-queue', label: 'Review Queue', icon: shieldIcon() },
       { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
@@ -255,6 +256,7 @@ const ROLES = {
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
+      { id: 'review-queue', label: 'Review Queue', icon: shieldIcon() },
       { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
@@ -870,7 +872,7 @@ function setupRoleUI(role) {
   });
 
   // Notifications panel
-  renderNotificationDropdown();
+  refreshNotifications();
   refreshContractReviewsBadge();
 }
 
@@ -900,6 +902,17 @@ function updateNotifBadge() {
   else badge.style.display = 'none';
 }
 
+// Pulls the current notification list from the backend into the State cache
+// (mapping Mongo's `_id` to the plain `id` the rest of the app expects, and
+// `createdAt` to a display string), then re-renders the dropdown.
+async function refreshNotifications() {
+  try {
+    const items = await apiFetch('GET', '/notifications');
+    State.notifications = items.map(n => ({ ...n, id: n._id, time: new Date(n.createdAt).toLocaleString() }));
+  } catch (_) { /* keep whatever was cached */ }
+  renderNotificationDropdown();
+}
+
 function renderNotificationDropdown() {
   const el = document.getElementById('notif-dropdown');
   el.innerHTML = `
@@ -908,7 +921,7 @@ function renderNotificationDropdown() {
       <button onclick="markAllRead()" style="background:none;border:none;font-size:12px;color:var(--accent-purple-light);cursor:pointer;">Mark all read</button>
     </div>
     ${State.notifications.map(n => `
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border-subtle);${!n.read ? 'background:rgba(99,102,241,0.04)' : ''};cursor:pointer;" onclick="markRead(${n.id})">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border-subtle);${!n.read ? 'background:rgba(99,102,241,0.04)' : ''};cursor:pointer;" onclick="markRead('${n.id}')">
         <div style="font-size:13px;color:var(--text-primary);">${n.text}</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${n.time}</div>
       </div>
@@ -917,11 +930,22 @@ function renderNotificationDropdown() {
   updateNotifBadge();
 }
 
-function markAllRead() { State.notifications.forEach(n => n.read = true); renderNotificationDropdown(); }
-function markRead(id) { const n = State.notifications.find(n => n.id === id); if(n) n.read = true; renderNotificationDropdown(); }
+async function markAllRead() {
+  State.notifications.forEach(n => n.read = true);
+  renderNotificationDropdown();
+  try { await apiFetch('POST', '/notifications/read-all'); } catch (_) { /* best-effort */ }
+}
+
+async function markRead(id) {
+  const n = State.notifications.find(n => n.id === id);
+  if (n) n.read = true;
+  renderNotificationDropdown();
+  try { await apiFetch('POST', `/notifications/${id}/read`); } catch (_) { /* best-effort */ }
+}
 
 function toggleNotifications() {
   document.getElementById('notif-dropdown').classList.toggle('open');
+  refreshNotifications();
 }
 document.addEventListener('click', e => {
   if (!e.target.closest('#notif-btn') && !e.target.closest('#notif-dropdown')) {
@@ -1041,9 +1065,33 @@ function navigateTo(page) {
 /* ============================================================
    PAGE: DASHBOARD
    ============================================================ */
+// Pulls the current KYC task list from the backend into the State.kycTasks cache
+// (mapping Mongo's `_id` to the plain `id` the rest of the app already expects),
+// then re-renders whichever dashboard is showing — a stale-while-revalidate
+// refresh so the first paint isn't blocked on the fetch. Re-renders the role's
+// own dashboard function directly (not renderDashboard) to avoid re-triggering
+// this same fetch in a loop.
+function rerenderCurrentDashboard() {
+  if (State.currentPage !== 'dashboard') return;
+  if (State.currentRole === 'client') renderClientDashboard();
+  else if (isCompliance(State.currentRole)) renderComplianceDashboard();
+  else if (State.currentRole === 'rm') renderRMDashboard();
+}
+
+async function refreshKycTasks() {
+  try {
+    const tasks = await apiFetch('GET', '/kyc-tasks');
+    State.kycTasks = tasks.map(t => ({ ...t, id: t._id }));
+    rerenderCurrentDashboard();
+  } catch (_) { /* keep whatever was cached */ }
+}
+
 function renderDashboard() {
   const role = State.currentRole;
   const content = document.getElementById('page-content');
+
+  refreshKycTasks();
+  refreshClients().then(rerenderCurrentDashboard);
 
   if (role === 'client') { renderClientDashboard(); return; }
   if (isCompliance(role)) { renderComplianceDashboard(); return; }
@@ -1347,13 +1395,20 @@ function renderKycFill() {
     </form>
   `;
 
-  document.getElementById('kyc-fill-form').addEventListener('submit', function(e) {
+  document.getElementById('kyc-fill-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    task.status = 'completed';
-    task.completedAt = new Date().toLocaleString();
-    State._activeKycTask = null;
-    showToast('success', `KYC form for ${task.clientName} submitted successfully.`);
-    setTimeout(() => navigateTo('dashboard'), 1200);
+    const answers = Object.fromEntries(new FormData(e.target).entries());
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
+    try {
+      await apiFetch('POST', `/kyc-tasks/${task.id}/complete`, { answers });
+      State._activeKycTask = null;
+      showToast('success', `KYC form for ${task.clientName} submitted successfully.`);
+      setTimeout(() => navigateTo('dashboard'), 1200);
+    } catch (err) {
+      showToast('error', err.message || 'Failed to submit KYC form.');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit KYC Form'; }
+    }
   });
 }
 
@@ -1370,7 +1425,7 @@ function renderRMDashboard() {
     </div>
     <div class="stats-grid">
       ${statCard('#6366f1', myClients.length, 'My Clients', '', false, usersIcon())}
-      ${statCard('#f59e0b', myClients.filter(c=>c.status==='under-review'||c.status==='pending').length, 'In Progress', '', false, checklistIcon())}
+      ${statCard('#f59e0b', myClients.filter(c=>c.status==='under-review'||c.status==='pending'||c.status==='in-progress').length, 'In Progress', '', false, checklistIcon())}
       ${statCard('#10b981', myClients.filter(c=>c.status==='approved').length, 'Approved', '', true, checkIcon())}
       ${statCard('#8b5cf6', myKycTasks.length, 'KYC Tasks Pending', '', myKycTasks.length===0, formIcon())}
     </div>
@@ -1556,7 +1611,36 @@ function renderClientDashboard() {
 // list when its rm field matches this, so RMs can never see another RM's clients.
 function currentRmName() { return ROLES.rm.label; }
 
-function renderClients() {
+// Real Client docs carry Mongo's `createdAt` (ISO timestamp) and `clientId`
+// (e.g. "CLT-0001"), not the mock data's plain `created`/`id` fields — map them
+// so every existing `c.id` / `c.created` reference keeps working either way.
+function normalizeClientRecord(c) {
+  return {
+    ...c,
+    id: c.clientId || c.id,
+    created: c.created || (c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'),
+    // Real Document sub-docs carry `docId` (e.g. "D001"), not the mock data's plain `id`.
+    documents: (c.documents || []).map(d => ({ ...d, id: d.docId || d.id })),
+  };
+}
+
+async function refreshClients() {
+  try {
+    const clients = await apiFetch('GET', '/clients');
+    if (Array.isArray(clients) && clients.length > 0) {
+      State.clients = clients.map(normalizeClientRecord);
+    }
+  } catch (_) { /* keep whatever was cached */ }
+}
+
+async function renderClients() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="cb-loading">Loading clients…</div>`;
+  await refreshClients();
+  renderClientsList();
+}
+
+function renderClientsList() {
   const content = document.getElementById('page-content');
   const showAll = State.currentRole !== 'rm';
   let clients = showAll ? State.clients : State.clients.filter(c => c.rm === currentRmName());
@@ -1579,6 +1663,7 @@ function renderClients() {
             <option value="draft">Draft</option>
             <option value="pending">Pending</option>
             <option value="under-review">Under Review</option>
+            <option value="in-progress">In Progress</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
           </select>
@@ -2090,16 +2175,21 @@ function requestInfo(id) {
   showToast('info', `Information request sent to ${c.rm}.`);
 }
 
-function approveDoc(clientId, docId) {
+async function approveDoc(clientId, docId) {
   const c = State.clients.find(c => c.id === clientId);
   const d = c && c.documents.find(d => d.id === docId);
   if (!d) return;
-  d.status = 'approved';
-  c.auditTrail.push({ action: `Document approved: ${d.name}`, user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'approved' });
-  showToast('success', `${d.name} approved.`);
-  if (d.name === 'KYC Form') exportConfirmedKyc(c);
-  renderClientDetail();
-  switchTab('docs');
+  try {
+    await apiFetch('POST', `/clients/${clientId}/documents/${docId}/approve`);
+    d.status = 'approved';
+    showToast('success', `${d.name} approved.`);
+    refreshNotifications();
+    if (d.name === 'KYC Form') await exportConfirmedKyc(c);
+    renderClientDetail();
+    switchTab('docs');
+  } catch (err) {
+    showToast('error', err.message || 'Failed to approve document.');
+  }
 }
 
 // Once Compliance confirms the KYC Form document, add the confirmed answers to
@@ -2141,14 +2231,20 @@ async function kycExportAll() {
   }
 }
 
-function requestDocInfo(clientId, docId) {
+async function requestDocInfo(clientId, docId) {
   const c = State.clients.find(c => c.id === clientId);
   const d = c && c.documents.find(d => d.id === docId);
   if (!d) return;
-  d.status = 'info-requested';
-  showToast('info', `Information requested for ${d.name}.`);
-  renderClientDetail();
-  switchTab('docs');
+  try {
+    await apiFetch('POST', `/clients/${clientId}/documents/${docId}/request-info`);
+    d.status = 'info-requested';
+    showToast('info', `Information requested for ${d.name}.`);
+    refreshNotifications();
+    renderClientDetail();
+    switchTab('docs');
+  } catch (err) {
+    showToast('error', err.message || 'Failed to request info.');
+  }
 }
 
 function viewDoc(docId) {
@@ -2225,11 +2321,12 @@ function contractCheckFailureReason(result, templateId) {
   return 'no option appears to be ticked.';
 }
 
-function flagDocumentCorrection(clientId, docName, issue) {
-  State.documentCorrections.push({
-    id: 'doc-c-' + Date.now() + Math.random().toString(36).slice(2,6),
-    clientId, docName, issue, status: 'pending',
-  });
+async function flagDocumentCorrection(clientId, docName, issue) {
+  try {
+    await apiFetch('POST', '/corrections/documents', { clientId, docName, issue });
+  } catch (err) {
+    console.warn('Failed to record document correction:', err.message);
+  }
 }
 
 /* ============================================================
@@ -2359,7 +2456,7 @@ async function simulateUpload(file) {
     const hasStamp = await detectSignatureStamp(file);
     if (!hasStamp) {
       newDoc.missingNote = 'Automatic check found no signature/stamp with date in the bottom-right corner — please re-upload a clearer scan.';
-      flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
+      await flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
       showToast('warning', `${file.name} uploaded, but no signature/stamp was detected — flagged for correction.`);
     }
   }
@@ -2369,13 +2466,15 @@ async function simulateUpload(file) {
     const { supported, results } = await validateSignedContractPdf(file, templateId);
     if (!supported) {
       newDoc.missingNote = 'Automatic verification isn\'t available for this template/file type yet — please review manually.';
-      flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
+      await flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
       showToast('warning', `${file.name} uploaded — automatic verification not available for this template, flagged for manual review.`);
     } else {
       const failed = results.filter(r => !r.ok);
       if (failed.length) {
         newDoc.missingNote = 'Automatic check found issues: ' + failed.map(r => r.label).join('; ') + '.';
-        failed.forEach(r => flagDocumentCorrection(client.id, newDoc.name, `${r.label}: ${contractCheckFailureReason(r, templateId)}`));
+        for (const r of failed) {
+          await flagDocumentCorrection(client.id, newDoc.name, `${r.label}: ${contractCheckFailureReason(r, templateId)}`);
+        }
         showToast('warning', `${file.name} uploaded, but ${failed.length} check(s) failed — flagged for correction.`);
       }
     }
@@ -2767,7 +2866,17 @@ const CB = {
   investmentComments: '',
   managementFee: '', performanceFee: '', performanceFeeFrequency: 'semiannual', vorabPct: '',
   clientType: 'individual', formularBookmark: false,
+  createClientAccount: true, requiredDocuments: [],
 };
+
+// Required-document checklist the RM can ask the client to upload, shown on the
+// client's own portal under Required Documents. Any of these can be selected
+// regardless of client type; RMs can also add their own custom entries.
+const DOCUMENT_CHECKLIST_OPTIONS = [
+  'Certificate of Incumbency',
+  'Commercial Register Extract (Handelsregister)',
+  'Contracting Party ID / Passport',
+];
 
 // Legal form of the contracting party — determines which VSB 20 beneficial-owner
 // appendix (Formular A/K/S/T) applies. Only relevant for templates containing the
@@ -2815,6 +2924,7 @@ async function renderContractBuilding() {
   CB.investmentComments = '';
   CB.managementFee = ''; CB.performanceFee = ''; CB.performanceFeeFrequency = 'semiannual'; CB.vorabPct = '';
   CB.clientType = 'individual'; CB.formularBookmark = false;
+  CB.createClientAccount = true; CB.requiredDocuments = [];
   await cbRenderStep();
 }
 
@@ -2919,6 +3029,18 @@ async function cbStep1() {
                 </div>
               </label>
             `).join('')}
+          </div>
+        </div>
+        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
+          <div class="cb-section-label" style="margin-bottom:10px;">Client Portal Account</div>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
+            <input type="checkbox" id="cb-create-account-toggle" ${CB.createClientAccount?'checked':''}
+                   onchange="CB.createClientAccount=this.checked">
+            Create a portal login for this client once approved
+          </label>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;margin-left:26px;">
+            If a portal account already exists for this client's email, this contract is simply added to it — no duplicate account is created.
+            Leave unchecked to process the case without giving the client self-service portal access.
           </div>
         </div>
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
@@ -3119,6 +3241,18 @@ async function cbStep2() {
             <input type="text" id="cb_p2_country" placeholder="Country" value="${CB.person2.country}">
           </div>
         </div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
+      <div class="cb-section-label" style="margin-bottom:8px;">Required Documents <span style="font-size:11px;font-weight:400;color:var(--text-muted);">(optional)</span></div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Select any supporting documents the client must upload — these appear on their portal under Required Documents.</div>
+      <div id="cb-required-docs-checklist">${cbRequiredDocsChecklistHTML()}</div>
+      <div style="display:flex;gap:8px;margin-top:12px;max-width:420px;">
+        <input type="text" id="cb-custom-doc-input" placeholder="Add another required document…"
+               style="flex:1;padding:8px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);font-size:13px;"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();cbAddCustomDocument();}">
+        <button class="btn-secondary btn-sm" onclick="cbAddCustomDocument()">Add</button>
       </div>
     </div>
 
@@ -3330,6 +3464,51 @@ function cbSetRM(name) {
   if (hint) hint.textContent = CB.kundenberaterEmail || '';
 }
 
+// Renders just the checklist portion (standard options + any custom additions),
+// so it can be refreshed in place without losing whatever the RM has already
+// typed elsewhere on Step 2.
+function cbRequiredDocsChecklistHTML() {
+  return `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${DOCUMENT_CHECKLIST_OPTIONS.map(label => `
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
+          <input type="checkbox" ${CB.requiredDocuments.includes(label)?'checked':''} onchange="cbToggleRequiredDoc('${label.replace(/'/g,"\\'")}', this.checked)">
+          ${label}
+        </label>
+      `).join('')}
+      ${CB.requiredDocuments.filter(d => !DOCUMENT_CHECKLIST_OPTIONS.includes(d)).map(label => `
+        <label style="display:flex;align-items:center;gap:10px;font-size:13px;">
+          <input type="checkbox" checked onchange="cbToggleRequiredDoc('${label.replace(/'/g,"\\'")}', this.checked)">
+          ${label} <span style="font-size:11px;color:var(--text-muted);">(custom)</span>
+        </label>
+      `).join('')}
+    </div>
+  `;
+}
+
+function cbRefreshRequiredDocsChecklist() {
+  const el = document.getElementById('cb-required-docs-checklist');
+  if (el) el.innerHTML = cbRequiredDocsChecklistHTML();
+}
+
+function cbToggleRequiredDoc(label, checked) {
+  if (checked) {
+    if (!CB.requiredDocuments.includes(label)) CB.requiredDocuments.push(label);
+  } else {
+    CB.requiredDocuments = CB.requiredDocuments.filter(d => d !== label);
+    if (!DOCUMENT_CHECKLIST_OPTIONS.includes(label)) cbRefreshRequiredDocsChecklist(); // drop the now-unchecked custom row
+  }
+}
+
+function cbAddCustomDocument() {
+  const input = document.getElementById('cb-custom-doc-input');
+  const label = (input?.value || '').trim();
+  if (!label) return;
+  if (!CB.requiredDocuments.includes(label)) CB.requiredDocuments.push(label);
+  input.value = '';
+  cbRefreshRequiredDocsChecklist();
+}
+
 function cbToggleUO(checked) {
   CB.uo = checked;
   const sec = document.getElementById('cb-person2-section');
@@ -3503,16 +3682,17 @@ function cbValidateBeforeSubmit() {
 }
 
 // Creates the client's KYC delegation task, if the RM requested one during Contract Building.
-function cbMaybeCreateKycTask(kycDelegation, rmName, clientName, clientEmail) {
+// Persisted on the backend so it's visible across sessions, like Contract Reviews.
+async function cbMaybeCreateKycTask(kycDelegation, rmName, clientName, clientEmail, clientId) {
   if (!kycDelegation || kycDelegation === 'none') return;
-  State.kycTasks.push({
-    id: 'kyct_' + Date.now(),
-    delegateTo: kycDelegation,
-    rmName, clientName, clientEmail,
-    status: 'pending',
-    createdAt: new Date().toLocaleString(),
-    sections: JSON.parse(JSON.stringify(KYC_TEMPLATE.sections)),
-  });
+  try {
+    await apiFetch('POST', '/kyc-tasks', {
+      delegateTo: kycDelegation, rmName, clientName, clientEmail, clientId,
+      sections: KYC_TEMPLATE.sections,
+    });
+  } catch (err) {
+    showToast('error', `Failed to create KYC task: ${err.message}`);
+  }
 }
 
 async function cbSubmit() {
@@ -3527,7 +3707,7 @@ async function cbSubmit() {
     const res = await apiFetch('POST', '/contracts/invite', {
       clientName, clientEmail, templateId: CB.selectedId, fieldValues,
     });
-    cbMaybeCreateKycTask(CB.kycDelegation, CB.kundenberater, clientName, clientEmail);
+    await cbMaybeCreateKycTask(CB.kycDelegation, CB.kundenberater, clientName, clientEmail);
     CB.result = { otp: res.otp, clientName, clientEmail, kycDelegation: CB.kycDelegation, rmName: CB.kundenberater };
     CB.step = 3;
     cbStep3();
@@ -3556,6 +3736,7 @@ async function cbSubmitForReview() {
       templateId: CB.selectedId, templateName: tpl?.name || CB.selectedId, lang: CB.lang,
       clientName, clientEmail, fieldValues,
       kycDelegation: CB.kycDelegation, rmName, rmEmail: CB.kundenberaterEmail || '',
+      createClientAccount: CB.createClientAccount, requiredDocuments: CB.requiredDocuments,
     });
   } catch (err) {
     showToast('error', err.message || 'Failed to submit for review.');
@@ -3669,14 +3850,10 @@ async function cbReviewPreview(id) {
 async function approveContractReview(id) {
   try {
     const review = await apiFetch('POST', `/contracts/reviews/${id}/approve`);
-    cbMaybeCreateKycTask(review.kycDelegation, review.rmName, review.clientName, review.clientEmail);
-    State.notifications.unshift({
-      id: Date.now(), read: false, type: 'success',
-      text: `Contract for ${review.clientName} approved — client invited to the portal`,
-      time: 'just now',
-    });
-    renderNotificationDropdown();
-    showToast('success', `Approved. Invitation sent to ${review.clientEmail}.`);
+    await cbMaybeCreateKycTask(review.kycDelegation, review.rmName, review.clientName, review.clientEmail, review.clientId);
+    const invited = review.createClientAccount !== false;
+    await refreshNotifications(); // backend already recorded the approval notification
+    showToast('success', invited ? `Approved. Invitation sent to ${review.clientEmail}.` : `Approved — processed without portal access.`);
     renderContractReviews();
   } catch (err) {
     showToast('error', err.message || 'Failed to approve.');
@@ -3690,12 +3867,7 @@ async function rejectContractReview(id) {
 
   try {
     const review = await apiFetch('POST', `/contracts/reviews/${id}/reject`, { reason: reason.trim() });
-    State.notifications.unshift({
-      id: Date.now(), read: false, type: 'warning',
-      text: `Contract for ${review.clientName} was rejected by Compliance: ${review.rejectionReason}`,
-      time: 'just now',
-    });
-    renderNotificationDropdown();
+    await refreshNotifications(); // backend already recorded the rejection notification
     showToast('info', `Rejected. ${review.rmName || 'The RM'} has been notified.`);
     renderContractReviews();
   } catch (err) {
@@ -3900,7 +4072,20 @@ async function cbDownloadFilled() {
 /* ============================================================
    PAGE: REVIEW QUEUE (Compliance only)
    ============================================================ */
-function renderReviewQueue() {
+async function renderReviewQueue() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="page-header"><h1>Review Queue</h1></div><div class="cb-loading">Loading mandates…</div>`;
+  try {
+    const mandates = await apiFetch('GET', '/mandates');
+    State.mandates = mandates.map(m => ({ ...m, id: m.mandateId }));
+  } catch (err) {
+    content.innerHTML = `<div class="page-header"><h1>Review Queue</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load mandates: ${err.message}</p>`;
+    return;
+  }
+  renderReviewQueueList();
+}
+
+function renderReviewQueueList() {
   const content = document.getElementById('page-content');
   const categoryOrder = ['Foundations', 'Trusts', 'Private Clients', 'Companies'];
   const iconMap = { Foundations: '🏛️', Trusts: '⚖️', 'Private Clients': '👤', Companies: '🏢' };
@@ -3994,31 +4179,27 @@ function openMandateClientDetail(mandateId) {
   openClientDetail(client.id);
 }
 
-function setMandateReviewStatus(mandateId, status, toastMessage) {
-  const mandate = getMandateById(mandateId);
-  const client = getClientByMandateId(mandateId);
-  if (!mandate || !client) return;
-
-  mandate.status = status;
-  client.status = mandateToClientStatus(status);
-  if (status === 'approved') client.progress = 100;
-  if (status === 'rejected') client.progress = Math.min(client.progress, 80);
-
-  addClientAudit(client.id, `Mandate ${mandate.mandateName} ${status.replace('-', ' ')} by compliance`, status === 'rejected' ? 'rejected' : status === 'approved' ? 'approved' : 'requested');
-  if (toastMessage) showToast(status === 'rejected' ? 'warning' : status === 'approved' ? 'success' : 'info', toastMessage);
-  renderReviewQueue();
+async function setMandateReviewStatus(mandateId, endpoint, toastMessage, toastType) {
+  try {
+    await apiFetch('POST', `/mandates/${mandateId}/${endpoint}`);
+    showToast(toastType, toastMessage);
+    refreshNotifications();
+    await renderReviewQueue();
+  } catch (err) {
+    showToast('error', err.message || 'Failed to update mandate.');
+  }
 }
 
 function approveMandate(mandateId) {
-  setMandateReviewStatus(mandateId, 'approved', 'Mandate approved.');
+  setMandateReviewStatus(mandateId, 'approve', 'Mandate approved.', 'success');
 }
 
 function rejectMandate(mandateId) {
-  setMandateReviewStatus(mandateId, 'rejected', 'Mandate rejected.');
+  setMandateReviewStatus(mandateId, 'reject', 'Mandate rejected.', 'warning');
 }
 
 function requestMandateInfo(mandateId) {
-  setMandateReviewStatus(mandateId, 'info-requested', 'Additional information requested from Relationship Manager.');
+  setMandateReviewStatus(mandateId, 'request-info', 'Additional information requested from Relationship Manager.', 'info');
 }
 
 function docSummaryMini(client) {
@@ -4896,7 +5077,24 @@ const REQUIRED_KYC_FIELDS = {
   ],
 };
 
-function renderKycCorrections() {
+async function renderKycCorrections() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="page-header"><h1>Corrections</h1></div><div class="cb-loading">Loading corrections…</div>`;
+  try {
+    const [kyc, docs] = await Promise.all([
+      apiFetch('GET', '/corrections/kyc'),
+      apiFetch('GET', '/corrections/documents'),
+    ]);
+    State.kycCorrections = kyc.map(c => ({ ...c, id: c._id }));
+    State.documentCorrections = docs.map(c => ({ ...c, id: c._id }));
+  } catch (err) {
+    content.innerHTML = `<div class="page-header"><h1>Corrections</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load corrections: ${err.message}</p>`;
+    return;
+  }
+  renderKycCorrectionsList();
+}
+
+function renderKycCorrectionsList() {
   const content = document.getElementById('page-content');
   const scopeToOwn = c => State.currentRole !== 'rm' || State.clients.find(cl => cl.id === c.clientId)?.rm === currentRmName();
 
@@ -5012,26 +5210,30 @@ function switchCorrectionsTab(name) {
 }
 
 // RM may only move an item to 'resubmitted'; only Compliance may confirm 'corrected'.
-function updateKycCorrectionStatus(correctionId, status) {
+async function updateKycCorrectionStatus(correctionId, status) {
   if (status === 'resubmitted' && State.currentRole !== 'rm') return;
   if (status === 'corrected' && !isCompliance(State.currentRole)) return;
-  const correction = State.kycCorrections.find(c => c.id === correctionId);
-  if (!correction) return;
-  correction.status = status;
-  addClientAudit(correction.clientId, `KYC correction "${correction.issue}" marked ${status}`, status === 'corrected' ? 'approved' : 'submitted');
-  showToast('success', `KYC correction updated to ${status}.`);
-  renderKycCorrections();
+  try {
+    await apiFetch('POST', `/corrections/kyc/${correctionId}/status`, { status });
+    showToast('success', `KYC correction updated to ${status}.`);
+    refreshNotifications();
+    await renderKycCorrections();
+  } catch (err) {
+    showToast('error', err.message || 'Failed to update KYC correction.');
+  }
 }
 
-function updateDocumentCorrectionStatus(correctionId, status) {
+async function updateDocumentCorrectionStatus(correctionId, status) {
   if (status === 'resubmitted' && State.currentRole !== 'rm') return;
   if (status === 'corrected' && !isCompliance(State.currentRole)) return;
-  const correction = State.documentCorrections.find(c => c.id === correctionId);
-  if (!correction) return;
-  correction.status = status;
-  addClientAudit(correction.clientId, `Document correction "${correction.docName}" marked ${status}`, status === 'corrected' ? 'approved' : 'submitted');
-  showToast('success', `Document correction updated to ${status}.`);
-  renderKycCorrections();
+  try {
+    await apiFetch('POST', `/corrections/documents/${correctionId}/status`, { status });
+    showToast('success', `Document correction updated to ${status}.`);
+    refreshNotifications();
+    await renderKycCorrections();
+  } catch (err) {
+    showToast('error', err.message || 'Failed to update document correction.');
+  }
 }
 
 /* ── KYC Correction detail — per-client editable KYC fields, missing ones glow orange ── */
@@ -5089,7 +5291,7 @@ function renderKycCorrectionDetail() {
         <button class="btn-primary" onclick="submitKycCorrectionFromDetail('${correction.id}')">Mark Resubmitted</button>
       ` : ''}
       ${isCompliance(State.currentRole) && correction.status === 'resubmitted' ? `
-        <button class="btn-success" onclick="updateKycCorrectionStatus('${correction.id}','corrected');navigateTo('kyc-corrections');">Mark Corrected</button>
+        <button class="btn-success" onclick="updateKycCorrectionStatus('${correction.id}','corrected')">Mark Corrected</button>
       ` : ''}
     </div>
   `;
@@ -5103,8 +5305,8 @@ function kycCorrFieldInput(clientId, key, el) {
   el.classList.toggle('kyc-field-missing', !el.value.trim());
 }
 
-function submitKycCorrectionFromDetail(correctionId) {
-  updateKycCorrectionStatus(correctionId, 'resubmitted');
+async function submitKycCorrectionFromDetail(correctionId) {
+  await updateKycCorrectionStatus(correctionId, 'resubmitted');
   navigateTo('kyc-corrections');
 }
 
@@ -5648,7 +5850,8 @@ function showToast(type, message) {
 function statusLabel(s) {
   const map = {
     pending: 'Pending', 'under-review': 'Under Review', approved: 'Approved',
-    rejected: 'Rejected', draft: 'Not Submitted', 'info-requested': 'Info Requested'
+    rejected: 'Rejected', draft: 'Not Submitted', 'info-requested': 'Info Requested',
+    'in-progress': 'In Progress',
   };
   return map[s] || s;
 }
@@ -5704,6 +5907,7 @@ async function loadStateFromBackend() {
       });
       if (res.ok) {
         State.myClientProfile = await res.json();
+        State.myClientProfile.id = State.myClientProfile.clientId; // real docs have no plain `id`
         if (State.myClientProfile.type) {
           State.clientType = State.myClientProfile.type;
         }
@@ -5715,7 +5919,9 @@ async function loadStateFromBackend() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) State.clients = data;
+        // Real Client docs carry `clientId` (e.g. "CLT-0001"), not the mock data's
+        // plain `id` — map it so every existing `c.id` reference keeps working.
+        if (Array.isArray(data) && data.length > 0) State.clients = data.map(normalizeClientRecord);
       }
     }
   } catch (_) {

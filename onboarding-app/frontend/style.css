@@ -77,6 +77,8 @@
   --status-draft-bg: rgba(123,130,140,0.12);
   --status-info-requested: #f97316;
   --status-info-requested-bg: rgba(249,115,22,0.12);
+  --status-in-progress: var(--accent-purple);
+  --status-in-progress-bg: rgba(0,80,115,0.12);
 
   --sidebar-width: 260px;
   --topbar-height: 64px;
@@ -506,6 +508,7 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .status-rejected { color: var(--status-rejected); background: var(--status-rejected-bg); }
 .status-draft { color: var(--status-draft); background: var(--status-draft-bg); }
 .status-info-requested { color: var(--status-info-requested); background: var(--status-info-requested-bg); }
+.status-in-progress { color: var(--status-in-progress); background: var(--status-in-progress-bg); }
 
 /* Table */
 .data-table { width: 100%; border-collapse: collapse; }

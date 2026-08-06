@@ -1,7 +1,9 @@
 const path = require('path');
 const fs   = require('fs');
 const User = require('../models/User');
+const Client = require('../models/Client');
 const ContractReview = require('../models/ContractReview');
+const { notify } = require('../services/notify.service');
 const { sendClientInviteEmail } = require('../services/email.service');
 
 const CONTRACTS_DIR = path.join(__dirname, '..');
@@ -361,8 +363,12 @@ function applyReplacementsToXml(xml, replacements) {
     if (!nameM || !idM) continue;
     const name  = nameM[1];
     const id    = idM[1];
+    // Use `in` rather than a truthiness check: a bookmark explicitly mapped to ''
+    // (e.g. Person 2 fields when there's no U/O co-holder) must still be blanked out,
+    // not left showing its raw bookmark name. Only bookmarks absent from the map at
+    // all are skipped, so they keep showing as an unfilled placeholder.
+    if (!(name in replacements)) continue;
     const value = replacements[name];
-    if (!value) continue;
 
     // Find the matching bookmarkEnd tag
     const endRe    = new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${id}"[^>]*/>`);
@@ -886,14 +892,24 @@ exports.sendInvite = async (req, res) => {
   }
 };
 
+// Maps the Contract Builder's client-legal-form selector to the `type` values
+// used throughout the rest of the app (client avatars, KYC field requirements, …).
+const CLIENT_TYPE_LABELS = {
+  individual: 'Individual', company: 'Corporate', foundation: 'Foundation', trust: 'Trust',
+};
+
 /* ============================================================
    CONTRACT REVIEWS — RM submits a built contract package to
-   Compliance for approval before the client is invited.
+   Compliance for approval before the client is invited. A real
+   Client case is created (or reused, if this client already exists)
+   as soon as the review is submitted, so both the RM ("My Clients")
+   and Compliance ("All Cases") see it immediately.
    ============================================================ */
 exports.submitContractReview = async (req, res) => {
   const {
     templateId, templateName, lang, clientName, clientEmail,
     fieldValues, kycDelegation, rmName, rmEmail,
+    createClientAccount, requiredDocuments,
   } = req.body;
 
   if (!clientEmail || !clientName) {
@@ -901,9 +917,67 @@ exports.submitContractReview = async (req, res) => {
   }
 
   try {
+    const email = clientEmail.toLowerCase();
+    const clientType = CLIENT_TYPE_LABELS[(fieldValues || {}).client_type] || 'Individual';
+    const now = new Date().toLocaleString();
+
+    const docEntries = [{
+      docId: 'DOC-' + Date.now(),
+      name: `${templateName || templateId} — Contract Package`,
+      type: 'Template',
+      status: 'pending',
+      uploadedBy: '-',
+      date: '-',
+      size: '-',
+      required: true,
+      signedVersion: false,
+    }];
+    (requiredDocuments || []).forEach((label, i) => {
+      if (!label || !label.trim()) return;
+      docEntries.push({
+        docId: `DOC-${Date.now()}-${i}`,
+        name: label.trim(),
+        type: 'Supporting Document',
+        status: 'pending',
+        uploadedBy: '-',
+        date: '-',
+        size: '-',
+        required: true,
+        signedVersion: false,
+      });
+    });
+
+    const auditEntry = {
+      action: `Contract package submitted by ${rmName || 'the RM'} for compliance review`,
+      user: rmName || 'Relationship Manager',
+      time: now,
+      type: 'submitted',
+    };
+
+    let client = await Client.findOne({ email });
+    if (client) {
+      client.name = clientName;
+      client.type = clientType;
+      client.rm = rmName || client.rm;
+      client.status = 'pending';
+      client.country = (fieldValues || {}).client_country || client.country;
+      client.documents.push(...docEntries);
+      client.auditTrail.push(auditEntry);
+      await client.save();
+    } else {
+      client = await Client.create({
+        clientId: await Client.generateClientId(),
+        email, name: clientName, type: clientType,
+        risk: 'Medium', status: 'pending', rm: rmName || '', progress: 10,
+        country: (fieldValues || {}).client_country || '',
+        documents: docEntries, auditTrail: [auditEntry],
+      });
+    }
+
     const review = await ContractReview.create({
       templateId, templateName, lang, clientName, clientEmail,
-      fieldValues, kycDelegation, rmName, rmEmail,
+      fieldValues, kycDelegation, rmName, rmEmail, clientId: client.clientId,
+      createClientAccount: createClientAccount !== false, requiredDocuments: requiredDocuments || [],
     });
     res.json(review);
   } catch (err) {
@@ -928,12 +1002,40 @@ exports.approveContractReview = async (req, res) => {
       return res.status(400).json({ error: 'This contract package has already been reviewed' });
     }
 
-    const otp = await createClientInviteAndEmail(review.clientName, review.clientEmail, review.templateId);
+    const otp = review.createClientAccount
+      ? await createClientInviteAndEmail(review.clientName, review.clientEmail, review.templateId)
+      : null;
 
     review.status = 'approved';
     review.reviewedAt = new Date();
     review.otp = otp;
     await review.save();
+
+    if (review.clientId) {
+      const client = await Client.findOne({ clientId: review.clientId });
+      if (client) {
+        if (review.createClientAccount) {
+          const user = await User.findOne({ email: review.clientEmail.toLowerCase(), role: 'client' });
+          if (user) client.userId = user._id;
+        }
+        client.status = 'in-progress';
+        client.progress = Math.max(client.progress || 0, 40);
+        client.auditTrail.push({
+          action: review.createClientAccount
+            ? 'Compliance approved the contract — client invited to the portal, signed documents outstanding'
+            : 'Compliance approved the contract — processed without portal access, signed documents outstanding',
+          user: 'Compliance',
+          time: new Date().toLocaleString(),
+          type: 'approved',
+        });
+        await client.save();
+      }
+    }
+
+    await notify(
+      `Contract for ${review.clientName} approved${review.createClientAccount ? ' — client invited to the portal' : ''}`,
+      'success'
+    );
 
     res.json(review);
   } catch (err) {
@@ -956,6 +1058,22 @@ exports.rejectContractReview = async (req, res) => {
     review.reviewedAt = new Date();
     review.rejectionReason = reason;
     await review.save();
+
+    if (review.clientId) {
+      const client = await Client.findOne({ clientId: review.clientId });
+      if (client) {
+        client.status = 'rejected';
+        client.auditTrail.push({
+          action: `Contract package rejected by Compliance: ${reason}`,
+          user: 'Compliance',
+          time: new Date().toLocaleString(),
+          type: 'rejected',
+        });
+        await client.save();
+      }
+    }
+
+    await notify(`Contract for ${review.clientName} was rejected by Compliance: ${reason}`, 'warning');
 
     res.json(review);
   } catch (err) {

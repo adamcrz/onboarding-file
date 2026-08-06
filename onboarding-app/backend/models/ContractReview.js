@@ -12,6 +12,10 @@ const contractReviewSchema = new mongoose.Schema({
   kycDelegation: { type: String, default: 'none' },
   rmName:        { type: String },
   rmEmail:       { type: String },
+  clientId:      { type: String }, // links to Client.clientId — created when the review is submitted
+
+  createClientAccount: { type: Boolean, default: true },  // give the client self-service portal login on approval
+  requiredDocuments:   { type: [String], default: [] },   // extra documents added to the client's checklist
 
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
 
