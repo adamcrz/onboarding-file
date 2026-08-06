@@ -2870,13 +2870,54 @@ const CB = {
 };
 
 // Required-document checklist the RM can ask the client to upload, shown on the
-// client's own portal under Required Documents. Any of these can be selected
-// regardless of client type; RMs can also add their own custom entries.
-const DOCUMENT_CHECKLIST_OPTIONS = [
-  'Certificate of Incumbency',
-  'Commercial Register Extract (Handelsregister)',
-  'Contracting Party ID / Passport',
-];
+// client's own portal under Required Documents. Sourced from the firm's official
+// Onboarding Checklist (NP / LE / Private Foundation / Trust) — client-facing
+// documents only, internal RM/Compliance verification steps excluded. Varies by
+// the client's legal form; RMs can also add their own custom entries on top.
+const DOCUMENT_CHECKLIST_OPTIONS = {
+  individual: [
+    'Copy of Official Identification Document (Passport / ID / Driving Licence)',
+    'Proof of Residential Address (max. 3 months old)',
+    'Form A — Declaration of Beneficial Ownership',
+    'Asset Management / Investment Advisory Agreement incl. Risk Profile & Investment Strategy',
+    'FinSA Client Information Sheet (acknowledgement)',
+    'Confirmation of Tax Compliance Status',
+  ],
+  company: [
+    'Commercial Register Extract (Zefix, < 12 months)',
+    'Memorandum & Articles of Association (Statutes/Bylaws)',
+    'Certificate of Incorporation',
+    'Certificate of Good Standing',
+    'Certificate of Incumbency',
+    'List of Beneficial Owners / UBO Register Extract',
+    'Board Resolution Confirming Signing Authority',
+    'Copy of ID — Authorized Signatories',
+    'Form K — Declaration of Beneficial Ownership (Operating Company)',
+    'Confirmation of Tax Compliance Status',
+  ],
+  foundation: [
+    'Certificate of Incorporation / Declaration of Foundation',
+    'Foundation Act / Foundation Agreement (Statutes/Bylaws)',
+    'Commercial Register Extract (if applicable)',
+    'List of Authorised Signatures / Board Resolution',
+    'Copy of ID — Authorized Signatories',
+    'Form S — Declaration of Beneficial Ownership (Foundation)',
+    'Copy of ID — Beneficial Owner(s)',
+    'Asset Management / Investment Advisory Agreement incl. Risk Profile',
+    'Confirmation of Tax Compliance Status',
+  ],
+  trust: [
+    'Trust Deed / Declaration of Trust',
+    'Letter of Wishes (if available)',
+    'Deed of Retirement and Appointment of Trustee (DORA) — existing mandates',
+    'Form T — Declaration of Beneficial Ownership (Trust)',
+    'Form A / K — Settlor, Trustee or Protector Identification (as applicable)',
+    'Copy of ID — Settlor / Trustee / Protector',
+    'Investment Manager Appointment Letter (if delegated)',
+    'FATCA/CRS Classification Report',
+    'Confirmation of Tax Compliance Status',
+  ],
+};
 
 // Legal form of the contracting party — determines which VSB 20 beneficial-owner
 // appendix (Formular A/K/S/T) applies. Only relevant for templates containing the
@@ -3468,15 +3509,16 @@ function cbSetRM(name) {
 // so it can be refreshed in place without losing whatever the RM has already
 // typed elsewhere on Step 2.
 function cbRequiredDocsChecklistHTML() {
+  const options = DOCUMENT_CHECKLIST_OPTIONS[CB.clientType] || [];
   return `
     <div style="display:flex;flex-direction:column;gap:8px;">
-      ${DOCUMENT_CHECKLIST_OPTIONS.map(label => `
+      ${options.map(label => `
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
           <input type="checkbox" ${CB.requiredDocuments.includes(label)?'checked':''} onchange="cbToggleRequiredDoc('${label.replace(/'/g,"\\'")}', this.checked)">
           ${label}
         </label>
       `).join('')}
-      ${CB.requiredDocuments.filter(d => !DOCUMENT_CHECKLIST_OPTIONS.includes(d)).map(label => `
+      ${CB.requiredDocuments.filter(d => !options.includes(d)).map(label => `
         <label style="display:flex;align-items:center;gap:10px;font-size:13px;">
           <input type="checkbox" checked onchange="cbToggleRequiredDoc('${label.replace(/'/g,"\\'")}', this.checked)">
           ${label} <span style="font-size:11px;color:var(--text-muted);">(custom)</span>
@@ -3492,11 +3534,12 @@ function cbRefreshRequiredDocsChecklist() {
 }
 
 function cbToggleRequiredDoc(label, checked) {
+  const options = DOCUMENT_CHECKLIST_OPTIONS[CB.clientType] || [];
   if (checked) {
     if (!CB.requiredDocuments.includes(label)) CB.requiredDocuments.push(label);
   } else {
     CB.requiredDocuments = CB.requiredDocuments.filter(d => d !== label);
-    if (!DOCUMENT_CHECKLIST_OPTIONS.includes(label)) cbRefreshRequiredDocsChecklist(); // drop the now-unchecked custom row
+    if (!options.includes(label)) cbRefreshRequiredDocsChecklist(); // drop the now-unchecked custom row
   }
 }
 
@@ -3578,6 +3621,7 @@ function cbSetClientType(val) {
     const p2 = document.getElementById('cb-person2-section');
     if (p2) p2.style.display = 'none';
   }
+  cbRefreshRequiredDocsChecklist();
 }
 
 async function cbPreviewAppendix() {
