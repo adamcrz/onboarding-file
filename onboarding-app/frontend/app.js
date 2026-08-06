@@ -2880,7 +2880,6 @@ const DOCUMENT_CHECKLIST_OPTIONS = {
     'Proof of Residential Address (max. 3 months old)',
     'Form A — Declaration of Beneficial Ownership',
     'Asset Management / Investment Advisory Agreement incl. Risk Profile & Investment Strategy',
-    'FinSA Client Information Sheet (acknowledgement)',
     'Confirmation of Tax Compliance Status',
   ],
   company: [
@@ -2892,7 +2891,6 @@ const DOCUMENT_CHECKLIST_OPTIONS = {
     'List of Beneficial Owners / UBO Register Extract',
     'Board Resolution Confirming Signing Authority',
     'Copy of ID — Authorized Signatories',
-    'Form K — Declaration of Beneficial Ownership (Operating Company)',
     'Confirmation of Tax Compliance Status',
   ],
   foundation: [
@@ -2901,16 +2899,13 @@ const DOCUMENT_CHECKLIST_OPTIONS = {
     'Commercial Register Extract (if applicable)',
     'List of Authorised Signatures / Board Resolution',
     'Copy of ID — Authorized Signatories',
-    'Form S — Declaration of Beneficial Ownership (Foundation)',
     'Copy of ID — Beneficial Owner(s)',
-    'Asset Management / Investment Advisory Agreement incl. Risk Profile',
     'Confirmation of Tax Compliance Status',
   ],
   trust: [
     'Trust Deed / Declaration of Trust',
     'Letter of Wishes (if available)',
     'Deed of Retirement and Appointment of Trustee (DORA) — existing mandates',
-    'Form T — Declaration of Beneficial Ownership (Trust)',
     'Form A / K — Settlor, Trustee or Protector Identification (as applicable)',
     'Copy of ID — Settlor / Trustee / Protector',
     'Investment Manager Appointment Letter (if delegated)',
@@ -3070,18 +3065,6 @@ async function cbStep1() {
                 </div>
               </label>
             `).join('')}
-          </div>
-        </div>
-        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
-          <div class="cb-section-label" style="margin-bottom:10px;">Client Portal Account</div>
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
-            <input type="checkbox" id="cb-create-account-toggle" ${CB.createClientAccount?'checked':''}
-                   onchange="CB.createClientAccount=this.checked">
-            Create a portal login for this client once approved
-          </label>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;margin-left:26px;">
-            If a portal account already exists for this client's email, this contract is simply added to it — no duplicate account is created.
-            Leave unchecked to process the case without giving the client self-service portal access.
           </div>
         </div>
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
@@ -3294,6 +3277,19 @@ async function cbStep2() {
                style="flex:1;padding:8px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);font-size:13px;"
                onkeydown="if(event.key==='Enter'){event.preventDefault();cbAddCustomDocument();}">
         <button class="btn-secondary btn-sm" onclick="cbAddCustomDocument()">Add</button>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:14px 16px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);">
+      <div class="cb-section-label" style="margin-bottom:8px;">Client Portal Account</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" id="cb-create-account-toggle" ${CB.createClientAccount?'checked':''}
+               onchange="CB.createClientAccount=this.checked">
+        Create a portal login for this client once approved
+      </label>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px;margin-left:26px;">
+        If a portal account already exists for this client's email, this contract is simply added to it — no duplicate account is created.
+        Leave unchecked to process the case without giving the client self-service portal access.
       </div>
     </div>
 
