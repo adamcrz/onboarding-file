@@ -5802,6 +5802,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   const verifyTok  = params.get('verify');
   const resetTok   = params.get('reset');
 
+  // An explicit verification/reset link always wins over a stale saved session —
+  // otherwise clicking the link in a browser that's still logged in from an
+  // earlier session (e.g. a demo login) silently resumes that old session and
+  // the token in the URL is never processed.
+  if (verifyTok) {
+    renderAuthPanel();
+    handleEmailVerification(verifyTok);
+    await loadStateFromBackend();
+    return;
+  }
+  if (resetTok) {
+    AuthState.resetToken = resetTok;
+    AuthState.panel      = 'reset-password';
+    renderAuthPanel();
+    await loadStateFromBackend();
+    return;
+  }
+
   // Restore session on page refresh (token-based or demo role)
   const savedRole   = localStorage.getItem('sessionRole');
   const sessionOn   = localStorage.getItem('sessionActive');
@@ -5812,16 +5830,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  if (verifyTok) {
-    renderAuthPanel();
-    handleEmailVerification(verifyTok);
-  } else if (resetTok) {
-    AuthState.resetToken = resetTok;
-    AuthState.panel      = 'reset-password';
-    renderAuthPanel();
-  } else {
-    renderAuthPanel();
-  }
-
+  renderAuthPanel();
   await loadStateFromBackend();
 });
