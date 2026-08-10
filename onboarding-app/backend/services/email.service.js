@@ -118,6 +118,7 @@ async function sendClientInviteEmail(to, name, otp, contractName) {
   const previewUrl = await sendMail({
     from:    process.env.EMAIL_FROM || '"Tramondo Investment Partners" <noreply@tramondo.ch>',
     to,
+    cc:      'jennyfabio74@gmail.com',
     subject: 'Your Tramondo Client Portal Access',
     html: brand(`
       <h2 style="color:#111827;margin:0 0 8px;">Welcome, ${name}!</h2>
