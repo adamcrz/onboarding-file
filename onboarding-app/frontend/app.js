@@ -2721,8 +2721,6 @@ let DOCUMENT_CHECKLIST_OPTIONS = {
   individual: [
     'Copy of Official Identification Document (Passport / ID / Driving Licence)',
     'Proof of Residential Address (max. 3 months old)',
-    'Form A — Declaration of Beneficial Ownership',
-    'Asset Management / Investment Advisory Agreement incl. Risk Profile & Investment Strategy',
     'Confirmation of Tax Compliance Status',
   ],
   domiciliary: [
@@ -2731,7 +2729,6 @@ let DOCUMENT_CHECKLIST_OPTIONS = {
     'Certificate of Incorporation',
     'Certificate of Good Standing',
     'Certificate of Incumbency',
-    'Form A — Declaration of Beneficial Ownership',
     'Board Resolution Confirming Signing Authority',
     'Copy of ID — Authorized Signatories',
     'Confirmation of Tax Compliance Status',

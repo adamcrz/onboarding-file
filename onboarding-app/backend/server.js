@@ -98,20 +98,19 @@ async function autoSeedDocumentRequirements() {
   if (count > 0) return;
 
   const rows = [
-    // individual
+    // individual — Form A and the Asset Management Agreement itself are already
+    // embedded in the generated contract, so they're not listed again here.
     { clientType: 'individual', type: 'Identification',    name: 'Copy of Official Identification Document (Passport / ID / Driving Licence)' },
     { clientType: 'individual', type: 'Identification',    name: 'Proof of Residential Address (max. 3 months old)' },
-    { clientType: 'individual', type: 'Legal',              name: 'Form A — Declaration of Beneficial Ownership' },
-    { clientType: 'individual', type: 'Financial',          name: 'Asset Management / Investment Advisory Agreement incl. Risk Profile & Investment Strategy' },
     { clientType: 'individual', type: 'Compliance',         name: 'Confirmation of Tax Compliance Status' },
     // domiciliary company (Formular A — same beneficial-owner identification as a
-    // natural person; not the same legal form as an operating company or foundation)
+    // natural person; not the same legal form as an operating company or foundation).
+    // Form A itself is already embedded in the generated contract.
     { clientType: 'domiciliary', type: 'Legal',             name: 'Commercial Register Extract (Zefix, < 12 months)' },
     { clientType: 'domiciliary', type: 'Legal',             name: 'Memorandum & Articles of Association (Statutes/Bylaws)' },
     { clientType: 'domiciliary', type: 'Legal',             name: 'Certificate of Incorporation' },
     { clientType: 'domiciliary', type: 'Legal',             name: 'Certificate of Good Standing' },
     { clientType: 'domiciliary', type: 'Legal',             name: 'Certificate of Incumbency' },
-    { clientType: 'domiciliary', type: 'Legal',             name: 'Form A — Declaration of Beneficial Ownership' },
     { clientType: 'domiciliary', type: 'Legal',             name: 'Board Resolution Confirming Signing Authority' },
     { clientType: 'domiciliary', type: 'Identification',    name: 'Copy of ID — Authorized Signatories' },
     { clientType: 'domiciliary', type: 'Compliance',        name: 'Confirmation of Tax Compliance Status' },
