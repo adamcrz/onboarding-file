@@ -1001,6 +1001,11 @@ exports.sendInvite = async (req, res) => {
     const clientType = CLIENT_TYPE_LABELS[(fieldValues || {}).client_type] || 'Individual';
     const docEntries = await buildDocEntries(fieldValues, requiredDocuments, templateName, templateId);
     const willCreateAccount = createClientAccount !== false;
+    // An RM sending a contract can only assign it to themselves — the
+    // Contract Builder's RM picker is a UI convenience, not an authorization
+    // boundary, so the server derives the real owner from the logged-in
+    // identity for rm-role accounts. Compliance keeps free choice.
+    const effectiveRmName = req.user?.role === 'rm' ? (req.user.rmCode || rmName) : rmName;
     const auditEntry = {
       action: willCreateAccount
         ? 'Contract sent by Compliance — client invited to the portal, signed documents outstanding'
@@ -1011,7 +1016,7 @@ exports.sendInvite = async (req, res) => {
     };
 
     const client = await upsertClientCase({
-      email, clientName, clientType, rm: rmName, country: (fieldValues || {}).client_country,
+      email, clientName, clientType, rm: effectiveRmName, country: (fieldValues || {}).client_country,
       status: 'in-progress', progress: 40, docEntries, auditEntry,
     });
 

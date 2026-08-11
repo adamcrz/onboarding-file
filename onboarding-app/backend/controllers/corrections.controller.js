@@ -3,9 +3,18 @@ const DocumentCorrection = require('../models/DocumentCorrection');
 const Client             = require('../models/Client');
 const { notify }         = require('../services/notify.service');
 
-exports.listKycCorrections = async (_req, res) => {
+// Corrections only carry a `clientId` string, not an RM link, so an RM's
+// visibility is derived by first resolving which clients are theirs.
+const ownClientIdsFor = async (user) => {
+  const clients = await Client.find({ rm: user.rmCode || '__none__' }).select('clientId');
+  return clients.map(c => c.clientId);
+};
+
+exports.listKycCorrections = async (req, res) => {
   try {
-    const items = await KycCorrection.find().sort({ createdAt: -1 });
+    const filter = {};
+    if (req.user.role === 'rm') filter.clientId = { $in: await ownClientIdsFor(req.user) };
+    const items = await KycCorrection.find(filter).sort({ createdAt: -1 });
     res.json(items);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -20,6 +29,12 @@ exports.updateKycCorrectionStatus = async (req, res) => {
   try {
     const item = await KycCorrection.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'KYC correction not found' });
+    if (req.user.role === 'rm') {
+      const owningClient = await Client.findOne({ clientId: item.clientId });
+      if (!owningClient || owningClient.rm !== req.user.rmCode) {
+        return res.status(403).json({ error: 'Not authorised for this correction' });
+      }
+    }
 
     item.status = status;
     await item.save();
@@ -43,9 +58,11 @@ exports.updateKycCorrectionStatus = async (req, res) => {
   }
 };
 
-exports.listDocumentCorrections = async (_req, res) => {
+exports.listDocumentCorrections = async (req, res) => {
   try {
-    const items = await DocumentCorrection.find().sort({ createdAt: -1 });
+    const filter = {};
+    if (req.user.role === 'rm') filter.clientId = { $in: await ownClientIdsFor(req.user) };
+    const items = await DocumentCorrection.find(filter).sort({ createdAt: -1 });
     res.json(items);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -75,6 +92,12 @@ exports.updateDocumentCorrectionStatus = async (req, res) => {
   try {
     const item = await DocumentCorrection.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Document correction not found' });
+    if (req.user.role === 'rm') {
+      const owningClient = await Client.findOne({ clientId: item.clientId });
+      if (!owningClient || owningClient.rm !== req.user.rmCode) {
+        return res.status(403).json({ error: 'Not authorised for this correction' });
+      }
+    }
 
     item.status = status;
     await item.save();

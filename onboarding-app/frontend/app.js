@@ -86,9 +86,9 @@ const ROLES = {
     nav: [
       { section: 'My Clients' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
-      { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon(), badge: '3' },
+      { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
       { id: 'kyc-tasks', label: 'KYC Tasks', icon: formIcon() },
-      { id: 'clients', label: 'My Clients', icon: usersIcon(), badge: '2' },
+      { id: 'clients', label: 'My Clients', icon: usersIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
     ]
@@ -426,6 +426,7 @@ async function enterApp(role) {
   State.currentRole = role;
   setupRoleUI(role);
   await loadStateFromBackend();
+  if (role === 'rm') updateMyClientsBadge();
   navigateTo('dashboard');
 }
 
@@ -687,6 +688,8 @@ function setupRoleUI(role) {
           <span>${item.label}</span>
           ${item.badge ? `<span class="nav-badge">${item.badge}</span>` : ''}
           ${item.id === 'kyc-tasks' ? `<span class="nav-badge" id="navbadge-kyc-tasks" style="display:none;"></span>` : ''}
+          ${item.id === 'kyc-corrections' ? `<span class="nav-badge" id="navbadge-kyc-corrections" style="display:none;"></span>` : ''}
+          ${item.id === 'clients' && role === 'rm' ? `<span class="nav-badge" id="navbadge-clients" style="display:none;"></span>` : ''}
         </button>
       `;
     }
@@ -694,7 +697,8 @@ function setupRoleUI(role) {
 
   // Notifications panel
   refreshNotifications();
-  if (role !== 'client') refreshKycTasks();
+  if (role !== 'client') { refreshKycTasks(); refreshCorrectionsBadge(); }
+  if (role === 'rm') updateMyClientsBadge();
 }
 
 function updateKycTasksBadge() {
@@ -702,6 +706,32 @@ function updateKycTasksBadge() {
   const badge = document.getElementById('navbadge-kyc-tasks');
   if (!badge) return;
   if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = 'flex'; }
+  else badge.style.display = 'none';
+}
+
+// Every list here is already scoped server-side to the logged-in RM's own
+// records (or unscoped for compliance/admin) — the badge just reflects
+// whatever the backend actually returned, never a separate/looser count.
+async function refreshCorrectionsBadge() {
+  if (!hasAuthToken()) return;
+  try {
+    const [kyc, docs] = await Promise.all([
+      apiFetch('GET', '/corrections/kyc'),
+      apiFetch('GET', '/corrections/documents'),
+    ]);
+    const openCount = [...kyc, ...docs].filter(c => c.status !== 'corrected').length;
+    const badge = document.getElementById('navbadge-kyc-corrections');
+    if (!badge) return;
+    if (openCount > 0) { badge.textContent = openCount; badge.style.display = 'flex'; }
+    else badge.style.display = 'none';
+  } catch (_) { /* leave badge hidden */ }
+}
+
+function updateMyClientsBadge() {
+  const badge = document.getElementById('navbadge-clients');
+  if (!badge) return;
+  const count = State.clients.length;
+  if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; }
   else badge.style.display = 'none';
 }
 
@@ -869,7 +899,15 @@ function rerenderCurrentDashboard() {
   else if (State.currentRole === 'rm') renderRMDashboard();
 }
 
+// The app supports an offline/demo session (sessionRole+sessionActive but no
+// real JWT — see enterApp's network-failure fallback) that runs entirely off
+// the bundled mock State data. Endpoints that require `protect` will 401 (and
+// apiFetch force-reloads on 401), so anything that fires automatically on
+// login/navigation must skip the call rather than fall through to that.
+function hasAuthToken() { return !!localStorage.getItem('token'); }
+
 async function refreshKycTasks() {
+  if (!hasAuthToken()) return;
   try {
     const tasks = await apiFetch('GET', '/kyc-tasks');
     State.kycTasks = tasks.map(t => ({ ...t, id: t._id }));
@@ -1129,12 +1167,14 @@ function exportToAssetmax(clientId) {
 async function renderKycTasksPage() {
   const content = document.getElementById('page-content');
   content.innerHTML = `<div class="page-header"><h1>KYC Tasks</h1></div><div class="cb-loading">Loading KYC tasks…</div>`;
-  try {
-    const tasks = await apiFetch('GET', '/kyc-tasks');
-    State.kycTasks = tasks.map(t => ({ ...t, id: t._id }));
-  } catch (err) {
-    content.innerHTML = `<div class="page-header"><h1>KYC Tasks</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load KYC tasks: ${err.message}</p>`;
-    return;
+  if (hasAuthToken()) {
+    try {
+      const tasks = await apiFetch('GET', '/kyc-tasks');
+      State.kycTasks = tasks.map(t => ({ ...t, id: t._id }));
+    } catch (err) {
+      content.innerHTML = `<div class="page-header"><h1>KYC Tasks</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load KYC tasks: ${err.message}</p>`;
+      return;
+    }
   }
   updateKycTasksBadge();
 
@@ -1467,9 +1507,15 @@ function renderClientDashboard() {
 /* ============================================================
    PAGE: CLIENTS LIST
    ============================================================ */
-// The RM's own display name (ROLES.rm.label) — a client only ever belongs to "my"
-// list when its rm field matches this, so RMs can never see another RM's clients.
-function currentRmName() { return ROLES.rm.label; }
+// The real logged-in RM's Kundenberater code (e.g. "ACR") — a client only ever
+// belongs to "my" list when its rm field matches this. This is a display/UX
+// convenience only; the backend independently enforces the same scoping on
+// every relevant endpoint using the authenticated user's identity, so this
+// value being wrong can hide records but can never expose someone else's.
+function currentRmName() {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  return user.rmCode || ROLES.rm.label;
+}
 
 // Real Client docs carry Mongo's `createdAt` (ISO timestamp) and `clientId`
 // (e.g. "CLT-0001"), not the mock data's plain `created`/`id` fields — map them
@@ -1485,6 +1531,7 @@ function normalizeClientRecord(c) {
 }
 
 async function refreshClients() {
+  if (!hasAuthToken()) return;
   try {
     const clients = await apiFetch('GET', '/clients');
     if (Array.isArray(clients) && clients.length > 0) {
@@ -2795,6 +2842,7 @@ const CLIENT_LEGAL_FORMS = [
 // these replace the earlier placeholder demo names. No portal accounts exist for these
 // yet (that's a separate step); they're just the selectable identity on a contract.
 const KUNDENBERATER = [
+  { name: 'ACR', email: '' },
   { name: 'AGA', email: '' },
   { name: 'ASC', email: '' },
   { name: 'CWO', email: '' },
@@ -2833,7 +2881,11 @@ async function renderContractBuilding() {
   CB.uo = false;
   CB.mandatsname = '';
   CB.person2 = { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' };
-  CB.kundenberater = ''; CB.kundenberaterEmail = '';
+  // RM-role users can only ever build contracts under their own Kundenberater
+  // code — pre-filled and locked, not just defaulted, since the backend
+  // enforces this identity regardless of what the client sends anyway.
+  CB.kundenberater = State.currentRole === 'rm' ? currentRmName() : '';
+  CB.kundenberaterEmail = '';
   CB.investmentProfile = 'balanced';
   const bp = PROFILE_PRESETS.balanced;
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
@@ -2926,11 +2978,12 @@ async function cbStep1() {
         </div>
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
           <div class="cb-section-label" style="margin-bottom:10px;">Relationship Manager (Kundenberater)</div>
-          <select id="cb-rm-select" onchange="cbSetRM(this.value)"
-                  style="width:100%;max-width:380px;padding:8px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);font-size:13px;">
+          <select id="cb-rm-select" onchange="cbSetRM(this.value)" ${State.currentRole === 'rm' ? 'disabled' : ''}
+                  style="width:100%;max-width:380px;padding:8px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);font-size:13px;${State.currentRole === 'rm' ? 'opacity:0.7;cursor:not-allowed;' : ''}">
             <option value="">— Select RM —</option>
             ${KUNDENBERATER.map(rm => `<option value="${rm.name}" ${CB.kundenberater===rm.name?'selected':''}>${rm.name}</option>`).join('')}
           </select>
+          ${State.currentRole === 'rm' ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">Locked to your own Kundenberater code.</div>` : ''}
           ${CB.kundenberaterEmail ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">${CB.kundenberaterEmail}</div>` : ''}
         </div>
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
@@ -4719,16 +4772,18 @@ const REQUIRED_KYC_FIELDS = {
 async function renderKycCorrections() {
   const content = document.getElementById('page-content');
   content.innerHTML = `<div class="page-header"><h1>Corrections</h1></div><div class="cb-loading">Loading corrections…</div>`;
-  try {
-    const [kyc, docs] = await Promise.all([
-      apiFetch('GET', '/corrections/kyc'),
-      apiFetch('GET', '/corrections/documents'),
-    ]);
-    State.kycCorrections = kyc.map(c => ({ ...c, id: c._id }));
-    State.documentCorrections = docs.map(c => ({ ...c, id: c._id }));
-  } catch (err) {
-    content.innerHTML = `<div class="page-header"><h1>Corrections</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load corrections: ${err.message}</p>`;
-    return;
+  if (hasAuthToken()) {
+    try {
+      const [kyc, docs] = await Promise.all([
+        apiFetch('GET', '/corrections/kyc'),
+        apiFetch('GET', '/corrections/documents'),
+      ]);
+      State.kycCorrections = kyc.map(c => ({ ...c, id: c._id }));
+      State.documentCorrections = docs.map(c => ({ ...c, id: c._id }));
+    } catch (err) {
+      content.innerHTML = `<div class="page-header"><h1>Corrections</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load corrections: ${err.message}</p>`;
+      return;
+    }
   }
   renderKycCorrectionsList();
 }

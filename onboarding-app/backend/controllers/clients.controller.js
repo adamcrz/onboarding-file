@@ -1,10 +1,16 @@
 const Client = require('../models/Client');
 const { notify } = require('../services/notify.service');
 
+// RM accounts only ever see clients assigned to their own Kundenberater code;
+// compliance/compliance_external/admin retain full visibility. Fails closed —
+// an RM account with no rmCode assigned sees nothing rather than everything.
+const scopeFilterFor = (user) => (user.role === 'rm' ? { rm: user.rmCode || '__none__' } : {});
+const isOwnedByRm    = (client, user) => user.role !== 'rm' || client.rm === user.rmCode;
+
 // GET /api/clients
 const getAllClients = async (req, res) => {
   try {
-    const clients = await Client.find();
+    const clients = await Client.find(scopeFilterFor(req.user));
     res.status(200).json(clients);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -16,6 +22,7 @@ const getClientById = async (req, res) => {
   try {
     const client = await Client.findOne({ clientId: req.params.id });
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!isOwnedByRm(client, req.user)) return res.status(403).json({ error: 'Not authorised to view this client' });
     res.status(200).json(client);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -36,9 +43,18 @@ const createClient = async (req, res) => {
 // PUT /api/clients/:id
 const updateClient = async (req, res) => {
   try {
+    const existing = await Client.findOne({ clientId: req.params.id });
+    if (existing && !isOwnedByRm(existing, req.user)) {
+      return res.status(403).json({ error: 'Not authorised to update this client' });
+    }
+    const updates = { ...req.body };
+    // An RM can never reassign a client to a different Kundenberater by
+    // slipping `rm` into the update body — only compliance/admin can.
+    if (req.user.role === 'rm') delete updates.rm;
+
     const client = await Client.findOneAndUpdate(
       { clientId: req.params.id },
-      req.body,
+      updates,
       { new: true, upsert: true }
     );
     res.status(200).json(client);
@@ -62,6 +78,7 @@ const approveDocument = async (req, res) => {
   try {
     const client = await Client.findOne({ clientId: req.params.id });
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!isOwnedByRm(client, req.user)) return res.status(403).json({ error: 'Not authorised for this client' });
     const doc = client.documents.find(d => d.docId === req.params.docId);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
@@ -85,6 +102,7 @@ const requestDocumentInfo = async (req, res) => {
   try {
     const client = await Client.findOne({ clientId: req.params.id });
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!isOwnedByRm(client, req.user)) return res.status(403).json({ error: 'Not authorised for this client' });
     const doc = client.documents.find(d => d.docId === req.params.docId);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 

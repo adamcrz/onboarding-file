@@ -8,20 +8,20 @@ const SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
 function signToken(user) {
   return jwt.sign(
-    { id: user._id, email: user.email, role: user.role, name: user.name },
+    { id: user._id, email: user.email, role: user.role, name: user.name, rmCode: user.rmCode || null },
     SECRET,
     { expiresIn: '8h' }
   );
 }
 
 function safeUser(user) {
-  return { id: user._id, name: user.name, email: user.email, role: user.role };
+  return { id: user._id, name: user.name, email: user.email, role: user.role, rmCode: user.rmCode || null };
 }
 
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, rmCode } = req.body;
 
     if (!name || !email || !password)
       return res.status(400).json({ error: 'Name, email and password are required.' });
@@ -42,7 +42,10 @@ const register = async (req, res) => {
     if (existing)
       return res.status(400).json({ error: 'An account with that email already exists.' });
 
-    const user = new User({ name, email, password, role: resolvedRole });
+    const user = new User({
+      name, email, password, role: resolvedRole,
+      rmCode: resolvedRole === 'rm' && rmCode ? String(rmCode).trim().toUpperCase() : undefined,
+    });
 
     const verificationToken = user.createEmailVerificationToken();
     await user.save();

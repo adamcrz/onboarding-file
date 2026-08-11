@@ -2,10 +2,13 @@ const KycTask = require('../models/KycTask');
 const Client  = require('../models/Client');
 
 exports.createKycTask = async (req, res) => {
-  const { rmName, clientName, clientEmail, clientId, sections } = req.body;
+  const { clientName, clientEmail, clientId, sections } = req.body;
   if (!clientName || !clientEmail) {
     return res.status(400).json({ error: 'clientName and clientEmail are required' });
   }
+  // An RM creating a task can only assign it to themselves — only compliance
+  // can hand a task to an arbitrary RM.
+  const rmName = req.user.role === 'rm' ? req.user.rmCode : req.body.rmName;
 
   try {
     const task = await KycTask.create({
@@ -17,9 +20,10 @@ exports.createKycTask = async (req, res) => {
   }
 };
 
-exports.listKycTasks = async (_req, res) => {
+exports.listKycTasks = async (req, res) => {
   try {
-    const tasks = await KycTask.find().sort({ createdAt: -1 });
+    const filter = req.user.role === 'rm' ? { rmName: req.user.rmCode || '__none__' } : {};
+    const tasks = await KycTask.find(filter).sort({ createdAt: -1 });
     res.json(tasks);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -30,6 +34,9 @@ exports.completeKycTask = async (req, res) => {
   try {
     const task = await KycTask.findById(req.params.id);
     if (!task) return res.status(404).json({ error: 'KYC task not found' });
+    if (req.user.role === 'rm' && task.rmName !== req.user.rmCode) {
+      return res.status(403).json({ error: 'Not authorised to complete this task' });
+    }
     if (task.status === 'completed') {
       return res.status(400).json({ error: 'This KYC task has already been completed' });
     }

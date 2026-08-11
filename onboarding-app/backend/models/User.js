@@ -8,6 +8,11 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role:     { type: String, enum: ['compliance', 'compliance_external', 'rm', 'client', 'admin'], default: 'client' },
 
+  // Kundenberater short code (e.g. "ACR") — identifies which RM this account
+  // is, used to scope that RM's visibility to only their own assigned
+  // clients/tasks/corrections. Only meaningful for role:'rm' accounts.
+  rmCode:   { type: String, uppercase: true, trim: true },
+
   isEmailVerified:          { type: Boolean, default: false },
   emailVerificationToken:   { type: String },
   emailVerificationExpires: { type: Date },
