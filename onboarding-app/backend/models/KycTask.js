@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 
-// A KYC questionnaire delegated by an RM — either to themselves (filling it out
-// on behalf of the client) or to the client (to complete on their own portal).
+// A KYC questionnaire created for a client during Contract Building — visible to
+// and completable by the Kundenberater (RM), the client, and Compliance alike;
+// there's no single delegate, whoever gets to it first fills it in.
 const kycTaskSchema = new mongoose.Schema({
-  delegateTo:  { type: String, enum: ['rm', 'client'], required: true },
   rmName:      { type: String },
   clientName:  { type: String, required: true },
   clientEmail: { type: String, required: true, lowercase: true, trim: true },

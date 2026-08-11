@@ -1162,7 +1162,7 @@ function renderKycFill() {
     return;
   }
 
-  const isRM = task.delegateTo === 'rm';
+  const isRM = State.currentRole === 'rm';
   const fillerLabel = isRM ? `Filling on behalf of: <strong>${task.clientName}</strong>` : `Please complete all required fields below.`;
 
   content.innerHTML = `
@@ -1218,7 +1218,7 @@ function renderKycFill() {
     const submitBtn = e.target.querySelector('button[type="submit"]');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
     try {
-      await apiFetch('POST', `/kyc-tasks/${task.id}/complete`, { answers });
+      await apiFetch('POST', `/kyc-tasks/${task.id}/complete`, { answers, completedBy: State.currentRole });
       State._activeKycTask = null;
       showToast('success', `KYC form for ${task.clientName} submitted successfully.`);
       setTimeout(() => navigateTo('dashboard'), 1200);
@@ -1233,7 +1233,7 @@ function renderKycFill() {
 function renderRMDashboard() {
   const content = document.getElementById('page-content');
   const myClients = State.clients.filter(c => c.rm === currentRmName());
-  const myKycTasks = State.kycTasks.filter(t => t.delegateTo === 'rm' && t.status === 'pending');
+  const myKycTasks = State.kycTasks.filter(t => t.status === 'pending');
 
   content.innerHTML = `
     <div class="page-header">
@@ -1319,7 +1319,7 @@ function renderClientDashboard() {
   const docs     = client.documents    || [];
   const audit    = client.auditTrail   || [];
 
-  const pendingKycTask = State.kycTasks.find(t => t.delegateTo === 'client' && t.status === 'pending');
+  const pendingKycTask = State.kycTasks.find(t => t.status === 'pending' && t.clientEmail === (client.email || '').toLowerCase());
 
   const steps = [
     { label: 'KYC Form',           status: progress >= 20 ? 'done' : progress > 0 ? 'active' : '' },
@@ -2694,7 +2694,6 @@ const CB = {
   mandatsname: '',
   person2: { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' },
   kundenberater: '', kundenberaterEmail: '',
-  kycDelegation: 'none',
   investmentProfile: 'balanced',
   allocations: {
     equities:    { min: 20, max: 70 },
@@ -2814,7 +2813,7 @@ async function renderContractBuilding() {
   CB.uo = false;
   CB.mandatsname = '';
   CB.person2 = { lastName: '', firstName: '', dob: '', nationality: '', address1: '', address2: '', city: '', country: '' };
-  CB.kundenberater = ''; CB.kundenberaterEmail = ''; CB.kycDelegation = 'none';
+  CB.kundenberater = ''; CB.kundenberaterEmail = '';
   CB.investmentProfile = 'balanced';
   const bp = PROFILE_PRESETS.balanced;
   CB.allocations = { equities:{...bp.equities}, fixedIncome:{...bp.fixedIncome}, cash:{...bp.cash}, other:{...bp.other} };
@@ -2920,25 +2919,6 @@ async function cbStep1() {
             ${KUNDENBERATER.map(rm => `<option value="${rm.name}" ${CB.kundenberater===rm.name?'selected':''}>${rm.name}</option>`).join('')}
           </select>
           ${CB.kundenberaterEmail ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">${CB.kundenberaterEmail}</div>` : ''}
-        </div>
-        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
-          <div class="cb-section-label" style="margin-bottom:10px;">KYC Delegation</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Choose who will complete the KYC questionnaire for this client.</div>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            ${[
-              { val:'none',   label:'No delegation — handle KYC manually',           hint:'' },
-              { val:'rm',     label:'Delegate to Kundenberater (RM)',                  hint: CB.kundenberater ? `→ ${CB.kundenberater}` : '(select RM first)' },
-              { val:'client', label:'Delegate to Client (Kunde)',                      hint: 'Client receives KYC form on their portal' },
-            ].map(opt => `
-              <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid ${CB.kycDelegation===opt.val?'var(--accent-purple)':'var(--border-default)'};border-radius:var(--radius-md);cursor:pointer;background:${CB.kycDelegation===opt.val?'rgba(139,92,246,0.06)':'var(--bg-primary)'};">
-                <input type="radio" name="cb-kyc-delegate" value="${opt.val}" ${CB.kycDelegation===opt.val?'checked':''} onchange="CB.kycDelegation='${opt.val}';cbStep1()">
-                <div>
-                  <div style="font-size:13px;font-weight:500;">${opt.label}</div>
-                  ${opt.hint?`<div style="font-size:11px;color:var(--text-muted);margin-top:1px;">${opt.hint}</div>`:''}
-                </div>
-              </label>
-            `).join('')}
-          </div>
         </div>
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border-subtle);">
           <div class="cb-section-label" style="margin-bottom:10px;">Portfolio Currency</div>
@@ -3378,12 +3358,15 @@ function cbFieldHTML(f) {
   }
   const nameKeys = ['client_last_name', 'client_first_name'];
   const extraAttrs = nameKeys.includes(f.key) ? ' oninput="cbUpdateMandatsname()"' : '';
+  // client_email is only truly needed to create the client's portal login — if
+  // that's been switched off (Client Portal Account, step 2), don't force it here.
+  const required = f.key === 'client_email' ? (f.required && CB.createClientAccount) : f.required;
   return `
     <div class="form-group" style="margin-bottom:0;">
-      <label for="cb_${f.key}">${f.label}${f.required?' <span style="color:var(--accent-red)">*</span>':''}</label>
+      <label for="cb_${f.key}">${f.label}${required?' <span style="color:var(--accent-red)">*</span>':''}</label>
       <input type="${f.type||'text'}" id="cb_${f.key}" name="${f.key}"
              placeholder="${f.type==='date'?'YYYY-MM-DD':f.label}"
-             ${f.required?'required':''}${extraAttrs} />
+             ${required?'required':''}${extraAttrs} />
     </div>
   `;
 }
@@ -3515,6 +3498,13 @@ function cbFormularStatusHTML() {
 }
 
 function cbSetClientType(val) {
+  if (val !== CB.clientType) {
+    // Required Documents is a different checklist per legal form — carrying
+    // selections over from the previous category made no sense (and could show
+    // an item as "selected" in the new category just because it happens to
+    // share the same label, e.g. "Confirmation of Tax Compliance Status").
+    CB.requiredDocuments = [];
+  }
   CB.clientType = val;
   const status = document.getElementById('cb_formular_status');
   if (status) status.innerHTML = cbFormularStatusHTML();
@@ -3652,13 +3642,13 @@ function cbValidateBeforeSubmit() {
   return { fieldValues, clientName, clientEmail };
 }
 
-// Creates the client's KYC delegation task, if the RM requested one during Contract Building.
-// Persisted on the backend so it's visible across sessions, like Contract Reviews.
-async function cbMaybeCreateKycTask(kycDelegation, rmName, clientName, clientEmail, clientId) {
-  if (!kycDelegation || kycDelegation === 'none') return;
+// Creates the client's KYC task. Persisted on the backend so it's visible across
+// sessions, like Contract Reviews. No delegation choice anymore — the Kundenberater
+// (RM), the client, and Compliance can all see and complete the same task.
+async function cbCreateKycTask(rmName, clientName, clientEmail, clientId) {
   try {
     await apiFetch('POST', '/kyc-tasks', {
-      delegateTo: kycDelegation, rmName, clientName, clientEmail, clientId,
+      rmName, clientName, clientEmail, clientId,
       sections: KYC_TEMPLATE.sections,
     });
   } catch (err) {
@@ -3678,8 +3668,8 @@ async function cbSubmit() {
     const res = await apiFetch('POST', '/contracts/invite', {
       clientName, clientEmail, templateId: CB.selectedId, fieldValues,
     });
-    await cbMaybeCreateKycTask(CB.kycDelegation, CB.kundenberater, clientName, clientEmail);
-    CB.result = { otp: res.otp, clientName, clientEmail, kycDelegation: CB.kycDelegation, rmName: CB.kundenberater };
+    await cbCreateKycTask(CB.kundenberater, clientName, clientEmail);
+    CB.result = { otp: res.otp, clientName, clientEmail, kycCreated: true, rmName: CB.kundenberater };
     CB.step = 3;
     cbStep3();
   } catch (err) {
@@ -3706,7 +3696,7 @@ async function cbSubmitForReview() {
     await apiFetch('POST', '/contracts/reviews', {
       templateId: CB.selectedId, templateName: tpl?.name || CB.selectedId, lang: CB.lang,
       clientName, clientEmail, fieldValues,
-      kycDelegation: CB.kycDelegation, rmName, rmEmail: CB.kundenberaterEmail || '',
+      rmName, rmEmail: CB.kundenberaterEmail || '',
       createClientAccount: CB.createClientAccount, requiredDocuments: CB.requiredDocuments,
     });
   } catch (err) {
@@ -3821,7 +3811,7 @@ async function cbReviewPreview(id) {
 async function approveContractReview(id) {
   try {
     const review = await apiFetch('POST', `/contracts/reviews/${id}/approve`);
-    await cbMaybeCreateKycTask(review.kycDelegation, review.rmName, review.clientName, review.clientEmail, review.clientId);
+    await cbCreateKycTask(review.rmName, review.clientName, review.clientEmail, review.clientId);
     const invited = review.createClientAccount !== false;
     await refreshNotifications(); // backend already recorded the approval notification
     showToast('success', invited ? `Approved. Invitation sent to ${review.clientEmail}.` : `Approved — processed without portal access.`);
@@ -3915,13 +3905,11 @@ function cbStep3() {
           </div>
         </div>
 
-        ${(CB.result?.kycDelegation && CB.result.kycDelegation !== 'none') ? `
+        ${CB.result?.kycCreated ? `
           <div style="margin:0 auto 20px;max-width:420px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:var(--radius-md);padding:14px 18px;text-align:left;">
-            <div style="font-size:12px;font-weight:700;color:var(--accent-purple);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">KYC Delegated</div>
+            <div style="font-size:12px;font-weight:700;color:var(--accent-purple);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">KYC Questionnaire Created</div>
             <div style="font-size:13px;color:var(--text-primary);">
-              ${CB.result.kycDelegation === 'rm'
-                ? `KYC questionnaire sent to <strong>${CB.result.rmName || 'the selected RM'}</strong> for completion.`
-                : `KYC questionnaire sent to <strong>${CB.result.clientName}</strong> — visible on their portal.`}
+              The Kundenberater (<strong>${CB.result.rmName || '—'}</strong>) and <strong>${CB.result.clientName}</strong> can both complete it — whoever gets to it first.
             </div>
           </div>
         ` : ''}

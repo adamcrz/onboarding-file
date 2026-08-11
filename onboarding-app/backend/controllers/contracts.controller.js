@@ -1036,7 +1036,7 @@ const CLIENT_TYPE_LABELS = {
 exports.submitContractReview = async (req, res) => {
   const {
     templateId, templateName, lang, clientName, clientEmail,
-    fieldValues, kycDelegation, rmName, rmEmail,
+    fieldValues, rmName, rmEmail,
     createClientAccount, requiredDocuments,
   } = req.body;
 
@@ -1113,7 +1113,7 @@ exports.submitContractReview = async (req, res) => {
 
     const review = await ContractReview.create({
       templateId, templateName, lang, clientName, clientEmail,
-      fieldValues, kycDelegation, rmName, rmEmail, clientId: client.clientId,
+      fieldValues, rmName, rmEmail, clientId: client.clientId,
       createClientAccount: createClientAccount !== false, requiredDocuments: requiredDocuments || [],
     });
     res.json(review);

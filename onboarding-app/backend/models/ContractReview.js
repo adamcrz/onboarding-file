@@ -9,7 +9,6 @@ const contractReviewSchema = new mongoose.Schema({
   clientEmail: { type: String, required: true, lowercase: true, trim: true },
   fieldValues: { type: mongoose.Schema.Types.Mixed, default: {} },
 
-  kycDelegation: { type: String, default: 'none' },
   rmName:        { type: String },
   rmEmail:       { type: String },
   clientId:      { type: String }, // links to Client.clientId — created when the review is submitted

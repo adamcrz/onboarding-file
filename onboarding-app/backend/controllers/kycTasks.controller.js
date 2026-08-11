@@ -2,14 +2,14 @@ const KycTask = require('../models/KycTask');
 const Client  = require('../models/Client');
 
 exports.createKycTask = async (req, res) => {
-  const { delegateTo, rmName, clientName, clientEmail, clientId, sections } = req.body;
-  if (!delegateTo || !clientName || !clientEmail) {
-    return res.status(400).json({ error: 'delegateTo, clientName and clientEmail are required' });
+  const { rmName, clientName, clientEmail, clientId, sections } = req.body;
+  if (!clientName || !clientEmail) {
+    return res.status(400).json({ error: 'clientName and clientEmail are required' });
   }
 
   try {
     const task = await KycTask.create({
-      delegateTo, rmName, clientName, clientEmail: clientEmail.toLowerCase(), clientId, sections,
+      rmName, clientName, clientEmail: clientEmail.toLowerCase(), clientId, sections,
     });
     res.json(task);
   } catch (err) {
@@ -42,9 +42,10 @@ exports.completeKycTask = async (req, res) => {
     if (task.clientId) {
       const client = await Client.findOne({ clientId: task.clientId });
       if (client) {
+        const completedByRm = req.body.completedBy === 'rm';
         client.auditTrail.push({
-          action: `KYC questionnaire completed (delegated to ${task.delegateTo === 'rm' ? 'RM' : 'client'})`,
-          user: task.delegateTo === 'rm' ? (task.rmName || 'RM') : task.clientName,
+          action: 'KYC questionnaire completed',
+          user: completedByRm ? (task.rmName || 'RM') : task.clientName,
           time: new Date().toLocaleString(),
           type: 'submitted',
         });
