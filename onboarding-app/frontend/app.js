@@ -2714,11 +2714,11 @@ const CB = {
 };
 
 // Required-document checklist the RM can ask the client to upload, shown on the
-// client's own portal under Required Documents. Sourced from the firm's official
-// Onboarding Checklist (NP / LE / Private Foundation / Trust) — client-facing
-// documents only, internal RM/Compliance verification steps excluded. Varies by
+// client's own portal under Required Documents. Backed by the DocumentRequirement
+// catalog in the database (loaded via loadDocumentRequirements below) — this
+// hardcoded object is only the fallback used if that fetch fails. Varies by
 // the client's legal form; RMs can also add their own custom entries on top.
-const DOCUMENT_CHECKLIST_OPTIONS = {
+let DOCUMENT_CHECKLIST_OPTIONS = {
   individual: [
     'Copy of Official Identification Document (Passport / ID / Driving Licence)',
     'Proof of Residential Address (max. 3 months old)',
@@ -2848,6 +2848,17 @@ async function cbStep1() {
       { id:'en-advisory',    lang:'EN', name:'Advisory Contract',      type:'Advisory'            },
       { id:'en-execution',   lang:'EN', name:'Execution Only',         type:'Execution Only'      },
     ];
+  }
+
+  try {
+    const rows = await apiFetch('GET', '/document-requirements');
+    if (rows.length) {
+      const grouped = {};
+      rows.forEach(r => { (grouped[r.clientType] = grouped[r.clientType] || []).push(r.name); });
+      DOCUMENT_CHECKLIST_OPTIONS = grouped;
+    }
+  } catch (_) {
+    // Falls back to the hardcoded DOCUMENT_CHECKLIST_OPTIONS defined above.
   }
 
   const filtered = CB.templates.filter(t => t.lang === CB.lang);
@@ -3008,9 +3019,12 @@ async function cbStep2() {
     const data = await apiFetch('GET', `/contracts/placeholders/${CB.selectedId}`);
     CB.fields = data.fields || [];
     CB.formularBookmark = !!data.bookmarks?.includes('FormularLetter');
-    // Not every template has a performance-fee clause or a currency allocation
-    // table (e.g. Advisory contracts have neither) — only show those sections
-    // when the template actually has somewhere to put the values.
+    // Not every template has a management fee, a performance-fee clause, or a
+    // currency allocation table — Advisory has a management fee but no
+    // performance-fee mechanism or currency table; Execution Only has none of
+    // the three. Only show each piece when the template actually has somewhere
+    // to put the value.
+    CB.hasManagementFee = !!data.bookmarks?.includes('Fee');
     CB.hasPerfFee = !!data.bookmarks?.includes('PerfClauseAnnual');
     CB.hasCurrencyTable = !!data.bookmarks?.includes('CHF');
     CB.hasPreciousMetalsRow = !!data.bookmarks?.includes('Roh');
@@ -3020,6 +3034,7 @@ async function cbStep2() {
     }
   } catch (_) {
     CB.formularBookmark = false;
+    CB.hasManagementFee = false;
     CB.hasPerfFee = false;
     CB.hasCurrencyTable = false;
     CB.hasPreciousMetalsRow = false;
@@ -3228,7 +3243,7 @@ async function cbStep2() {
       </label>
     ` : ''}
 
-    ${CB.hasPerfFee ? `
+    ${CB.hasManagementFee ? `
       <div class="cb-section-label" style="margin-top:28px;">Fee Structure</div>
       <div class="cb-fields-grid" style="margin-top:12px;max-width:500px;">
         <div class="form-group" style="margin-bottom:0;">
@@ -3236,23 +3251,25 @@ async function cbStep2() {
           <input type="number" id="cb_management_fee" step="0.01" min="0" max="100" required
                  placeholder="e.g. 1.00" value="${CB.managementFee||''}">
         </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label for="cb_performance_fee">Performance Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% (optional — leave blank if none applies)</span></label>
-          <input type="number" id="cb_performance_fee" step="0.01" min="0" max="100"
-                 placeholder="e.g. 10.00" value="${CB.performanceFee||''}" oninput="cbTogglePerfFreq()">
-        </div>
-        <div class="form-group" id="cb_perf_freq_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
-          <label for="cb_performance_fee_frequency">Performance Fee Settlement</label>
-          <select id="cb_performance_fee_frequency" onchange="cbTogglePerfFreq()">
-            <option value="annual"     ${CB.performanceFeeFrequency !== 'semiannual' ? 'selected' : ''}>Jährlich</option>
-            <option value="semiannual" ${CB.performanceFeeFrequency === 'semiannual' ? 'selected' : ''}>Halbjährlich</option>
-          </select>
-        </div>
-        <div class="form-group" id="cb_vorab_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
-          <label for="cb_vorab_pct">Hurdle Rate % <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(optional — leave blank to omit the hurdle-rate sentence)</span></label>
-          <input type="number" id="cb_vorab_pct" step="0.01" min="0" max="100"
-                 placeholder="e.g. 5.00" value="${CB.vorabPct||''}">
-        </div>
+        ${CB.hasPerfFee ? `
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="cb_performance_fee">Performance Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% (optional — leave blank if none applies)</span></label>
+            <input type="number" id="cb_performance_fee" step="0.01" min="0" max="100"
+                   placeholder="e.g. 10.00" value="${CB.performanceFee||''}" oninput="cbTogglePerfFreq()">
+          </div>
+          <div class="form-group" id="cb_perf_freq_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
+            <label for="cb_performance_fee_frequency">Performance Fee Settlement</label>
+            <select id="cb_performance_fee_frequency" onchange="cbTogglePerfFreq()">
+              <option value="annual"     ${CB.performanceFeeFrequency !== 'semiannual' ? 'selected' : ''}>Jährlich</option>
+              <option value="semiannual" ${CB.performanceFeeFrequency === 'semiannual' ? 'selected' : ''}>Halbjährlich</option>
+            </select>
+          </div>
+          <div class="form-group" id="cb_vorab_wrap" style="margin-bottom:0;display:${CB.performanceFee ? 'block' : 'none'};">
+            <label for="cb_vorab_pct">Hurdle Rate % <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(optional — leave blank to omit the hurdle-rate sentence)</span></label>
+            <input type="number" id="cb_vorab_pct" step="0.01" min="0" max="100"
+                   placeholder="e.g. 5.00" value="${CB.vorabPct||''}">
+          </div>
+        ` : ''}
       </div>
     ` : ''}
 
@@ -3613,7 +3630,7 @@ function cbValidateBeforeSubmit() {
     return null;
   }
 
-  if (CB.hasPerfFee && !document.getElementById('cb_management_fee')?.value?.trim()) {
+  if (CB.hasManagementFee && !document.getElementById('cb_management_fee')?.value?.trim()) {
     showToast('warning', 'Please fill in: Annual Management Fee');
     return null;
   }

@@ -3,6 +3,7 @@ const fs   = require('fs');
 const User = require('../models/User');
 const Client = require('../models/Client');
 const ContractReview = require('../models/ContractReview');
+const DocumentRequirement = require('../models/DocumentRequirement');
 const { notify } = require('../services/notify.service');
 const { sendClientInviteEmail } = require('../services/email.service');
 
@@ -1059,12 +1060,21 @@ exports.submitContractReview = async (req, res) => {
       required: true,
       signedVersion: false,
     }];
+    // Look up each checked document's real category (Identification/Legal/
+    // Compliance/Financial) from the catalog it came from — custom entries the
+    // RM typed in by hand won't match anything there and fall back to a
+    // generic label.
+    const rawClientType = (fieldValues || {}).client_type || 'individual';
+    const catalog = await DocumentRequirement.find({ clientType: rawClientType });
+    const catalogTypeByName = new Map(catalog.map(c => [c.name, c.type]));
+
     (requiredDocuments || []).forEach((label, i) => {
       if (!label || !label.trim()) return;
+      const trimmed = label.trim();
       docEntries.push({
         docId: `DOC-${Date.now()}-${i}`,
-        name: label.trim(),
-        type: 'Supporting Document',
+        name: trimmed,
+        type: catalogTypeByName.get(trimmed) || 'Supporting Document',
         status: 'pending',
         uploadedBy: '-',
         date: '-',

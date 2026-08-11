@@ -1,14 +1,15 @@
 const { test, expect } = require('@playwright/test');
 const { demoLogin } = require('../helpers/demoLogin');
 
-// Fee Structure (management/performance fee, hurdle rate) and Currency
-// Allocation only make sense for the two "All-In" templates — Advisory and
-// Execution Only have no performance fee mechanism and no currency table in
-// the underlying Word template at all, so filling in those fields there
-// would silently do nothing. The Contract Builder step 2 form should only
-// show a section when the selected template actually has a bookmark for it
-// (PerfClauseAnnual / CHF), the same way it already gates the Formular
-// letter behavior.
+// Fee Structure and Currency Allocation are gated per-piece by what the
+// underlying Word template actually has a bookmark for: Annual Management Fee
+// needs "Fee", Performance Fee (+ frequency + hurdle rate) needs
+// "PerfClauseAnnual", Currency Allocation needs "CHF". All-In templates have
+// all three; Advisory has a management fee but no performance-fee mechanism
+// or currency table; Execution Only has none of the three. Filling in a field
+// with no bookmark to write to would silently do nothing, so the Contract
+// Builder step 2 form must only show what the template can actually hold —
+// the same way it already gates the Formular letter behavior.
 
 test.describe('Contract Builder: Fee Structure / Currency Allocation are template-scoped', () => {
   let consoleErrors;
@@ -30,21 +31,23 @@ test.describe('Contract Builder: Fee Structure / Currency Allocation are templat
     await page.evaluate((id) => { cbSelectTemplate(id); cbGoStep2(); }, templateId);
     await page.waitForTimeout(1000);
     const hasFee = await page.locator('text=Fee Structure').count();
+    const hasMgmtFeeInput = await page.locator('#cb_management_fee').count();
+    const hasPerfFeeInput = await page.locator('#cb_performance_fee').count();
     const hasCcy = await page.locator('text=Currency Allocation').count();
-    return { hasFee: hasFee > 0, hasCcy: hasCcy > 0 };
+    return { hasFee: hasFee > 0, hasMgmtFeeInput: hasMgmtFeeInput > 0, hasPerfFeeInput: hasPerfFeeInput > 0, hasCcy: hasCcy > 0 };
   }
 
-  test('All-In templates (DE + EN) show both sections', async ({ page }) => {
-    expect(await sectionsShownFor(page, 'de-all-in')).toEqual({ hasFee: true, hasCcy: true });
-    expect(await sectionsShownFor(page, 'en-disc-all-in')).toEqual({ hasFee: true, hasCcy: true });
+  test('All-In templates (DE + EN) show management fee, performance fee, and currency allocation', async ({ page }) => {
+    expect(await sectionsShownFor(page, 'de-all-in')).toEqual({ hasFee: true, hasMgmtFeeInput: true, hasPerfFeeInput: true, hasCcy: true });
+    expect(await sectionsShownFor(page, 'en-disc-all-in')).toEqual({ hasFee: true, hasMgmtFeeInput: true, hasPerfFeeInput: true, hasCcy: true });
   });
 
-  test('Advisory templates (DE + EN) show neither section', async ({ page }) => {
-    expect(await sectionsShownFor(page, 'de-advisory')).toEqual({ hasFee: false, hasCcy: false });
-    expect(await sectionsShownFor(page, 'en-advisory')).toEqual({ hasFee: false, hasCcy: false });
+  test('Advisory templates (DE + EN) show management fee only — no performance fee, no currency allocation', async ({ page }) => {
+    expect(await sectionsShownFor(page, 'de-advisory')).toEqual({ hasFee: true, hasMgmtFeeInput: true, hasPerfFeeInput: false, hasCcy: false });
+    expect(await sectionsShownFor(page, 'en-advisory')).toEqual({ hasFee: true, hasMgmtFeeInput: true, hasPerfFeeInput: false, hasCcy: false });
   });
 
-  test('Execution Only shows neither section', async ({ page }) => {
-    expect(await sectionsShownFor(page, 'en-execution')).toEqual({ hasFee: false, hasCcy: false });
+  test('Execution Only shows none of it', async ({ page }) => {
+    expect(await sectionsShownFor(page, 'en-execution')).toEqual({ hasFee: false, hasMgmtFeeInput: false, hasPerfFeeInput: false, hasCcy: false });
   });
 });
