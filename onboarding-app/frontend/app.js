@@ -1383,6 +1383,12 @@ function renderClientDashboard() {
       </div>
     </div>
 
+    ${REQUIRED_KYC_FIELDS[client.type] ? `
+      <div style="margin-top:20px;">
+        ${clientKycEditableFormHTML(client)}
+      </div>
+    ` : ''}
+
     <div class="grid-2">
       <div class="card">
         <div class="card-header">
@@ -1718,40 +1724,13 @@ function renderClientOverviewTab(client) {
 }
 
 function renderClientKycTab(client) {
-  // RM gets an editable form (same missing-field glow as the correction detail view)
-  // instead of the read-only display, for any client type we have a field list for.
-  if (State.currentRole === 'rm' && REQUIRED_KYC_FIELDS[client.type]) {
-    if (!client.kyc) client.kyc = {};
-    const fields = REQUIRED_KYC_FIELDS[client.type];
-    const k = client.kyc;
-    return `
-      <div class="card">
-        <div class="card-header"><div class="card-title">${client.type} KYC Information</div></div>
-        <div class="card-body">
-          <div class="cb-fields-grid">
-            ${fields.map(([key,label]) => {
-              const val = k[key] || '';
-              const missing = !String(val).trim();
-              return `
-                <div class="form-group" style="margin-bottom:0;">
-                  <label for="clientkyc_${key}">${label}</label>
-                  <input type="text" id="clientkyc_${key}" value="${String(val).replace(/"/g,'&quot;')}" class="${missing?'kyc-field-missing':''}"
-                         oninput="kycCorrFieldInput('${client.id}','${key}', this)">
-                </div>
-              `;
-            }).join('')}
-          </div>
-          ${(k.pep || k.sanctions || k.adverse) ? `
-            <hr class="divider" />
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-              ${screeningBadge('PEP Status', k.pep)}
-              ${screeningBadge('Sanctions', k.sanctions)}
-              ${screeningBadge('Adverse Media', k.adverse)}
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
+  // RM and Compliance both get an editable, appendable template (same missing-field
+  // glow as the correction detail view) instead of a dead-end "no data" message —
+  // it's a live working draft that either side can adjust over time, for any client
+  // type we have a field list for. Edits are saved to the client's real record as
+  // you go (blur-save), not just held in local state.
+  if ((State.currentRole === 'rm' || isCompliance(State.currentRole)) && REQUIRED_KYC_FIELDS[client.type]) {
+    return clientKycEditableFormHTML(client);
   }
 
   if (!client.kyc || !Object.keys(client.kyc).length) {
@@ -1882,7 +1861,6 @@ function renderClientDocsTab(client) {
             <div class="doc-actions">
               <span class="status-badge status-${d.status}">${statusLabel(d.status)}</span>
               ${d.templateAvailable && canUpload ? `<button class="btn-secondary btn-xs" onclick="downloadTemplate('${d.id}')">${downloadIcon()} Template</button>` : ''}
-              ${d.date !== '-' ? `<button class="btn-icon" title="View" onclick="viewDoc('${d.id}')">${eyeIcon()}</button>` : ''}
               ${d.signedVersion || d.date !== '-' ? `<button class="btn-icon" title="Download" onclick="downloadDoc('${d.id}')">${downloadIcon()}</button>` : ''}
               ${canReview && d.status === 'pending' ? `
                 <button class="btn-success btn-xs" onclick="approveDoc('${client.id}','${d.id}')">Approve</button>
@@ -2073,9 +2051,6 @@ async function requestDocInfo(clientId, docId) {
   }
 }
 
-function viewDoc(docId) {
-  openDocModal(docId);
-}
 function downloadDoc(docId) { showToast('info', 'Document download started.'); }
 
 function showUploadModal(docId) {
@@ -2439,7 +2414,6 @@ function renderDocRows(docs, role) {
       <td class="td-secondary">${d.size}</td>
       <td>
         <div class="actions-row">
-          ${d.date !== '-' ? `<button class="btn-icon" title="View" onclick="viewDoc('${d.id}')">${eyeIcon()}</button>` : ''}
           ${d.date !== '-' ? `<button class="btn-icon" title="Download">${downloadIcon()}</button>` : ''}
           ${isCompliance(role) && d.status === 'pending' ? `<button class="btn-success btn-xs" onclick="approveDoc('${d.clientId}','${d.id}')">Approve</button>` : ''}
         </div>
@@ -2903,13 +2877,6 @@ async function cbStep1() {
                 <div class="cb-template-type">${t.type}</div>
               </button>
               <div style="display:flex;gap:6px;margin-top:4px;">
-                <button class="cb-dl-btn" style="flex:1;" onclick="event.stopPropagation();cbViewTemplate('${t.id}')" title="View in browser">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  View
-                </button>
                 <a class="cb-dl-btn" style="flex:1;" href="http://localhost:5000/api/contracts/download/${t.id}"
                    download title="Download original template"
                    onclick="event.stopPropagation()">
@@ -3505,8 +3472,7 @@ function cbFormularStatusHTML() {
     return `<span style="color:var(--accent-amber);">⚠ The selected template has no beneficial-owner declaration section — this selection won't change the generated contract.</span>`;
   }
   return `Contract will reference Formular <strong>${letter}</strong> for the VSB 20 beneficial-owner declaration.
-    <a href="#" onclick="cbPreviewAppendix();return false;" style="margin-left:8px;">Preview form</a> ·
-    <a href="#" onclick="cbDownloadAppendix();return false;">Download</a>`;
+    <a href="#" onclick="cbDownloadAppendix();return false;" style="margin-left:8px;">Download</a>`;
 }
 
 function cbSetClientType(val) {
@@ -3531,19 +3497,6 @@ function cbSetClientType(val) {
     if (p2) p2.style.display = 'none';
   }
   cbRefreshRequiredDocsChecklist();
-}
-
-async function cbPreviewAppendix() {
-  const win = window.open('', '_blank');
-  win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Loading preview…</p>');
-  try {
-    const data = await apiFetch('GET', `/contracts/appendix/preview/${CB.clientType}/${CB.lang}`);
-    win.document.open();
-    win.document.write(data.html);
-    win.document.close();
-  } catch (err) {
-    win.document.write(`<p style="font-family:Arial;padding:24px;color:red;">Error: ${err.message}</p>`);
-  }
 }
 
 async function cbDownloadAppendix() {
@@ -3941,20 +3894,6 @@ function cbStep3() {
     </div>
   `;
 }
-/* ── View / Download helpers ─────────────────────────────── */
-async function cbViewTemplate(id) {
-  const win = window.open('', '_blank');
-  win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Loading preview…</p>');
-  try {
-    const data = await apiFetch('POST', `/contracts/preview/${id}`, { fieldValues: {}, fieldDefs: [] });
-    win.document.open();
-    win.document.write(data.html);
-    win.document.close();
-  } catch (err) {
-    win.document.write(`<p style="font-family:Arial;padding:24px;color:red;">Error: ${err.message}</p>`);
-  }
-}
-
 function cbCollectAllValues() {
   const fv = {};
   CB.fields.forEach(f => {
@@ -5044,6 +4983,27 @@ const REQUIRED_KYC_FIELDS = {
     ['netAssets','Net Assets'], ['employees','Employees'], ['website','Website'],
     ['address','Registered Address'], ['purpose','Purpose of Account'],
   ],
+  Domiciliary: [
+    ['legalName','Legal Name'], ['registrationNumber','Registration Number'],
+    ['registrationDate','Registration Date'], ['registrationCountry','Registration Country'], ['jurisdiction','Jurisdiction'],
+    ['beneficialOwnerName','Beneficial Owner Name'], ['beneficialOwnerNationality','Beneficial Owner Nationality'],
+    ['sourceOfWealth','Source of Wealth'], ['netAssets','Net Assets'],
+    ['address','Registered Address'], ['purpose','Purpose of Account'],
+  ],
+  Foundation: [
+    ['foundationName','Foundation Name'], ['registrationNumber','Registration Number'],
+    ['registrationDate','Registration Date'], ['registrationCountry','Registration Country'], ['jurisdiction','Jurisdiction'],
+    ['purpose','Purpose / Object of Foundation'], ['founderName','Founder Name'],
+    ['beneficialOwnerName','Beneficial Owner / Board Member Name'], ['sourceOfWealth','Source of Wealth'],
+    ['netAssets','Net Assets'], ['address','Registered Address'],
+  ],
+  Trust: [
+    ['trustName','Trust Name'], ['trustDeedDate','Trust Deed Date'], ['jurisdiction','Jurisdiction'],
+    ['settlorName','Settlor Name'], ['settlorNationality','Settlor Nationality'],
+    ['trusteeName','Trustee Name'], ['protectorName','Protector Name (if appointed)'],
+    ['beneficiaries','Beneficiaries'], ['sourceOfWealth','Source of Wealth'],
+    ['netAssets','Net Assets'], ['purpose','Purpose of Trust'],
+  ],
 };
 
 async function renderKycCorrections() {
@@ -5272,6 +5232,76 @@ function kycCorrFieldInput(clientId, key, el) {
   if (!client.kyc) client.kyc = {};
   client.kyc[key] = el.value;
   el.classList.toggle('kyc-field-missing', !el.value.trim());
+}
+
+// Finds a client record by id, checking the logged-in client's own profile first
+// (their own record may not be in State.clients at all) before falling back to
+// the staff-side client list.
+function resolveKycClient(clientId) {
+  if (State.myClientProfile && (State.myClientProfile.id === clientId || State.myClientProfile.clientId === clientId)) {
+    return State.myClientProfile;
+  }
+  return State.clients.find(c => c.id === clientId);
+}
+
+// Shared editable KYC template — used by the staff-side Client Detail "KYC Details"
+// tab (RM + Compliance) and the client's own portal (if they have one). A working
+// draft any of the three can adjust over time, rather than a one-shot submission —
+// missing fields glow, and edits save to the real record on blur.
+function clientKycEditableFormHTML(client) {
+  if (!client.kyc) client.kyc = {};
+  const fields = REQUIRED_KYC_FIELDS[client.type] || [];
+  const k = client.kyc;
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">${client.type} KYC Information</div>
+        <div class="card-subtitle">Working draft — fill in what's known now, adjust it as more comes in.</div>
+      </div>
+      <div class="card-body">
+        <div class="cb-fields-grid">
+          ${fields.map(([key,label]) => {
+            const val = k[key] || '';
+            const missing = !String(val).trim();
+            return `
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="clientkyc_${key}">${label}</label>
+                <input type="text" id="clientkyc_${key}" value="${String(val).replace(/"/g,'&quot;')}" class="${missing?'kyc-field-missing':''}"
+                       oninput="clientKycFieldInput('${client.id}','${key}', this)"
+                       onblur="saveClientKyc('${client.id}')">
+              </div>
+            `;
+          }).join('')}
+        </div>
+        ${(k.pep || k.sanctions || k.adverse) ? `
+          <hr class="divider" />
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+            ${screeningBadge('PEP Status', k.pep)}
+            ${screeningBadge('Sanctions', k.sanctions)}
+            ${screeningBadge('Adverse Media', k.adverse)}
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function clientKycFieldInput(clientId, key, el) {
+  const client = resolveKycClient(clientId);
+  if (!client) return;
+  if (!client.kyc) client.kyc = {};
+  client.kyc[key] = el.value;
+  el.classList.toggle('kyc-field-missing', !el.value.trim());
+}
+
+async function saveClientKyc(clientId) {
+  const client = resolveKycClient(clientId);
+  if (!client) return;
+  try {
+    await apiFetch('PUT', `/clients/${clientId}`, { kyc: client.kyc });
+  } catch (err) {
+    showToast('error', `Failed to save KYC info: ${err.message}`);
+  }
 }
 
 async function submitKycCorrectionFromDetail(correctionId) {
@@ -5759,39 +5789,6 @@ function renderSettings() {
       </div>
     </div>
   `;
-}
-
-/* ============================================================
-   DOCUMENT VIEWER MODAL
-   ============================================================ */
-function openDocModal(docId) {
-  const allDocs = State.clients.flatMap(c => c.documents.map(d => ({ ...d, clientName: c.name })));
-  const doc = allDocs.find(d => d.id === docId);
-  if (!doc) return;
-
-  document.getElementById('doc-modal-title').textContent = doc.name;
-  document.getElementById('doc-modal-body').innerHTML = `
-    <div style="text-align:center;padding:40px;">
-      <div style="font-size:80px;margin-bottom:20px;">📄</div>
-      <div style="font-size:18px;font-weight:600;margin-bottom:8px;">${doc.name}</div>
-      <div style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">${doc.type} · ${doc.size} · Uploaded on ${doc.date}</div>
-      <span class="status-badge status-${doc.status}">${statusLabel(doc.status)}</span>
-      <div style="margin-top:24px;padding:20px;background:var(--bg-elevated);border-radius:var(--radius-md);color:var(--text-muted);font-size:13px;">
-        Document preview would be rendered here in the production version.<br/>Supports PDF, JPEG, PNG, and TIFF formats.
-      </div>
-    </div>
-  `;
-  document.getElementById('doc-modal-footer').innerHTML = `
-    <button class="btn-secondary" onclick="closeDocModal()">Close</button>
-    <button class="btn-primary" onclick="downloadDoc('${docId}')">${downloadIcon()} Download</button>
-  `;
-  document.getElementById('doc-modal').classList.add('open');
-}
-
-function closeDocModal(e) {
-  if (!e || e.target === document.getElementById('doc-modal')) {
-    document.getElementById('doc-modal').classList.remove('open');
-  }
 }
 
 /* ============================================================
