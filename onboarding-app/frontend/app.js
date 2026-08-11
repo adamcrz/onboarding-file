@@ -659,8 +659,15 @@ function selectRole(el, role) {
    ============================================================ */
 function setupRoleUI(role) {
   const cfg = ROLES[role];
-  document.getElementById('user-avatar-sidebar').textContent = cfg.initial;
-  document.getElementById('user-name-sidebar').textContent = cfg.label;
+  // Prefer the real logged-in user's own name over the static per-role demo
+  // label — cfg.label ("Sarah Mitchell" etc.) is only a fallback for sessions
+  // where no real user record is available.
+  let realName = null;
+  try { realName = JSON.parse(localStorage.getItem('user') || 'null')?.name || null; } catch (_) {}
+  const displayName = realName || cfg.label;
+
+  document.getElementById('user-avatar-sidebar').textContent = (realName || cfg.initial)[0].toUpperCase();
+  document.getElementById('user-name-sidebar').textContent = displayName;
   document.getElementById('user-role-sidebar').textContent = cfg.description;
   document.getElementById('topbar-role-badge').textContent = cfg.badge;
 
