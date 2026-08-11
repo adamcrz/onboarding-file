@@ -3016,13 +3016,13 @@ async function cbStep2() {
       { key:'client_email',       label:'Client Email Address',        type:'email', required:true  },
       { key:'client_dob',         label:'Date of Birth',               type:'date',  required:true  },
       { key:'client_address1',    label:'Street Address',              type:'text',  required:true  },
-      { key:'client_address2',    label:'Address Line 2 (optional)',   type:'text',  required:false },
+      { key:'client_address2',    label:'Address Line 2',              type:'text',  required:true  },
       { key:'client_city',        label:'City',                        type:'text',  required:true  },
       { key:'client_country',     label:'Country',                     type:'text',  required:true  },
-      { key:'client_nationality', label:'Nationality',                 type:'text',  required:false },
+      { key:'client_nationality', label:'Nationality',                 type:'text',  required:true  },
       { key:'contract_date',      label:'Contract Date',               type:'date',  required:true  },
-      { key:'depot_bank',         label:'Custodian Bank',              type:'text',  required:false },
-      { key:'portfolio_number',   label:'Portfolio Number',            type:'text',  required:false },
+      { key:'depot_bank',         label:'Custodian Bank',              type:'text',  required:true  },
+      { key:'portfolio_number',   label:'Portfolio Number',            type:'text',  required:true  },
     ];
   }
 
@@ -3309,13 +3309,6 @@ async function cbStep2() {
     ` : ''}
 
     <div style="margin-top:28px;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;">
-      <button class="btn-secondary" style="display:inline-flex;align-items:center;gap:7px;" onclick="cbViewPreview()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-          <circle cx="12" cy="12" r="3"/>
-        </svg>
-        View Preview
-      </button>
       <button class="btn-secondary" style="display:inline-flex;align-items:center;gap:7px;" onclick="cbDownloadFilled()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -3976,22 +3969,10 @@ function cbCollectAllValues() {
   return fv;
 }
 
-async function cbViewPreview() {
-  const fieldValues = cbCollectAllValues();
-  const win = window.open('', '_blank');
-  win.document.write('<p style="font-family:Arial;padding:24px;color:#555;">Generating preview…</p>');
-  try {
-    const data = await apiFetch('POST', `/contracts/preview/${CB.selectedId}`, { fieldValues, fieldDefs: CB.fields });
-    win.document.open();
-    win.document.write(data.html);
-    win.document.close();
-  } catch (err) {
-    win.document.write(`<p style="font-family:Arial;padding:24px;color:red;">Error: ${err.message}</p>`);
-  }
-}
-
 async function cbDownloadFilled() {
-  const fieldValues = cbCollectAllValues();
+  const valid = cbValidateBeforeSubmit();
+  if (!valid) return;
+  const { fieldValues } = valid;
   try {
     const token = localStorage.getItem('token');
     const response = await fetch(`http://localhost:5000/api/contracts/generate/${CB.selectedId}`, {
