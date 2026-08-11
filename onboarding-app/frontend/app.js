@@ -53,6 +53,7 @@ const ROLES = {
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
       { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
+      { id: 'kyc-tasks', label: 'KYC Tasks', icon: formIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
@@ -70,6 +71,7 @@ const ROLES = {
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
       { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
+      { id: 'kyc-tasks', label: 'KYC Tasks', icon: formIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
@@ -85,6 +87,7 @@ const ROLES = {
       { section: 'My Clients' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon(), badge: '3' },
+      { id: 'kyc-tasks', label: 'KYC Tasks', icon: formIcon() },
       { id: 'clients', label: 'My Clients', icon: usersIcon(), badge: '2' },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
@@ -683,6 +686,7 @@ function setupRoleUI(role) {
           ${item.icon}
           <span>${item.label}</span>
           ${item.badge ? `<span class="nav-badge">${item.badge}</span>` : ''}
+          ${item.id === 'kyc-tasks' ? `<span class="nav-badge" id="navbadge-kyc-tasks" style="display:none;"></span>` : ''}
         </button>
       `;
     }
@@ -690,6 +694,15 @@ function setupRoleUI(role) {
 
   // Notifications panel
   refreshNotifications();
+  if (role !== 'client') refreshKycTasks();
+}
+
+function updateKycTasksBadge() {
+  const pendingCount = State.kycTasks.filter(t => t.status === 'pending').length;
+  const badge = document.getElementById('navbadge-kyc-tasks');
+  if (!badge) return;
+  if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = 'flex'; }
+  else badge.style.display = 'none';
 }
 
 function updateNotifBadge() {
@@ -805,6 +818,7 @@ function navigateTo(page) {
     settings: 'Settings',
     'new-client': 'New Client Onboarding',
     'kyc-form': 'KYC Questionnaire',
+    'kyc-tasks': 'KYC Tasks',
     'kyc-corrections': 'KYC Corrections',
     'kyc-correction-detail': 'KYC Correction',
     'client-contract': 'Contract Package',
@@ -828,6 +842,7 @@ function navigateTo(page) {
     case 'settings': renderSettings(); break;
     case 'new-client': renderNewClient(); break;
     case 'kyc-form': renderKycForm(); break;
+    case 'kyc-tasks': renderKycTasksPage(); break;
     case 'kyc-corrections': renderKycCorrections(); break;
     case 'kyc-correction-detail': renderKycCorrectionDetail(); break;
     case 'client-contract': renderClientContract(); break;
@@ -858,7 +873,9 @@ async function refreshKycTasks() {
   try {
     const tasks = await apiFetch('GET', '/kyc-tasks');
     State.kycTasks = tasks.map(t => ({ ...t, id: t._id }));
+    updateKycTasksBadge();
     rerenderCurrentDashboard();
+    if (State.currentPage === 'kyc-tasks') renderKycTasksPage();
   } catch (_) { /* keep whatever was cached */ }
 }
 
@@ -1106,6 +1123,61 @@ function exportToAssetmax(clientId) {
   showToast('success', `Mandate_Risk_Profile_${filename}.xlsx downloaded.`);
 }
 
+// Dedicated KYC Tasks page — RM and Compliance both see the full list here (not
+// just as a card buried on the dashboard), and either can fill one in since
+// there's no single delegate anymore.
+async function renderKycTasksPage() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="page-header"><h1>KYC Tasks</h1></div><div class="cb-loading">Loading KYC tasks…</div>`;
+  try {
+    const tasks = await apiFetch('GET', '/kyc-tasks');
+    State.kycTasks = tasks.map(t => ({ ...t, id: t._id }));
+  } catch (err) {
+    content.innerHTML = `<div class="page-header"><h1>KYC Tasks</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load KYC tasks: ${err.message}</p>`;
+    return;
+  }
+  updateKycTasksBadge();
+
+  const pending   = State.kycTasks.filter(t => t.status === 'pending');
+  const completed = State.kycTasks.filter(t => t.status === 'completed');
+
+  const taskRow = (t, isPending) => `
+    <div class="client-row" style="cursor:default;">
+      <div class="client-avatar" style="background:${clientGradient('Individual')}">${(t.clientName||'?')[0]}</div>
+      <div class="client-info">
+        <div class="client-name">${t.clientName}</div>
+        <div class="client-type">${t.clientEmail} · Kundenberater: ${t.rmName || '—'} · Assigned ${new Date(t.createdAt).toLocaleString()}</div>
+      </div>
+      <div class="client-meta" style="display:flex;align-items:center;gap:10px;">
+        ${isPending
+          ? `<button class="btn-primary btn-sm" onclick="openKycTask('${t.id}')">Fill KYC Form</button>`
+          : `<span class="status-badge status-approved">Completed ${t.completedAt ? new Date(t.completedAt).toLocaleDateString() : ''}</span>`}
+      </div>
+    </div>
+  `;
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>KYC Tasks</h1>
+      <p>Questionnaires created from Contract Building — the Kundenberater, Compliance, and the client (if they have a portal account) can all complete the same one.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header"><div class="card-title">To Complete (${pending.length})</div></div>
+      <div>
+        ${pending.map(t => taskRow(t, true)).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">Nothing outstanding.</p>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Completed</div></div>
+      <div>
+        ${completed.map(t => taskRow(t, false)).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No completed questionnaires yet.</p>`}
+      </div>
+    </div>
+  `;
+}
+
 function openKycTask(taskId) {
   const task = State.kycTasks.find(t => t.id === taskId);
   if (!task) return;
@@ -1193,10 +1265,12 @@ function renderRMDashboard() {
   const content = document.getElementById('page-content');
   const myClients = State.clients.filter(c => c.rm === currentRmName());
   const myKycTasks = State.kycTasks.filter(t => t.status === 'pending');
+  let firstName = 'there';
+  try { firstName = (JSON.parse(localStorage.getItem('user') || 'null')?.name || '').split(' ')[0] || 'there'; } catch (_) {}
 
   content.innerHTML = `
     <div class="page-header">
-      <h1>Hello, Sarah</h1>
+      <h1>Hello, ${firstName}</h1>
       <p>Relationship Manager Dashboard</p>
     </div>
     <div class="stats-grid">
