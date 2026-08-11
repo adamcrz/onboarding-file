@@ -2772,12 +2772,26 @@ const CLIENT_LEGAL_FORMS = [
   { value: 'trust',      letter: 'T', label: 'Trust' },
 ];
 
+// Real Kundenberater (RM) short codes, sourced from the firm's own portfolio export —
+// these replace the earlier placeholder demo names. No portal accounts exist for these
+// yet (that's a separate step); they're just the selectable identity on a contract.
 const KUNDENBERATER = [
-  { name: 'Sarah Mitchell',  email: 'sarah.mitchell@tramondo.com'  },
-  { name: 'Michael Torres',  email: 'm.torres@tramondo.com'         },
-  { name: 'Emily Clarke',    email: 'e.clarke@tramondo.com'         },
-  { name: 'James Okafor',   email: 'j.okafor@tramondo.com'         },
-  { name: 'Daniel Roth',     email: 'd.roth@tramondo.com'           },
+  { name: 'AGA', email: '' },
+  { name: 'ASC', email: '' },
+  { name: 'CWO', email: '' },
+  { name: 'CZG', email: '' },
+  { name: 'DSC', email: '' },
+  { name: 'GDA', email: '' },
+  { name: 'KMU', email: '' },
+  { name: 'MHO', email: '' },
+  { name: 'MLA', email: '' },
+  { name: 'MSH', email: '' },
+  { name: 'MTH', email: '' },
+  { name: 'RGE', email: '' },
+  { name: 'RMU', email: '' },
+  { name: 'TGE', email: '' },
+  { name: 'UEI', email: '' },
+  { name: 'WME', email: '' },
 ];
 
 const PROFILE_PRESETS = {
