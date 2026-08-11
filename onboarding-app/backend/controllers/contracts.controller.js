@@ -42,7 +42,6 @@ function standardFields(lang) {
         { key: 'contract_date',      label: 'Vertragsdatum',                         type: 'date',  required: true  },
         { key: 'depot_bank',         label: 'Depotbank',                             type: 'text',  required: false },
         { key: 'portfolio_number',   label: 'Portfolionummer',                       type: 'text',  required: false },
-        { key: 'additional_category',label: 'Weitere Anlagekategorie (optional)',    type: 'text',  required: false },
       ]
     : [
         { key: 'client_last_name',   label: 'Last Name',                             type: 'text',  required: true  },
@@ -57,7 +56,6 @@ function standardFields(lang) {
         { key: 'contract_date',      label: 'Contract Date',                         type: 'date',  required: true  },
         { key: 'depot_bank',         label: 'Custodian Bank',                        type: 'text',  required: false },
         { key: 'portfolio_number',   label: 'Portfolio Number',                      type: 'text',  required: false },
-        { key: 'additional_category',label: 'Additional Investment Category (opt.)', type: 'text',  required: false },
       ];
 }
 
@@ -143,10 +141,17 @@ exports.getPlaceholders = async (req, res) => {
     if (!bookmarks.includes('FormularLetter') && hasPlainTextFormularMarker(docXml)) {
       bookmarks.push('FormularLetter');
     }
-    const uniqueBookmarks = [...new Set(bookmarks)].sort();
-    console.log(`[${template.id}] Bookmarks found:`, uniqueBookmarks);
+    let uniqueBookmarks = [...new Set(bookmarks)].sort();
 
     const { value: text } = await mammoth.extractRawText({ path: filePath });
+
+    // "Einsatz eigener Produkte" (DE All-In): three native-checkbox options, none of
+    // them bookmarked — flag its presence the same way as FormularLetter above, so the
+    // frontend knows to render the single-choice picker for it.
+    if (text.includes('Eigene Produkte Ja')) {
+      uniqueBookmarks = [...new Set([...uniqueBookmarks, 'OwnProductsChoice'])].sort();
+    }
+    console.log(`[${template.id}] Bookmarks found:`, uniqueBookmarks);
 
     const checkboxes = [...new Set(
       [...text.matchAll(/[☐□]\s*([^\n☐□]{2,80})/g)]
@@ -229,9 +234,13 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   map['Nachname1'] = isUO ? lastName2  : '';
   map['Vorname1']  = isUO ? firstName2 : '';
 
-  // Person 1 address — main fields + Form A row 1 (Adresse11) + other pages (Adresse13)
+  // Person 1 address — main fields + Form A row 1 (Adresse11) + other pages (Adresse13).
+  // Adresse2 (and friends) must be set unconditionally, even when blank: a bookmark that's
+  // simply absent from this map is left showing its own raw name in the document (see
+  // applyReplacementsToXml's `in` check below) — that's what was leaking a literal
+  // "Adresse2" onto the contract whenever the client had no address line 2.
   if (addr1) { map['Adresse1'] = addr1; map['Adresse11'] = addr1; map['Adresse13'] = addr1; }
-  if (addr2) { map['Adresse2'] = addr2; map['Adresse21'] = addr2; map['Adresse23'] = addr2; }
+  map['Adresse2'] = addr2; map['Adresse21'] = addr2; map['Adresse23'] = addr2;
   if (fullAddr) map['Adresse'] = fullAddr;
   if (city1)    { map['Ort'] = city1;    map['Ort1'] = city1;    map['Ort3'] = city1;    }
   if (country1) { map['Land'] = country1; map['Land1'] = country1; map['Land3'] = country1; }
@@ -245,17 +254,19 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   // Signature-block place/date line
   if (cityDate) map['Ort/Datum'] = cityDate;
 
-  // Person 1 personal details
-  if (dob1)         { map['Birth'] = dob1;          }
-  if (nationality1) { map['Nat']   = nationality1;  map['Nat.'] = nationality1; map['Nationality'] = nationality1; }
+  // Person 1 personal details — Nat/Nat./Nationality set unconditionally (same reason as
+  // Adresse2 above): nationality is optional, and a skipped bookmark leaks its raw name.
+  if (dob1) { map['Birth'] = dob1; }
+  map['Nat'] = nationality1; map['Nat.'] = nationality1; map['Nationality'] = nationality1;
 
   // Person 2 personal details — empty if not U/O
   map['Birth1'] = isUO ? (fv.p2_dob         || '') : '';
   map['Nat1']   = isUO ? (fv.p2_nationality || '') : '';
 
-  // Contract details
-  if (depotBank)   map['Depotbank']        = depotBank;
-  if (portfolioNo) { map['Portfolionummer'] = portfolioNo; map['Portfolionummer1'] = portfolioNo; }
+  // Contract details — both optional, set unconditionally so a blank value clears the
+  // bookmark instead of leaking its raw name (same reason as Adresse2 above).
+  map['Depotbank'] = depotBank;
+  map['Portfolionummer'] = portfolioNo; map['Portfolionummer1'] = portfolioNo;
 
   // Fees — actual bookmark names in templates: Fee, Perf, Vorab
   const mgmtFee  = fv.management_fee ? fv.management_fee + '%' : '';
@@ -285,6 +296,9 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   if (fv.alloc_fixed_income_max) map['Bonds'] = pctVal(fv.alloc_fixed_income_max);
   if (fv.alloc_cash_max)         map['Cash']  = pctVal(fv.alloc_cash_max);
   if (fv.alloc_other_max)        map['Alt']   = pctVal(fv.alloc_other_max);
+  // Optional 5th row "Edelmetall & Rohstoffe" (bookmark: Roh) — only present when the RM
+  // explicitly opts in; applyPreciousMetalsRowToXml removes the whole row otherwise.
+  if (fv.alloc_precious_metals_max) map['Roh'] = pctVal(fv.alloc_precious_metals_max);
 
   // Currency weights — bookmark holds MAX; "0" cell gets MIN (via applyAllocMinToXml).
   // Only fill currencies where at least one of min/max is non-zero; otherwise clear bookmark.
@@ -421,6 +435,7 @@ function applyAllocMinToXml(xml, fieldValues) {
     { bm: 'Bonds',  min: fv.alloc_fixed_income_min, suppress: false },
     { bm: 'Cash',   min: fv.alloc_cash_min,          suppress: false },
     { bm: 'Alt',    min: fv.alloc_other_min,         suppress: false },
+    { bm: 'Roh',    min: fv.alloc_precious_metals_min, suppress: !fv.alloc_precious_metals_max },
     // Currencies — suppress (clear "0" cell) when both min+max are zero
     { bm: 'CHF', min: fv.ccy_chf_min, suppress: false },  // CHF always shown
     { bm: 'EUR', min: fv.ccy_eur_min, suppress: !ccyActive('ccy_eur_min','ccy_eur_max') },
@@ -470,6 +485,107 @@ function applyAllocMinToXml(xml, fieldValues) {
       // If we just handled Equity, mark Equtiy as done too (same cell)
       if (bm === 'Equity') done.add('Equtiy');
       if (bm === 'Equtiy') done.add('Equity');
+    }
+  });
+
+  return xml;
+}
+
+// Finds the start of the nearest <w:tr ...> or <w:tr> before `beforeIdx` — plain
+// `lastIndexOf('<w:tr', beforeIdx)` isn't safe here since it also matches inside
+// `<w:trPr>`/`<w:trHeight>` etc., which sit between the row's own opening tag and its content.
+function lastTableRowStart(xml, beforeIdx) {
+  const re = /<w:tr[ >]/g;
+  let m, last = -1;
+  while ((m = re.exec(xml)) !== null) {
+    if (m.index >= beforeIdx) break;
+    last = m.index;
+  }
+  return last;
+}
+
+// Optional 5th allocation row "Edelmetall & Rohstoffe" (bookmark: Roh) in the Anlagekategorien
+// table. The template styles this whole row red by default (like the fee placeholders) — if
+// the RM didn't opt in (no value given), the row is removed entirely rather than left as a
+// half-filled red placeholder ("0 – Roh"); if they did opt in, the row is already filled by
+// the ordinary bookmark/allocation-min passes above, so this just strips the red styling.
+function applyPreciousMetalsRowToXml(xml, fieldValues) {
+  const bmIdx = xml.indexOf('w:name="Roh"');
+  if (bmIdx === -1) return xml; // template has no such row
+
+  const rowStart = lastTableRowStart(xml, bmIdx);
+  const rowEndTag = xml.indexOf('</w:tr>', bmIdx);
+  if (rowStart === -1 || rowEndTag === -1) return xml;
+  const rowEnd = rowEndTag + '</w:tr>'.length;
+
+  const included = !!(fieldValues || {}).alloc_precious_metals_max;
+  if (!included) return xml.slice(0, rowStart) + xml.slice(rowEnd);
+
+  const row = xml.slice(rowStart, rowEnd).replace(RED_COLOR_RE, '');
+  return xml.slice(0, rowStart) + row + xml.slice(rowEnd);
+}
+
+// Collects <w:p ...>...</w:p> paragraphs from `xml`, each with its start/end offset and
+// concatenated <w:t> text — used to locate the "Einsatz eigener Produkte" option blocks
+// by their heading text below.
+function getParagraphs(xml) {
+  const paras = [];
+  const pRe = /<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
+  let m;
+  while ((m = pRe.exec(xml)) !== null) {
+    const text = [...m[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(x => x[1]).join('');
+    paras.push({ start: m.index, end: m.index + m[0].length, text });
+  }
+  return paras;
+}
+
+// "Einsatz eigener Produkte" section (DE All-In template): three heading+checkbox+body
+// blocks ("Eigene Produkte Ja" / "… Ja (ohne Double Dipping)" / "… Nein"), each a native
+// Word checkbox content control (<w:sdt>+<w14:checkbox>), not bookmarked. Only one is
+// meant to apply — this checks the RM's chosen option and removes the other two blocks
+// entirely (heading paragraph through the checkbox's body paragraph) rather than leaving
+// all three as undecided checkboxes in the generated contract.
+const OWN_PRODUCTS_HEADINGS = [
+  { key: 'yes',       match: t => t.trim() === 'Eigene Produkte Ja' },
+  { key: 'yes_no_dd', match: t => t.trim().startsWith('Eigene Produkte Ja (ohne Double Dipping') },
+  { key: 'no',        match: t => t.trim().replace(/^\s+/, '') === 'Eigene Produkte Nein' },
+];
+
+function applyOwnProductsChoiceToXml(xml, fieldValues) {
+  const choice = (fieldValues || {}).own_products_choice || '';
+  const paras = getParagraphs(xml);
+
+  // A Word-generated Table of Contents repeats every heading's exact text (as a plain,
+  // non-checkbox TOC line), so a heading string can legitimately match more than once —
+  // scan ALL matches for each option and use the first one actually followed by a
+  // checkbox body within a few paragraphs, skipping any TOC line that doesn't have one.
+  const blocks = [];
+  OWN_PRODUCTS_HEADINGS.forEach(h => {
+    for (let headingIdx = 0; headingIdx < paras.length; headingIdx++) {
+      if (!h.match(paras[headingIdx].text)) continue;
+      let bodyIdx = -1;
+      for (let i = headingIdx + 1; i < paras.length && i < headingIdx + 6; i++) {
+        if (xml.slice(paras[i].start, paras[i].end).includes('<w14:checkbox>')) { bodyIdx = i; break; }
+      }
+      if (bodyIdx !== -1) {
+        blocks.push({ key: h.key, start: paras[headingIdx].start, end: paras[bodyIdx].end });
+        break;
+      }
+    }
+  });
+  if (!blocks.length) return xml; // template has no such section
+
+  // Process last-to-first so earlier offsets stay valid while we edit.
+  blocks.sort((a, b) => b.start - a.start).forEach(b => {
+    if (b.key === choice) {
+      const region = xml.slice(b.start, b.end)
+        .replace(/<w14:checked w14:val="\d+"\/>/, '<w14:checked w14:val="1"/>')
+        .replace(/(<w:sdtContent>[\s\S]*?<w:t[^>]*>)[^<]*(<\/w:t>)/, '$1☒$2');
+      xml = xml.slice(0, b.start) + region + xml.slice(b.end);
+    } else if (choice) {
+      // Only remove the non-chosen options once a choice has actually been made —
+      // leave all three untouched (default template state) until then.
+      xml = xml.slice(0, b.start) + xml.slice(b.end);
     }
   });
 
@@ -562,10 +678,10 @@ function stripRedInParagraphContainingBookmark(xml, bookmarkName) {
     seg => seg.replace(RED_COLOR_RE, ''));
 }
 
-// Strips red from the paragraph immediately BEFORE the one containing `bookmarkName`
-// — used for the "7.2 Performancegebühr" section heading, which sits right before
-// the PerfClauseSemi paragraph but isn't itself bookmarked.
-function stripRedInHeadingBeforeBookmark(xml, bookmarkName) {
+// Applies `transformFn` to the paragraph immediately BEFORE the one containing
+// `bookmarkName` — used for the "7.2 Performancegebühr" section heading, which sits
+// right before the PerfClauseSemi paragraph but isn't itself bookmarked.
+function transformHeadingBeforeBookmark(xml, bookmarkName, transformFn) {
   const nameIdx = xml.indexOf(`w:name="${bookmarkName}"`);
   if (nameIdx === -1) return xml;
   const ownPStart = Math.max(xml.lastIndexOf('<w:p ', nameIdx), xml.lastIndexOf('<w:p>', nameIdx));
@@ -575,14 +691,23 @@ function stripRedInHeadingBeforeBookmark(xml, bookmarkName) {
   const prevPStart = Math.max(xml.lastIndexOf('<w:p ', prevPEnd), xml.lastIndexOf('<w:p>', prevPEnd));
   if (prevPStart === -1) return xml;
   const contentEnd = prevPEnd + '</w:p>'.length;
-  const region = xml.slice(prevPStart, contentEnd).replace(RED_COLOR_RE, '');
+  const region = transformFn(xml.slice(prevPStart, contentEnd));
   return xml.slice(0, prevPStart) + region + xml.slice(contentEnd);
 }
 
-// Strips red from the `count` paragraphs immediately AFTER the one containing
+function stripRedInHeadingBeforeBookmark(xml, bookmarkName) {
+  return transformHeadingBeforeBookmark(xml, bookmarkName, seg => seg.replace(RED_COLOR_RE, ''));
+}
+
+function blankHeadingBeforeBookmark(xml, bookmarkName) {
+  return transformHeadingBeforeBookmark(xml, bookmarkName,
+    seg => seg.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, '<w:t$1></w:t>'));
+}
+
+// Applies `transformFn` to the `count` paragraphs immediately AFTER the one containing
 // `bookmarkName` (skipping that paragraph's own close first) — used for the closing
 // sentence(s) after the performance-fee clauses, which aren't bookmarked either.
-function stripRedAfterBookmark(xml, bookmarkName, count) {
+function transformAfterBookmark(xml, bookmarkName, count, transformFn) {
   const nameIdx = xml.indexOf(`w:name="${bookmarkName}"`);
   if (nameIdx === -1) return xml;
   const tagStart = xml.lastIndexOf('<w:bookmarkStart', nameIdx);
@@ -600,31 +725,17 @@ function stripRedAfterBookmark(xml, bookmarkName, count) {
     if (next === -1) break;
     pos = next + '</w:p>'.length;
   }
-  const region = xml.slice(regionStart, pos).replace(RED_COLOR_RE, '');
+  const region = transformFn(xml.slice(regionStart, pos));
   return xml.slice(0, regionStart) + region + xml.slice(pos);
 }
 
-// Replaces the standalone word `word` (word-boundary matched, so "Perf" won't match
-// inside "Performance-Gebühr") wherever it appears inside <w:t> text nodes within the
-// given bookmark's region — used for PerfClauseAnnual's "Perf" mentions, which are
-// plain literal text (not their own nested bookmark like in PerfClauseSemi).
-function replaceLiteralWordInBookmarkRegion(xml, bookmarkName, word, replacement) {
-  const startIdx = xml.indexOf(`w:name="${bookmarkName}"`);
-  if (startIdx === -1) return xml;
-  const tagStart = xml.lastIndexOf('<w:bookmarkStart', startIdx);
-  const bmStartTagEnd = xml.indexOf('/>', startIdx) + 2;
-  const idM = xml.slice(tagStart, bmStartTagEnd).match(/w:id="(\d+)"/);
-  if (!idM) return xml;
-  const endRe = new RegExp(`<w:bookmarkEnd\\b[^>]*w:id="${idM[1]}"[^>]*/>`);
-  const endMatch = endRe.exec(xml.slice(bmStartTagEnd));
-  if (!endMatch) return xml;
-  const contentStart = bmStartTagEnd;
-  const contentEnd = bmStartTagEnd + endMatch.index;
-  const segment = xml.slice(contentStart, contentEnd);
-  const wordRe = new RegExp(`\\b${word}\\b`, 'g');
-  const newSegment = segment.replace(/(<w:t[^>]*>)([^<]*)(<\/w:t>)/g,
-    (m, open, text, close) => open + text.replace(wordRe, escXml(replacement)) + close);
-  return xml.slice(0, contentStart) + newSegment + xml.slice(contentEnd);
+function stripRedAfterBookmark(xml, bookmarkName, count) {
+  return transformAfterBookmark(xml, bookmarkName, count, seg => seg.replace(RED_COLOR_RE, ''));
+}
+
+function blankAfterBookmark(xml, bookmarkName, count) {
+  return transformAfterBookmark(xml, bookmarkName, count,
+    seg => seg.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, '<w:t$1></w:t>'));
 }
 
 const HURDLE_RATE_SENTENCE = {
@@ -635,7 +746,19 @@ const HURDLE_RATE_SENTENCE = {
 function applyPerformanceFeeClauseToXml(xml, fieldValues, lang) {
   if (!xml.includes('w:name="PerfClauseAnnual"')) return xml; // template has no toggleable clause
   const fv = fieldValues || {};
-  const pct      = fv.performance_fee ? fv.performance_fee + '%' : 'Perf';
+
+  // No performance fee at all (field left blank — it's optional) — remove the whole
+  // §7.2 section rather than leaving it as an unfilled red placeholder; it simply
+  // doesn't apply to a mandate with no performance fee.
+  if (!fv.performance_fee) {
+    xml = setBookmarkText(xml, 'PerfClauseSemi', '');
+    xml = setBookmarkText(xml, 'PerfClauseAnnual', '');
+    xml = blankHeadingBeforeBookmark(xml, 'PerfClauseSemi');
+    xml = blankAfterBookmark(xml, 'PerfClauseAnnual', 2);
+    return xml;
+  }
+
+  const pct      = fv.performance_fee + '%';
   const vorabPct = fv.vorab_pct ? fv.vorab_pct + '%' : '';
   const freq = fv.performance_fee_frequency === 'annual' ? 'annual' : 'semiannual';
 
@@ -644,28 +767,22 @@ function applyPerformanceFeeClauseToXml(xml, fieldValues, lang) {
     if (vorabPct) text += (HURDLE_RATE_SENTENCE[lang] || HURDLE_RATE_SENTENCE.DE)(vorabPct);
     xml = setBookmarkText(xml, 'PerfClauseAnnual', text);
     xml = stripRedInParagraphContainingBookmark(xml, 'PerfClauseAnnual');
-    xml = setBookmarkText(xml, 'PerfClauseSemi', ''); // hide both semiannual paragraphs (incl. Vorab sentence)
+    xml = setBookmarkText(xml, 'PerfClauseSemi', ''); // hide the halbjährlich paragraph — jährlich is selected
   } else {
-    // Semiannual is the default — keep BOTH paragraphs from the template (the
-    // semiannual wording and the annual wording), each with placeholders filled
-    // independently, rather than hiding either one.
-    if (fv.performance_fee) xml = stripRedInParagraphContainingBookmark(xml, 'Perf');
-    if (fv.vorab_pct)       xml = stripRedInParagraphContainingBookmark(xml, 'Vorab');
-    else                    xml = blankParagraphContainingBookmark(xml, 'Vorab');
-
-    // PerfClauseAnnual's "Perf" mentions have no nested bookmark of their own (all 3
-    // occurrences are literal text in one run) — substitute them directly.
-    xml = replaceLiteralWordInBookmarkRegion(xml, 'PerfClauseAnnual', 'Perf', pct);
-    if (fv.performance_fee) xml = stripRedInParagraphContainingBookmark(xml, 'PerfClauseAnnual');
+    // Semiannual is the default — fill/de-red the semiannual paragraph and hide the
+    // jährlich (annual) one entirely. Previously both were kept side by side, which
+    // duplicated the fee wording in the generated contract.
+    xml = stripRedInParagraphContainingBookmark(xml, 'Perf');
+    if (fv.vorab_pct) xml = stripRedInParagraphContainingBookmark(xml, 'Vorab');
+    else               xml = blankParagraphContainingBookmark(xml, 'Vorab');
+    xml = setBookmarkText(xml, 'PerfClauseAnnual', ''); // hide the jährlich paragraph — halbjährlich is selected
   }
 
   // The "7.2 Performancegebühr" heading and the closing sentence(s) after the clause(s)
   // aren't bookmarked at all, so they're untouched by everything above — strip their
-  // red too once a real fee is present, so the whole section reads as normal black text.
-  if (fv.performance_fee) {
-    xml = stripRedInHeadingBeforeBookmark(xml, 'PerfClauseSemi');
-    xml = stripRedAfterBookmark(xml, 'PerfClauseAnnual', 2);
-  }
+  // red too now that a real fee is present, so the section reads as normal black text.
+  xml = stripRedInHeadingBeforeBookmark(xml, 'PerfClauseSemi');
+  xml = stripRedAfterBookmark(xml, 'PerfClauseAnnual', 2);
   return xml;
 }
 
@@ -752,9 +869,11 @@ exports.previewContract = async (req, res) => {
       if (!zip.files[xmlFile]) return;
       let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
       xml = applyAllocMinToXml(xml, fieldValues);
+      xml = applyPreciousMetalsRowToXml(xml, fieldValues);
       xml = applyPerformanceFeeClauseToXml(xml, fieldValues, template.lang);
       xml = applyFormularLetterToXml(xml, fieldValues);
       xml = applyContractTypeCheckboxToXml(xml, fieldValues);
+      xml = applyOwnProductsChoiceToXml(xml, fieldValues);
       zip.file(xmlFile, xml);
     });
 
@@ -832,9 +951,11 @@ exports.generateContract = async (req, res) => {
         if (!zip.files[xmlFile]) return;
         let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
         xml = applyAllocMinToXml(xml, fieldValues);
+        xml = applyPreciousMetalsRowToXml(xml, fieldValues);
         xml = applyPerformanceFeeClauseToXml(xml, fieldValues, template.lang);
         xml = applyFormularLetterToXml(xml, fieldValues);
         xml = applyContractTypeCheckboxToXml(xml, fieldValues);
+        xml = applyOwnProductsChoiceToXml(xml, fieldValues);
         // Apply checkbox state
         Object.entries(checkboxMap).forEach(([from, to]) => {
           const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

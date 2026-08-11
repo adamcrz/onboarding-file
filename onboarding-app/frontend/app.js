@@ -1938,6 +1938,11 @@ function renderClientDocsTab(client) {
               ${Object.entries(CONTRACT_VALIDATION_MAPS).map(([id, m]) => `<option value="${id}">${m.label}</option>`).join('')}
             </select>
           </div>
+          <div class="form-group" id="upload-id-expiry-wrap" style="margin-bottom:14px;max-width:360px;display:none;">
+            <label for="upload-id-expiry">Document Expiry Date <span style="color:var(--accent-red)">*</span></label>
+            <input type="date" id="upload-id-expiry">
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">A passport or ID that's already expired will be flagged for correction automatically.</div>
+          </div>
           <div class="upload-zone" id="upload-zone" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)" onclick="triggerFileInput()">
             <div style="font-size:36px;margin-bottom:12px;">🗂️</div>
             <div class="upload-zone-text">Drag &amp; drop signed PDF here or click to browse</div>
@@ -2130,9 +2135,11 @@ function detectSignatureStamp(file) {
 }
 
 function cbToggleContractTemplateSelect() {
-  const isContract = document.getElementById('upload-doc-type')?.value === 'Signed Contract';
+  const docType = document.getElementById('upload-doc-type')?.value;
   const wrap = document.getElementById('upload-contract-template-wrap');
-  if (wrap) wrap.style.display = isContract ? 'block' : 'none';
+  if (wrap) wrap.style.display = docType === 'Signed Contract' ? 'block' : 'none';
+  const expiryWrap = document.getElementById('upload-id-expiry-wrap');
+  if (expiryWrap) expiryWrap.style.display = docType === 'ID Document' ? 'block' : 'none';
 }
 
 function contractCheckFailureReason(result, templateId) {
@@ -2274,11 +2281,23 @@ async function simulateUpload(file) {
   };
 
   if (docType === 'ID Document') {
+    const expiryStr = document.getElementById('upload-id-expiry')?.value || '';
+    newDoc.expiryDate = expiryStr;
+    const issues = [];
+
     const hasStamp = await detectSignatureStamp(file);
-    if (!hasStamp) {
-      newDoc.missingNote = 'Automatic check found no signature/stamp with date in the bottom-right corner — please re-upload a clearer scan.';
+    if (!hasStamp) issues.push('Automatic check found no signature/stamp with date in the bottom-right corner — please re-upload a clearer scan.');
+
+    if (!expiryStr) {
+      issues.push('No expiry date was entered for this ID/passport.');
+    } else if (new Date(expiryStr) < new Date(new Date().toDateString())) {
+      issues.push(`This document expired on ${expiryStr} — an expired passport or ID cannot be accepted.`);
+    }
+
+    if (issues.length) {
+      newDoc.missingNote = issues.join(' ');
       await flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
-      showToast('warning', `${file.name} uploaded, but no signature/stamp was detected — flagged for correction.`);
+      showToast('warning', `${file.name} uploaded, but flagged for correction: ${issues.join(' ')}`);
     }
   }
 
@@ -2657,7 +2676,7 @@ function kycDownloadTemplate() {
 // gets 0–100%, every other listed currency defaults to 0–50%, and the "Other"
 // catch-all row always defaults to 0–30% regardless of mandate currency.
 function defaultCurrencyWeights(mandateCcy) {
-  const keys = ['CHF','EUR','USD','GBP','AUD','JPY'];
+  const keys = ['CHF','USD','EUR','AUD','GBP'];
   const base = keys.includes(mandateCcy) ? mandateCcy : 'CHF';
   const weights = { Other: { min: 0, max: 30 } };
   keys.forEach(k => { weights[k] = k === base ? { min: 0, max: 100 } : { min: 0, max: 50 }; });
@@ -2683,10 +2702,14 @@ const CB = {
     cash:        { min:  5, max: 30 },
     other:       { min:  0, max: 15 },
   },
+  includePreciousMetals: false,
+  preciousMetals: { min: 0, max: 0 },
+  hasPreciousMetalsRow: false,
   currencyWeights: defaultCurrencyWeights('CHF'),
   investmentComments: '',
   managementFee: '', performanceFee: '', performanceFeeFrequency: 'semiannual', vorabPct: '',
   clientType: 'individual', formularBookmark: false,
+  hasOwnProductsChoice: false, ownProductsChoice: '',
   createClientAccount: true, requiredDocuments: [],
 };
 
@@ -2976,6 +2999,8 @@ async function cbStep2() {
     // when the template actually has somewhere to put the values.
     CB.hasPerfFee = !!data.bookmarks?.includes('PerfClauseAnnual');
     CB.hasCurrencyTable = !!data.bookmarks?.includes('CHF');
+    CB.hasPreciousMetalsRow = !!data.bookmarks?.includes('Roh');
+    CB.hasOwnProductsChoice = !!data.bookmarks?.includes('OwnProductsChoice');
     if (data.bookmarks?.length) {
       console.log(`[Contract Builder] Bookmarks in "${CB.selectedId}":`, data.bookmarks);
     }
@@ -2983,6 +3008,8 @@ async function cbStep2() {
     CB.formularBookmark = false;
     CB.hasPerfFee = false;
     CB.hasCurrencyTable = false;
+    CB.hasPreciousMetalsRow = false;
+    CB.hasOwnProductsChoice = false;
     CB.fields = [
       { key:'client_last_name',   label:'Last Name',                   type:'text',  required:true  },
       { key:'client_first_name',  label:'First Name',                  type:'text',  required:true  },
@@ -2996,14 +3023,12 @@ async function cbStep2() {
       { key:'contract_date',      label:'Contract Date',               type:'date',  required:true  },
       { key:'depot_bank',         label:'Custodian Bank',              type:'text',  required:false },
       { key:'portfolio_number',   label:'Portfolio Number',            type:'text',  required:false },
-      { key:'additional_category',label:'Additional Investment Category (opt.)', type:'text', required:false },
     ];
   }
 
   const stdKeys = ['client_last_name','client_first_name','client_email','client_dob',
                    'client_address1','client_address2','client_city','client_country',
-                   'client_nationality','contract_date','depot_bank','portfolio_number',
-                   'additional_category'];
+                   'client_nationality','contract_date','depot_bank','portfolio_number'];
   const stdFields      = CB.fields.filter(f => stdKeys.includes(f.key));
   const checkboxFields = CB.fields.filter(f => f.type === 'checkbox');
   const extraFields    = CB.fields.filter(f => !stdKeys.includes(f.key) && f.type !== 'checkbox');
@@ -3144,9 +3169,9 @@ async function cbStep2() {
         </thead>
         <tbody>
           ${[
-            ['equities',    'alloc_equities',    'Equities',             CB.allocations.equities],
-            ['fixedIncome', 'alloc_fixedincome', 'Fixed Income / Bonds', CB.allocations.fixedIncome],
             ['cash',        'alloc_cash',        'Cash & Liquidity',     CB.allocations.cash],
+            ['fixedIncome', 'alloc_fixedincome', 'Fixed Income / Bonds', CB.allocations.fixedIncome],
+            ['equities',    'alloc_equities',    'Equities',             CB.allocations.equities],
             ['other',       'alloc_other',       'Other / Alternatives', CB.allocations.other],
           ].map(([_key, id, lbl, vals]) => `
             <tr>
@@ -3161,30 +3186,44 @@ async function cbStep2() {
               </div></td>
             </tr>
           `).join('')}
+          ${CB.hasPreciousMetalsRow && CB.includePreciousMetals ? `
+            <tr id="alloc-metals-row">
+              <td style="font-size:13px;">Edelmetalle &amp; Rohstoffe</td>
+              <td><div class="cb-alloc-input-wrap">
+                <input type="number" id="alloc_metals_min" value="${CB.preciousMetals.min}" min="0" max="100" step="1" oninput="cbUpdateAllocTotal()">
+                <span class="cb-pct-label">%</span>
+              </div></td>
+              <td><div class="cb-alloc-input-wrap">
+                <input type="number" id="alloc_metals_max" value="${CB.preciousMetals.max}" min="0" max="100" step="1" oninput="cbUpdateAllocTotal()">
+                <span class="cb-pct-label">%</span>
+              </div></td>
+            </tr>
+          ` : ''}
           <tr class="cb-alloc-total" id="alloc-total-row">
             <td style="font-size:13px;font-weight:700;">Total</td>
-            <td style="text-align:right;"><strong id="alloc-total-min">${CB.allocations.equities.min+CB.allocations.fixedIncome.min+CB.allocations.cash.min+CB.allocations.other.min}%</strong></td>
-            <td style="text-align:right;"><strong id="alloc-total-max">${CB.allocations.equities.max+CB.allocations.fixedIncome.max+CB.allocations.cash.max+CB.allocations.other.max}%</strong></td>
+            <td style="text-align:right;"><strong id="alloc-total-min">${CB.allocations.equities.min+CB.allocations.fixedIncome.min+CB.allocations.cash.min+CB.allocations.other.min+(CB.includePreciousMetals?CB.preciousMetals.min:0)}%</strong></td>
+            <td style="text-align:right;"><strong id="alloc-total-max">${CB.allocations.equities.max+CB.allocations.fixedIncome.max+CB.allocations.cash.max+CB.allocations.other.max+(CB.includePreciousMetals?CB.preciousMetals.max:0)}%</strong></td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div style="margin-top:12px;">
-      <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Further Comments / Investment Instructions</label>
-      <textarea id="cb_investment_comments" class="cb-comments-input" rows="3"
-                placeholder="Additional instructions, restrictions, or specific remarks…">${CB.investmentComments}</textarea>
-    </div>
+    ${CB.hasPreciousMetalsRow ? `
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
+        <input type="checkbox" ${CB.includePreciousMetals?'checked':''} onchange="cbTogglePreciousMetals(this.checked)">
+        Include Edelmetalle &amp; Rohstoffe as a separate allocation category
+      </label>
+    ` : ''}
 
     ${CB.hasPerfFee ? `
       <div class="cb-section-label" style="margin-top:28px;">Fee Structure</div>
       <div class="cb-fields-grid" style="margin-top:12px;max-width:500px;">
         <div class="form-group" style="margin-bottom:0;">
-          <label for="cb_management_fee">Annual Management Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% p.a.</span></label>
-          <input type="number" id="cb_management_fee" step="0.01" min="0" max="100"
+          <label for="cb_management_fee">Annual Management Fee <span style="color:var(--accent-red)">*</span> <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% p.a.</span></label>
+          <input type="number" id="cb_management_fee" step="0.01" min="0" max="100" required
                  placeholder="e.g. 1.00" value="${CB.managementFee||''}">
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <label for="cb_performance_fee">Performance Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% (optional)</span></label>
+          <label for="cb_performance_fee">Performance Fee <span style="font-size:11px;color:var(--text-muted);font-weight:400;">% (optional — leave blank if none applies)</span></label>
           <input type="number" id="cb_performance_fee" step="0.01" min="0" max="100"
                  placeholder="e.g. 10.00" value="${CB.performanceFee||''}" oninput="cbTogglePerfFreq()">
         </div>
@@ -3203,6 +3242,29 @@ async function cbStep2() {
       </div>
     ` : ''}
 
+    <div style="margin-top:20px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Further Comments / Investment Instructions <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(optional)</span></label>
+      <textarea id="cb_investment_comments" class="cb-comments-input" rows="3"
+                placeholder="Additional instructions, restrictions, or specific remarks…">${CB.investmentComments}</textarea>
+    </div>
+
+    ${CB.hasOwnProductsChoice ? `
+      <div class="cb-section-label" style="margin-top:28px;">Einsatz eigener Produkte <span style="color:var(--accent-red)">*</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+        ${[
+          ['yes',       'Eigene Produkte Ja — bis zu 100% des Portfolios in eigene Produkte (Fonds/Zertifikate), Vermögensverwaltungsgebühr fällt an'],
+          ['yes_no_dd', 'Eigene Produkte Ja (ohne Double Dipping) — keine Vermögensverwaltungsgebühr auf diese Vermögenswerte'],
+          ['no',        'Eigene Produkte Nein — keine Anlagen in eigene Produkte'],
+        ].map(([val, lbl]) => `
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;">
+            <input type="radio" name="cb_own_products_choice" value="${val}" style="margin-top:2px;"
+                   ${CB.ownProductsChoice===val?'checked':''} onchange="CB.ownProductsChoice='${val}'">
+            <span>${lbl}</span>
+          </label>
+        `).join('')}
+      </div>
+    ` : ''}
+
     ${CB.hasCurrencyTable ? `
       <div class="cb-section-label" style="margin-top:28px;">Currency Allocation</div>
       <div class="cb-alloc-wrap" style="margin-top:12px;">
@@ -3217,12 +3279,11 @@ async function cbStep2() {
           <tbody>
             ${[
               ['ccy_CHF', 'CHF — Swiss Franc',      CB.currencyWeights.CHF || {min:0,max:0}],
-              ['ccy_EUR', 'EUR — Euro',              CB.currencyWeights.EUR || {min:0,max:0}],
               ['ccy_USD', 'USD — US Dollar',         CB.currencyWeights.USD || {min:0,max:0}],
-              ['ccy_GBP', 'GBP — Pound Sterling',   CB.currencyWeights.GBP || {min:0,max:0}],
-              ['ccy_AUD',   'AUD — Australian Dollar', CB.currencyWeights.AUD   || {min:0,max:0}],
-              ['ccy_JPY',   'JPY — Japanese Yen',      CB.currencyWeights.JPY   || {min:0,max:0}],
-              ['ccy_Other', 'Other',                   CB.currencyWeights.Other || {min:0,max:30}],
+              ['ccy_EUR', 'EUR — Euro',              CB.currencyWeights.EUR || {min:0,max:0}],
+              ['ccy_AUD', 'AUD — Australian Dollar', CB.currencyWeights.AUD || {min:0,max:0}],
+              ['ccy_GBP', 'GBP — Pound Sterling',    CB.currencyWeights.GBP || {min:0,max:0}],
+              ['ccy_Other', 'Other',                 CB.currencyWeights.Other || {min:0,max:30}],
             ].map(([id, lbl, vals]) => `
               <tr>
                 <td style="font-size:13px;">${lbl}</td>
@@ -3238,8 +3299,8 @@ async function cbStep2() {
             `).join('')}
             <tr class="cb-alloc-total" id="ccy-total-row">
               <td style="font-size:13px;font-weight:700;">Total</td>
-              <td style="text-align:right;"><strong id="ccy-total-min">${['CHF','EUR','USD','GBP','AUD','JPY','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.min||0),0)}%</strong></td>
-              <td style="text-align:right;"><strong id="ccy-total-max">${['CHF','EUR','USD','GBP','AUD','JPY','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.max||0),0)}%</strong></td>
+              <td style="text-align:right;"><strong id="ccy-total-min">${['CHF','USD','EUR','AUD','GBP','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.min||0),0)}%</strong></td>
+              <td style="text-align:right;"><strong id="ccy-total-max">${['CHF','USD','EUR','AUD','GBP','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.max||0),0)}%</strong></td>
             </tr>
           </tbody>
         </table>
@@ -3481,18 +3542,28 @@ async function cbDownloadAppendix() {
   }
 }
 
+function cbTogglePreciousMetals(checked) {
+  CB.includePreciousMetals = checked;
+  cbUpdateAllocTotal();
+  const area = document.getElementById('cb-fields-area');
+  if (area) cbStep2();
+}
+
 function cbUpdateAllocTotal() {
   const ids = ['equities','fixedincome','cash','other'];
   const mins = ids.map(id => parseFloat(document.getElementById(`alloc_${id}_min`)?.value) || 0);
   const maxs = ids.map(id => parseFloat(document.getElementById(`alloc_${id}_max`)?.value) || 0);
-  const totalMin = mins.reduce((a,b)=>a+b,0);
-  const totalMax = maxs.reduce((a,b)=>a+b,0);
   CB.allocations = {
     equities:    { min: mins[0], max: maxs[0] },
     fixedIncome: { min: mins[1], max: maxs[1] },
     cash:        { min: mins[2], max: maxs[2] },
     other:       { min: mins[3], max: maxs[3] },
   };
+  const metalsMin = CB.includePreciousMetals ? (parseFloat(document.getElementById('alloc_metals_min')?.value) || 0) : 0;
+  const metalsMax = CB.includePreciousMetals ? (parseFloat(document.getElementById('alloc_metals_max')?.value) || 0) : 0;
+  if (CB.includePreciousMetals) CB.preciousMetals = { min: metalsMin, max: metalsMax };
+  const totalMin = mins.reduce((a,b)=>a+b,0) + metalsMin;
+  const totalMax = maxs.reduce((a,b)=>a+b,0) + metalsMax;
   const minEl = document.getElementById('alloc-total-min');
   const maxEl = document.getElementById('alloc-total-max');
   if (minEl) minEl.textContent = totalMin + '%';
@@ -3503,8 +3574,8 @@ function cbUpdateAllocTotal() {
 }
 
 function cbUpdateCcyTotal() {
-  const ids  = ['ccy_CHF','ccy_EUR','ccy_USD','ccy_GBP','ccy_AUD','ccy_JPY','ccy_Other'];
-  const keys = ['CHF','EUR','USD','GBP','AUD','JPY','Other'];
+  const ids  = ['ccy_CHF','ccy_USD','ccy_EUR','ccy_AUD','ccy_GBP','ccy_Other'];
+  const keys = ['CHF','USD','EUR','AUD','GBP','Other'];
   const mins = ids.map(id => parseFloat(document.getElementById(`${id}_min`)?.value) || 0);
   const maxs = ids.map(id => parseFloat(document.getElementById(`${id}_max`)?.value) || 0);
   const totalMin = mins.reduce((a,b)=>a+b,0);
@@ -3531,6 +3602,16 @@ function cbValidateBeforeSubmit() {
 
   if (missingRequired.length) {
     showToast('warning', `Please fill in: ${missingRequired.join(', ')}`);
+    return null;
+  }
+
+  if (CB.hasPerfFee && !document.getElementById('cb_management_fee')?.value?.trim()) {
+    showToast('warning', 'Please fill in: Annual Management Fee');
+    return null;
+  }
+
+  if (CB.hasOwnProductsChoice && !CB.ownProductsChoice) {
+    showToast('warning', 'Please select an option under "Einsatz eigener Produkte".');
     return null;
   }
 
@@ -3862,18 +3943,20 @@ function cbCollectAllValues() {
     alloc_cash_max:          String(CB.allocations.cash.max),
     alloc_other_min:         String(CB.allocations.other.min),
     alloc_other_max:         String(CB.allocations.other.max),
+    alloc_precious_metals_min: CB.includePreciousMetals ? String(CB.preciousMetals.min) : '',
+    alloc_precious_metals_max: CB.includePreciousMetals ? String(CB.preciousMetals.max) : '',
     investment_comments:     document.getElementById('cb_investment_comments')?.value?.trim() || '',
     management_fee:          document.getElementById('cb_management_fee')?.value?.trim()      || '',
     performance_fee:         document.getElementById('cb_performance_fee')?.value?.trim()     || '',
     performance_fee_frequency: document.getElementById('cb_performance_fee_frequency')?.value || 'semiannual',
     vorab_pct:                document.getElementById('cb_vorab_pct')?.value?.trim()          || '',
+    own_products_choice:      CB.ownProductsChoice || '',
     client_type:              CB.clientType || 'individual',
     ccy_chf_min: String(CB.currencyWeights.CHF?.min||0), ccy_chf_max: String(CB.currencyWeights.CHF?.max||0),
     ccy_eur_min: String(CB.currencyWeights.EUR?.min||0), ccy_eur_max: String(CB.currencyWeights.EUR?.max||0),
     ccy_usd_min: String(CB.currencyWeights.USD?.min||0), ccy_usd_max: String(CB.currencyWeights.USD?.max||0),
     ccy_gbp_min: String(CB.currencyWeights.GBP?.min||0), ccy_gbp_max: String(CB.currencyWeights.GBP?.max||0),
     ccy_aud_min: String(CB.currencyWeights.AUD?.min||0), ccy_aud_max: String(CB.currencyWeights.AUD?.max||0),
-    ccy_jpy_min: String(CB.currencyWeights.JPY?.min||0), ccy_jpy_max: String(CB.currencyWeights.JPY?.max||0),
     ccy_other_min: String(CB.currencyWeights.Other?.min||0), ccy_other_max: String(CB.currencyWeights.Other?.max||0),
     uo_vertrag:           CB.uo ? 'true' : 'false',
     p2_last_name:         document.getElementById('cb_p2_last_name')?.value?.trim()    || '',

@@ -14,6 +14,7 @@ const documentSchema = new mongoose.Schema({
   signedVersion:     { type: Boolean, default: false },
   missingNote:       { type: String },
   filePath:          { type: String },
+  expiryDate:        { type: String },
 }, { timestamps: true });
 
 const auditSchema = new mongoose.Schema({
