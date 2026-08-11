@@ -5,11 +5,11 @@ const { demoLogin } = require('../helpers/demoLogin');
 // underlying Word template actually has a bookmark for: Annual Management Fee
 // needs "Fee", Performance Fee (+ frequency + hurdle rate) needs
 // "PerfClauseAnnual", Currency Allocation needs "CHF". All-In templates have
-// all three; Advisory has a management fee but no performance-fee mechanism
-// or currency table; Execution Only has none of the three. Filling in a field
-// with no bookmark to write to would silently do nothing, so the Contract
-// Builder step 2 form must only show what the template can actually hold —
-// the same way it already gates the Formular letter behavior.
+// all three; Advisory and Execution Only each have a management fee (their own
+// compensation clause) but no performance-fee mechanism or currency table.
+// Filling in a field with no bookmark to write to would silently do nothing,
+// so the Contract Builder step 2 form must only show what the template can
+// actually hold — the same way it already gates the Formular letter behavior.
 
 test.describe('Contract Builder: Fee Structure / Currency Allocation are template-scoped', () => {
   let consoleErrors;
@@ -47,7 +47,7 @@ test.describe('Contract Builder: Fee Structure / Currency Allocation are templat
     expect(await sectionsShownFor(page, 'en-advisory')).toEqual({ hasFee: true, hasMgmtFeeInput: true, hasPerfFeeInput: false, hasCcy: false });
   });
 
-  test('Execution Only shows none of it', async ({ page }) => {
-    expect(await sectionsShownFor(page, 'en-execution')).toEqual({ hasFee: false, hasMgmtFeeInput: false, hasPerfFeeInput: false, hasCcy: false });
+  test('Execution Only shows management fee only — no performance fee, no currency allocation', async ({ page }) => {
+    expect(await sectionsShownFor(page, 'en-execution')).toEqual({ hasFee: true, hasMgmtFeeInput: true, hasPerfFeeInput: false, hasCcy: false });
   });
 });

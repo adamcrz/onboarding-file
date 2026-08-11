@@ -595,78 +595,6 @@ function applyOwnProductsChoiceToXml(xml, fieldValues) {
   return xml;
 }
 
-// Finds the start of the nearest actual <w:r ...> / <w:r> run tag before `beforeIdx`.
-// Plain `lastIndexOf('<w:r', beforeIdx)` isn't safe: it also matches inside
-// `<w:rPr>`, `<w:rFonts>`, `<w:rPrChange>` etc., which all start with the same
-// four characters.
-function lastRunStart(xml, beforeIdx) {
-  const re = /<w:r[ >]/g;
-  let m, last = -1;
-  while ((m = re.exec(xml)) !== null) {
-    if (m.index >= beforeIdx) break;
-    last = m.index;
-  }
-  return last;
-}
-
-// Legacy Word "Form Fields" (FORMTEXT) — an older fill-in mechanism (Insert Legacy
-// Form Field), structurally unrelated to the bookmarks every other template uses.
-// The Execution Only template has no bookmarks at all; every blank is one of these,
-// in a fixed document order, all sharing the same empty w:name so they can only be
-// addressed positionally. `values[i]` fills the i-th field in document order (skip
-// an index with undefined/null to leave that field untouched). Only the first 5
-// fields (client name/address block + custodian bank + account number) are filled
-// by callers here — the "authorized instruction-givers" block further down has no
-// reliably distinguishable field boundaries and is left for manual completion.
-function applyFormTextFieldsToXml(xml, values) {
-  if (!xml.includes('FORMTEXT')) return xml; // template doesn't use this mechanism
-
-  const fieldRe = /<w:fldChar w:fldCharType="begin">[\s\S]*?<\/w:ffData><\/w:fldChar>/g;
-  const starts = [];
-  let m;
-  while ((m = fieldRe.exec(xml)) !== null) starts.push(m.index);
-
-  const edits = [];
-  starts.forEach((start, i) => {
-    const value = values[i];
-    if (value === undefined || value === null) return;
-    const sepMarker = '<w:fldChar w:fldCharType="separate"/>';
-    const sepIdx = xml.indexOf(sepMarker, start);
-    if (sepIdx === -1) return;
-    const sepRunEnd = xml.indexOf('</w:r>', sepIdx) + '</w:r>'.length;
-    const endMarker = '<w:fldChar w:fldCharType="end"/>';
-    const endMarkerIdx = xml.indexOf(endMarker, sepRunEnd);
-    if (endMarkerIdx === -1) return;
-    const endRunStart = lastRunStart(xml, endMarkerIdx);
-    if (endRunStart === -1 || endRunStart < sepRunEnd) return;
-
-    // Build a clean, minimal rPr rather than reusing the placeholder run's own —
-    // those carry nested <w:rPrChange> (tracked-changes) blocks that make naive
-    // extraction unsafe. Every field in this template underlines its filled-in
-    // value; the client-name field is additionally bold.
-    const isBold = xml.slice(start, sepRunEnd).includes('<w:b/>');
-    const rPr = `<w:rPr>${isBold ? '<w:b/>' : ''}<w:u w:val="single"/></w:rPr>`;
-    const newRun = `<w:r>${rPr}<w:t xml:space="preserve">${escXml(value)}</w:t></w:r>`;
-    edits.push({ start: sepRunEnd, end: endRunStart, text: newRun });
-  });
-
-  for (let i = edits.length - 1; i >= 0; i--) {
-    xml = xml.slice(0, edits[i].start) + edits[i].text + xml.slice(edits[i].end);
-  }
-  return xml;
-}
-
-// Builds the ordered values array applyFormTextFieldsToXml expects, for the
-// Execution Only template's first 5 fields: client name, street address, city +
-// country, custodian bank, custody account number.
-function buildFormTextValues(fieldValues) {
-  const fv = fieldValues || {};
-  const name = [fv.client_first_name, fv.client_last_name].filter(Boolean).join(' ');
-  const addr = [fv.client_address1, fv.client_address2].filter(Boolean).join(', ');
-  const cityCountry = [fv.client_city, fv.client_country].filter(Boolean).join(', ');
-  return [name, addr, cityCountry, fv.depot_bank || '', fv.portfolio_number || ''];
-}
-
 // Performance-fee settlement clause (§7.2 in the DE/EN "Discretionary All-In" templates).
 // Halbjährlich (semiannual) is the default — for that one we leave the template's own
 // red placeholder text in place untouched (its nested "Perf"/"Vorab" bookmarks already
@@ -953,7 +881,6 @@ exports.previewContract = async (req, res) => {
       xml = applyFormularLetterToXml(xml, fieldValues);
       xml = applyContractTypeCheckboxToXml(xml, fieldValues);
       xml = applyOwnProductsChoiceToXml(xml, fieldValues);
-      xml = applyFormTextFieldsToXml(xml, buildFormTextValues(fieldValues));
       zip.file(xmlFile, xml);
     });
 
