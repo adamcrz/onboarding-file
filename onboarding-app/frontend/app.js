@@ -3335,7 +3335,6 @@ async function cbStep2() {
         </button>
       ` : `
         <button class="btn-primary" onclick="cbSubmit()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.02 2.18 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14v2.92z"/></svg>
           Send Contract & Invite Client
         </button>
       `}
@@ -3664,9 +3663,12 @@ async function cbSubmit() {
   const btn = document.querySelector('#cb-body .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
+  const tpl = CB.templates.find(t => t.id === CB.selectedId);
+
   try {
     const res = await apiFetch('POST', '/contracts/invite', {
-      clientName, clientEmail, templateId: CB.selectedId, fieldValues,
+      clientName, clientEmail, templateId: CB.selectedId, templateName: tpl?.name || CB.selectedId, fieldValues,
+      rmName: CB.kundenberater, createClientAccount: CB.createClientAccount, requiredDocuments: CB.requiredDocuments,
     });
     await cbCreateKycTask(CB.kundenberater, clientName, clientEmail);
     CB.result = { otp: res.otp, clientName, clientEmail, kycCreated: true, rmName: CB.kundenberater };
@@ -3876,15 +3878,17 @@ function cbStep3() {
             <polyline points="20,6 9,17 4,12"/>
           </svg>
         </div>
-        <h2 style="color:var(--text-primary);margin-bottom:8px;">Invitation Sent!</h2>
+        <h2 style="color:var(--text-primary);margin-bottom:8px;">${otp ? 'Invitation Sent!' : 'Contract Processed'}</h2>
         <p style="color:var(--text-secondary);margin-bottom:28px;">
-          A portal access email has been sent to <strong>${clientEmail}</strong>
+          ${otp
+            ? `A portal access email has been sent to <strong>${clientEmail}</strong>`
+            : `No portal account was created, per the Client Portal Account setting.`}
         </p>
 
         <div style="background:var(--bg-secondary);border:1px solid var(--border-default);
                     border-radius:var(--radius-lg);padding:24px;max-width:360px;margin:0 auto 28px;text-align:left;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
-                      color:var(--text-muted);margin-bottom:14px;">Account Details</div>
+                      color:var(--text-muted);margin-bottom:14px;">${otp ? 'Account Details' : 'Contract Details'}</div>
           <div style="display:flex;flex-direction:column;gap:10px;">
             <div><span style="font-size:12px;color:var(--text-muted);">Client</span>
               <div style="font-size:14px;font-weight:600;color:var(--text-primary);">${clientName}</div>
@@ -3895,13 +3899,15 @@ function cbStep3() {
             <div><span style="font-size:12px;color:var(--text-muted);">Contract</span>
               <div style="font-size:14px;font-weight:600;color:var(--text-primary);">${tpl?.name || CB.selectedId}</div>
             </div>
+            ${otp ? `
             <div><span style="font-size:12px;color:var(--text-muted);">One-Time Password</span>
               <div style="font-size:22px;font-weight:700;font-family:monospace;color:var(--accent-purple);
-                          letter-spacing:4px;margin-top:2px;">${otp || '—'}</div>
+                          letter-spacing:4px;margin-top:2px;">${otp}</div>
               <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
                 Share this with the client if the email isn't received
               </div>
             </div>
+            ` : ''}
           </div>
         </div>
 

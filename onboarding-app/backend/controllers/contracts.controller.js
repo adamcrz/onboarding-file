@@ -595,6 +595,78 @@ function applyOwnProductsChoiceToXml(xml, fieldValues) {
   return xml;
 }
 
+// Finds the start of the nearest actual <w:r ...> / <w:r> run tag before `beforeIdx`.
+// Plain `lastIndexOf('<w:r', beforeIdx)` isn't safe: it also matches inside
+// `<w:rPr>`, `<w:rFonts>`, `<w:rPrChange>` etc., which all start with the same
+// four characters.
+function lastRunStart(xml, beforeIdx) {
+  const re = /<w:r[ >]/g;
+  let m, last = -1;
+  while ((m = re.exec(xml)) !== null) {
+    if (m.index >= beforeIdx) break;
+    last = m.index;
+  }
+  return last;
+}
+
+// Legacy Word "Form Fields" (FORMTEXT) — an older fill-in mechanism (Insert Legacy
+// Form Field), structurally unrelated to the bookmarks every other template uses.
+// The Execution Only template has no bookmarks at all; every blank is one of these,
+// in a fixed document order, all sharing the same empty w:name so they can only be
+// addressed positionally. `values[i]` fills the i-th field in document order (skip
+// an index with undefined/null to leave that field untouched). Only the first 5
+// fields (client name/address block + custodian bank + account number) are filled
+// by callers here — the "authorized instruction-givers" block further down has no
+// reliably distinguishable field boundaries and is left for manual completion.
+function applyFormTextFieldsToXml(xml, values) {
+  if (!xml.includes('FORMTEXT')) return xml; // template doesn't use this mechanism
+
+  const fieldRe = /<w:fldChar w:fldCharType="begin">[\s\S]*?<\/w:ffData><\/w:fldChar>/g;
+  const starts = [];
+  let m;
+  while ((m = fieldRe.exec(xml)) !== null) starts.push(m.index);
+
+  const edits = [];
+  starts.forEach((start, i) => {
+    const value = values[i];
+    if (value === undefined || value === null) return;
+    const sepMarker = '<w:fldChar w:fldCharType="separate"/>';
+    const sepIdx = xml.indexOf(sepMarker, start);
+    if (sepIdx === -1) return;
+    const sepRunEnd = xml.indexOf('</w:r>', sepIdx) + '</w:r>'.length;
+    const endMarker = '<w:fldChar w:fldCharType="end"/>';
+    const endMarkerIdx = xml.indexOf(endMarker, sepRunEnd);
+    if (endMarkerIdx === -1) return;
+    const endRunStart = lastRunStart(xml, endMarkerIdx);
+    if (endRunStart === -1 || endRunStart < sepRunEnd) return;
+
+    // Build a clean, minimal rPr rather than reusing the placeholder run's own —
+    // those carry nested <w:rPrChange> (tracked-changes) blocks that make naive
+    // extraction unsafe. Every field in this template underlines its filled-in
+    // value; the client-name field is additionally bold.
+    const isBold = xml.slice(start, sepRunEnd).includes('<w:b/>');
+    const rPr = `<w:rPr>${isBold ? '<w:b/>' : ''}<w:u w:val="single"/></w:rPr>`;
+    const newRun = `<w:r>${rPr}<w:t xml:space="preserve">${escXml(value)}</w:t></w:r>`;
+    edits.push({ start: sepRunEnd, end: endRunStart, text: newRun });
+  });
+
+  for (let i = edits.length - 1; i >= 0; i--) {
+    xml = xml.slice(0, edits[i].start) + edits[i].text + xml.slice(edits[i].end);
+  }
+  return xml;
+}
+
+// Builds the ordered values array applyFormTextFieldsToXml expects, for the
+// Execution Only template's first 5 fields: client name, street address, city +
+// country, custodian bank, custody account number.
+function buildFormTextValues(fieldValues) {
+  const fv = fieldValues || {};
+  const name = [fv.client_first_name, fv.client_last_name].filter(Boolean).join(' ');
+  const addr = [fv.client_address1, fv.client_address2].filter(Boolean).join(', ');
+  const cityCountry = [fv.client_city, fv.client_country].filter(Boolean).join(', ');
+  return [name, addr, cityCountry, fv.depot_bank || '', fv.portfolio_number || ''];
+}
+
 // Performance-fee settlement clause (§7.2 in the DE/EN "Discretionary All-In" templates).
 // Halbjährlich (semiannual) is the default — for that one we leave the template's own
 // red placeholder text in place untouched (its nested "Perf"/"Vorab" bookmarks already
@@ -881,6 +953,7 @@ exports.previewContract = async (req, res) => {
       xml = applyFormularLetterToXml(xml, fieldValues);
       xml = applyContractTypeCheckboxToXml(xml, fieldValues);
       xml = applyOwnProductsChoiceToXml(xml, fieldValues);
+      xml = applyFormTextFieldsToXml(xml, buildFormTextValues(fieldValues));
       zip.file(xmlFile, xml);
     });
 
@@ -1006,15 +1079,49 @@ async function createClientInviteAndEmail(clientName, clientEmail, templateId) {
   return otp;
 }
 
+// Direct-invite path — used when whoever is in the Contract Builder isn't an RM
+// submitting to Compliance for review (i.e. Compliance building + sending a
+// contract themselves). There's no separate review step here, so the client
+// case is created already at the "reviewed" state a Contract Review would reach
+// on approval, same as submitContractReview + approveContractReview together.
 exports.sendInvite = async (req, res) => {
-  const { clientName, clientEmail, templateId } = req.body;
+  const {
+    clientName, clientEmail, templateId, templateName, fieldValues,
+    rmName, createClientAccount, requiredDocuments,
+  } = req.body;
   if (!clientEmail || !clientName) {
     return res.status(400).json({ error: 'Client name and email are required' });
   }
 
   try {
-    const otp = await createClientInviteAndEmail(clientName, clientEmail, templateId);
-    res.json({ success: true, message: `Invitation sent to ${clientEmail}`, otp });
+    const email = clientEmail.toLowerCase();
+    const clientType = CLIENT_TYPE_LABELS[(fieldValues || {}).client_type] || 'Individual';
+    const docEntries = await buildDocEntries(fieldValues, requiredDocuments, templateName, templateId);
+    const willCreateAccount = createClientAccount !== false;
+    const auditEntry = {
+      action: willCreateAccount
+        ? 'Contract sent by Compliance — client invited to the portal, signed documents outstanding'
+        : 'Contract sent by Compliance — processed without portal access, signed documents outstanding',
+      user: 'Compliance',
+      time: new Date().toLocaleString(),
+      type: 'approved',
+    };
+
+    const client = await upsertClientCase({
+      email, clientName, clientType, rm: rmName, country: (fieldValues || {}).client_country,
+      status: 'in-progress', progress: 40, docEntries, auditEntry,
+    });
+
+    const otp = willCreateAccount ? await createClientInviteAndEmail(clientName, clientEmail, templateId) : null;
+    if (otp) {
+      const user = await User.findOne({ email, role: 'client' });
+      if (user) { client.userId = user._id; await client.save(); }
+    }
+
+    const message = otp
+      ? `Invitation sent to ${clientEmail}`
+      : 'Contract processed — no portal account created';
+    res.json({ success: true, message, otp });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1025,6 +1132,75 @@ exports.sendInvite = async (req, res) => {
 const CLIENT_TYPE_LABELS = {
   individual: 'Individual', company: 'Corporate', foundation: 'Foundation', trust: 'Trust',
 };
+
+// The "Contract Package" placeholder doc + one entry per checked Required
+// Document, each tagged with its real category (Identification/Legal/
+// Compliance/Financial) from the DocumentRequirement catalog — custom entries
+// typed in by hand won't match anything there and fall back to a generic label.
+// Shared by both ways a client case can be created: RM → Compliance review,
+// and Compliance building + sending a contract directly.
+async function buildDocEntries(fieldValues, requiredDocuments, templateName, templateId) {
+  const docEntries = [{
+    docId: 'DOC-' + Date.now(),
+    name: `${templateName || templateId} — Contract Package`,
+    type: 'Template',
+    status: 'pending',
+    uploadedBy: '-',
+    date: '-',
+    size: '-',
+    required: true,
+    signedVersion: false,
+  }];
+
+  const rawClientType = (fieldValues || {}).client_type || 'individual';
+  const catalog = await DocumentRequirement.find({ clientType: rawClientType });
+  const catalogTypeByName = new Map(catalog.map(c => [c.name, c.type]));
+
+  (requiredDocuments || []).forEach((label, i) => {
+    if (!label || !label.trim()) return;
+    const trimmed = label.trim();
+    docEntries.push({
+      docId: `DOC-${Date.now()}-${i}`,
+      name: trimmed,
+      type: catalogTypeByName.get(trimmed) || 'Supporting Document',
+      status: 'pending',
+      uploadedBy: '-',
+      date: '-',
+      size: '-',
+      required: true,
+      signedVersion: false,
+    });
+  });
+
+  return docEntries;
+}
+
+// Creates the client case (or reuses/updates it if this client already exists)
+// so both the RM ("My Clients") and Compliance ("All Cases") see it immediately —
+// shared by the Contract Reviews submission path and the direct-invite path.
+async function upsertClientCase({ email, clientName, clientType, rm, country, status, progress, docEntries, auditEntry }) {
+  let client = await Client.findOne({ email });
+  if (client) {
+    client.name = clientName;
+    client.type = clientType;
+    client.rm = rm || client.rm;
+    client.status = status;
+    client.progress = Math.max(client.progress || 0, progress);
+    client.country = country || client.country;
+    client.documents.push(...docEntries);
+    client.auditTrail.push(auditEntry);
+    await client.save();
+  } else {
+    client = await Client.create({
+      clientId: await Client.generateClientId(),
+      email, name: clientName, type: clientType,
+      risk: 'Medium', status, rm: rm || '', progress,
+      country: country || '',
+      documents: docEntries, auditTrail: [auditEntry],
+    });
+  }
+  return client;
+}
 
 /* ============================================================
    CONTRACT REVIEWS — RM submits a built contract package to
@@ -1047,69 +1223,18 @@ exports.submitContractReview = async (req, res) => {
   try {
     const email = clientEmail.toLowerCase();
     const clientType = CLIENT_TYPE_LABELS[(fieldValues || {}).client_type] || 'Individual';
-    const now = new Date().toLocaleString();
-
-    const docEntries = [{
-      docId: 'DOC-' + Date.now(),
-      name: `${templateName || templateId} — Contract Package`,
-      type: 'Template',
-      status: 'pending',
-      uploadedBy: '-',
-      date: '-',
-      size: '-',
-      required: true,
-      signedVersion: false,
-    }];
-    // Look up each checked document's real category (Identification/Legal/
-    // Compliance/Financial) from the catalog it came from — custom entries the
-    // RM typed in by hand won't match anything there and fall back to a
-    // generic label.
-    const rawClientType = (fieldValues || {}).client_type || 'individual';
-    const catalog = await DocumentRequirement.find({ clientType: rawClientType });
-    const catalogTypeByName = new Map(catalog.map(c => [c.name, c.type]));
-
-    (requiredDocuments || []).forEach((label, i) => {
-      if (!label || !label.trim()) return;
-      const trimmed = label.trim();
-      docEntries.push({
-        docId: `DOC-${Date.now()}-${i}`,
-        name: trimmed,
-        type: catalogTypeByName.get(trimmed) || 'Supporting Document',
-        status: 'pending',
-        uploadedBy: '-',
-        date: '-',
-        size: '-',
-        required: true,
-        signedVersion: false,
-      });
-    });
-
+    const docEntries = await buildDocEntries(fieldValues, requiredDocuments, templateName, templateId);
     const auditEntry = {
       action: `Contract package submitted by ${rmName || 'the RM'} for compliance review`,
       user: rmName || 'Relationship Manager',
-      time: now,
+      time: new Date().toLocaleString(),
       type: 'submitted',
     };
 
-    let client = await Client.findOne({ email });
-    if (client) {
-      client.name = clientName;
-      client.type = clientType;
-      client.rm = rmName || client.rm;
-      client.status = 'pending';
-      client.country = (fieldValues || {}).client_country || client.country;
-      client.documents.push(...docEntries);
-      client.auditTrail.push(auditEntry);
-      await client.save();
-    } else {
-      client = await Client.create({
-        clientId: await Client.generateClientId(),
-        email, name: clientName, type: clientType,
-        risk: 'Medium', status: 'pending', rm: rmName || '', progress: 10,
-        country: (fieldValues || {}).client_country || '',
-        documents: docEntries, auditTrail: [auditEntry],
-      });
-    }
+    const client = await upsertClientCase({
+      email, clientName, clientType, rm: rmName, country: (fieldValues || {}).client_country,
+      status: 'pending', progress: 10, docEntries, auditEntry,
+    });
 
     const review = await ContractReview.create({
       templateId, templateName, lang, clientName, clientEmail,
