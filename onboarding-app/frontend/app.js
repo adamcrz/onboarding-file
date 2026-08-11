@@ -12,7 +12,7 @@ const State = {
   clientType: null,
 
   // All business data below is loaded from the database (see refreshClients(),
-  // refreshNotifications(), renderReviewQueue(), renderKycCorrections(), etc.) —
+  // refreshNotifications(), renderKycCorrections(), etc.) —
   // these start empty rather than seeded with mock/demo records, so a fresh
   // environment reflects only what's actually been created through the app.
   notifications: [],
@@ -27,8 +27,6 @@ const State = {
   _activeKycCorrectionId: null,
 
   documentCorrections: [],
-
-  contractReviews: [],
 
   riskAnswers: {},
   riskScores: {}
@@ -54,12 +52,10 @@ const ROLES = {
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
-      { id: 'review-queue', label: 'Review Queue', icon: shieldIcon() },
       { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
-      { id: 'contract-reviews', label: 'Contract Reviews', icon: checklistIcon() },
       { id: 'kyc-form', label: 'KYC Questionnaire', icon: formIcon() },
     ]
   },
@@ -73,12 +69,10 @@ const ROLES = {
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
-      { id: 'review-queue', label: 'Review Queue', icon: shieldIcon() },
       { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
-      { id: 'contract-reviews', label: 'Contract Reviews', icon: checklistIcon() },
       { id: 'kyc-form', label: 'KYC Questionnaire', icon: formIcon() },
     ]
   },
@@ -682,7 +676,6 @@ function setupRoleUI(role) {
           ${item.icon}
           <span>${item.label}</span>
           ${item.badge ? `<span class="nav-badge">${item.badge}</span>` : ''}
-          ${item.id === 'contract-reviews' ? `<span class="nav-badge" id="navbadge-contract-reviews" style="display:none;"></span>` : ''}
         </button>
       `;
     }
@@ -690,26 +683,6 @@ function setupRoleUI(role) {
 
   // Notifications panel
   refreshNotifications();
-  refreshContractReviewsBadge();
-}
-
-function updateContractReviewsBadge() {
-  const pendingCount = State.contractReviews.filter(r => r.status === 'pending').length;
-  const badge = document.getElementById('navbadge-contract-reviews');
-  if (!badge) return;
-  if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = 'flex'; }
-  else badge.style.display = 'none';
-}
-
-// Pulls the current contract-review list from the backend (source of truth) and
-// refreshes the sidebar badge — called on login so the count is right even before
-// Compliance has opened the Contract Reviews page in this session.
-async function refreshContractReviewsBadge() {
-  if (!document.getElementById('navbadge-contract-reviews')) return;
-  try {
-    State.contractReviews = await apiFetch('GET', '/contracts/reviews');
-  } catch (_) { return; }
-  updateContractReviewsBadge();
 }
 
 function updateNotifBadge() {
@@ -778,16 +751,6 @@ function nowTs() {
   return new Date().toLocaleString();
 }
 
-function getMandateById(mandateId) {
-  return State.mandates.find(m => m.id === mandateId);
-}
-
-function getClientByMandateId(mandateId) {
-  const mandate = getMandateById(mandateId);
-  if (!mandate) return null;
-  return State.clients.find(c => c.id === mandate.clientId) || null;
-}
-
 function addClientAudit(clientId, action, type, user) {
   const client = State.clients.find(c => c.id === clientId);
   if (!client) return;
@@ -816,13 +779,6 @@ function ensureClientSubmissionBucket(clientId) {
   return State.clientSubmissions[clientId];
 }
 
-function mandateToClientStatus(status) {
-  if (status === 'approved') return 'approved';
-  if (status === 'rejected') return 'rejected';
-  if (status === 'info-requested') return 'info-requested';
-  return 'under-review';
-}
-
 /* ============================================================
    NAVIGATION
    ============================================================ */
@@ -836,12 +792,10 @@ function navigateTo(page) {
     dashboard: 'Dashboard',
     clients: isCompliance(State.currentRole) ? 'All Cases' : 'My Clients',
     'contract-building': 'Contract Building',
-    'contract-reviews': 'Contract Reviews',
     documents: 'Documents',
     audit: 'Audit Trail',
     analytics: 'Analytics',
     settings: 'Settings',
-    'review-queue': 'Review Queue',
     'new-client': 'New Client Onboarding',
     'kyc-form': 'KYC Questionnaire',
     'kyc-corrections': 'KYC Corrections',
@@ -860,13 +814,11 @@ function navigateTo(page) {
   switch(page) {
     case 'dashboard': renderDashboard(); break;
     case 'contract-building': renderContractBuilding(); break;
-    case 'contract-reviews': renderContractReviews(); break;
     case 'clients': renderClients(); break;
     case 'documents': renderDocuments(); break;
     case 'audit': renderAuditPage(); break;
     case 'analytics': renderAnalytics(); break;
     case 'settings': renderSettings(); break;
-    case 'review-queue': renderReviewQueue(); break;
     case 'new-client': renderNewClient(); break;
     case 'kyc-form': renderKycForm(); break;
     case 'kyc-corrections': renderKycCorrections(); break;
@@ -3308,16 +3260,9 @@ async function cbStep2() {
         </svg>
         Download Filled
       </button>
-      ${State.currentRole === 'rm' ? `
-        <button class="btn-primary" onclick="cbSubmitForReview()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/></svg>
-          Send for Review
-        </button>
-      ` : `
-        <button class="btn-primary" onclick="cbSubmit()">
-          Send Contract & Invite Client
-        </button>
-      `}
+      <button class="btn-primary" onclick="cbSubmit()">
+        Send Contract & Invite Client
+      </button>
     </div>
   `; } catch(e) {
     console.error('cbStep2 render error:', e);
@@ -3646,194 +3591,11 @@ async function cbSubmit() {
   }
 }
 
-// RM-only path: instead of inviting the client directly, the built contract package
-// is submitted to the Compliance department (Contract Reviews) for approval first.
-// Persisted on the real backend so it shows up for Compliance in a separate session.
-async function cbSubmitForReview() {
-  const valid = cbValidateBeforeSubmit();
-  if (!valid) return;
-  const { fieldValues, clientName, clientEmail } = valid;
-
-  const btn = document.querySelector('#cb-body .btn-primary');
-  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
-
-  const tpl = CB.templates.find(t => t.id === CB.selectedId);
-  const rmName = CB.kundenberater || ROLES.rm.label;
-
-  try {
-    await apiFetch('POST', '/contracts/reviews', {
-      templateId: CB.selectedId, templateName: tpl?.name || CB.selectedId, lang: CB.lang,
-      clientName, clientEmail, fieldValues,
-      rmName, rmEmail: CB.kundenberaterEmail || '',
-      createClientAccount: CB.createClientAccount, requiredDocuments: CB.requiredDocuments,
-    });
-  } catch (err) {
-    showToast('error', err.message || 'Failed to submit for review.');
-    if (btn) { btn.disabled = false; btn.textContent = 'Send for Review'; }
-    return;
-  }
-
-  CB.result = { clientName, clientEmail, reviewSubmitted: true };
-  CB.step = 3;
-  cbStep3();
-}
-
-/* ── Compliance: Contract Reviews (RM submissions) ──────────── */
-async function renderContractReviews() {
-  const content = document.getElementById('page-content');
-  content.innerHTML = `
-    <div class="page-header">
-      <h1>Contract Reviews</h1>
-      <p>Contract packages submitted by Relationship Managers, awaiting approval before the client is invited</p>
-    </div>
-    <div class="cb-loading">Loading submissions…</div>
-  `;
-
-  try {
-    State.contractReviews = await apiFetch('GET', '/contracts/reviews');
-  } catch (err) {
-    content.innerHTML += `<p style="color:var(--accent-red);padding:16px;">Failed to load contract reviews: ${err.message}</p>`;
-    return;
-  }
-  updateContractReviewsBadge();
-  renderContractReviewsList();
-}
-
-function renderContractReviewsList() {
-  const content = document.getElementById('page-content');
-  const pending  = State.contractReviews.filter(r => r.status === 'pending');
-  const reviewed = State.contractReviews.filter(r => r.status !== 'pending');
-
-  content.innerHTML = `
-    <div class="page-header">
-      <h1>Contract Reviews</h1>
-      <p>Contract packages submitted by Relationship Managers, awaiting approval before the client is invited</p>
-    </div>
-
-    <div class="card" style="margin-bottom:20px;">
-      <div class="card-header"><div class="card-title">Pending Review (${pending.length})</div></div>
-      <div>
-        ${pending.map(contractReviewRowHTML).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No contract packages awaiting review.</p>`}
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><div class="card-title">Reviewed</div></div>
-      <div>
-        ${reviewed.map(contractReviewRowHTML).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No reviewed submissions yet.</p>`}
-      </div>
-    </div>
-  `;
-}
-
-function contractReviewRowHTML(r) {
-  return `
-    <div class="client-row" style="cursor:default;">
-      <div class="client-avatar" style="background:${clientGradient('Individual')}">${(r.clientName||'?')[0]}</div>
-      <div class="client-info">
-        <div class="client-name">${r.clientName}</div>
-        <div class="client-type">${r.templateName} · RM: ${r.rmName || '—'} · Submitted ${new Date(r.submittedAt).toLocaleString()}</div>
-        ${r.status === 'rejected' && r.rejectionReason ? `<div style="font-size:12px;color:var(--accent-red);margin-top:4px;">Reason: ${r.rejectionReason}</div>` : ''}
-      </div>
-      <div class="client-meta" style="display:flex;align-items:center;gap:10px;">
-        <span class="status-badge status-${r.status}">${statusLabel(r.status)}</span>
-        <button class="btn-secondary btn-sm" onclick="cbReviewPreview('${r._id}')">Preview</button>
-        ${r.status === 'pending' ? `
-          <button class="btn-primary btn-sm" onclick="approveContractReview('${r._id}')">Approve</button>
-          <button class="btn-secondary btn-sm" style="color:var(--accent-red);" onclick="rejectContractReview('${r._id}')">Reject</button>
-        ` : ''}
-      </div>
-    </div>
-  `;
-}
-
-// Downloads the actual generated .docx for this submission (not the HTML/mammoth
-// approximation) so the reviewer sees exactly what Word will render — checkboxes,
-// the Formular letter, performance-fee clause, etc. — with no conversion artifacts.
-async function cbReviewPreview(id) {
-  const r = State.contractReviews.find(x => x._id === id);
-  if (!r) return;
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/contracts/generate/${r.templateId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ fieldValues: r.fieldValues, fieldDefs: [] }),
-    });
-    if (!response.ok) throw new Error('Failed to generate document');
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${r.clientName} - ${r.templateName}.docx`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    showToast('error', err.message || 'Failed to open document.');
-  }
-}
-
-async function approveContractReview(id) {
-  try {
-    const review = await apiFetch('POST', `/contracts/reviews/${id}/approve`);
-    await cbCreateKycTask(review.rmName, review.clientName, review.clientEmail, review.clientId);
-    const invited = review.createClientAccount !== false;
-    await refreshNotifications(); // backend already recorded the approval notification
-    showToast('success', invited ? `Approved. Invitation sent to ${review.clientEmail}.` : `Approved — processed without portal access.`);
-    renderContractReviews();
-  } catch (err) {
-    showToast('error', err.message || 'Failed to approve.');
-  }
-}
-
-async function rejectContractReview(id) {
-  const cached = State.contractReviews.find(x => x._id === id);
-  const reason = prompt(`Reason for rejecting the contract package for ${cached?.clientName || 'this client'}:`);
-  if (!reason || !reason.trim()) return;
-
-  try {
-    const review = await apiFetch('POST', `/contracts/reviews/${id}/reject`, { reason: reason.trim() });
-    await refreshNotifications(); // backend already recorded the rejection notification
-    showToast('info', `Rejected. ${review.rmName || 'The RM'} has been notified.`);
-    renderContractReviews();
-  } catch (err) {
-    showToast('error', err.message || 'Failed to reject.');
-  }
-}
-
 /* ── Step 3: Confirmation ────────────────────────────────────── */
 function cbStep3() {
   const el = document.getElementById('cb-body');
-  const { otp, clientName, clientEmail, reviewSubmitted } = CB.result || {};
+  const { otp, clientName, clientEmail } = CB.result || {};
   const tpl = CB.templates.find(t => t.id === CB.selectedId);
-
-  if (reviewSubmitted) {
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-body" style="text-align:center;padding:48px 32px;">
-          <div style="width:64px;height:64px;border-radius:50%;background:rgba(139,92,246,0.15);
-                      display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-purple)" stroke-width="2.5">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/>
-            </svg>
-          </div>
-          <h2 style="color:var(--text-primary);margin-bottom:8px;">Submitted for Review!</h2>
-          <p style="color:var(--text-secondary);margin-bottom:28px;max-width:420px;margin-left:auto;margin-right:auto;">
-            The contract package for <strong>${clientName}</strong> has been sent to the Compliance department for review.
-            Once approved, ${clientEmail} will automatically receive the portal invitation.
-          </p>
-          <button class="btn-primary" onclick="renderContractBuilding()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Build Another Contract
-          </button>
-        </div>
-      </div>
-    `;
-    return;
-  }
 
   el.innerHTML = `
     <div class="card">
@@ -3975,139 +3737,6 @@ async function cbDownloadFilled() {
   } catch (err) {
     showToast('error', err.message || 'Download failed');
   }
-}
-
-/* ============================================================
-   PAGE: REVIEW QUEUE (Compliance only)
-   ============================================================ */
-async function renderReviewQueue() {
-  const content = document.getElementById('page-content');
-  content.innerHTML = `<div class="page-header"><h1>Review Queue</h1></div><div class="cb-loading">Loading mandates…</div>`;
-  try {
-    const mandates = await apiFetch('GET', '/mandates');
-    State.mandates = mandates.map(m => ({ ...m, id: m.mandateId }));
-  } catch (err) {
-    content.innerHTML = `<div class="page-header"><h1>Review Queue</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load mandates: ${err.message}</p>`;
-    return;
-  }
-  renderReviewQueueList();
-}
-
-function renderReviewQueueList() {
-  const content = document.getElementById('page-content');
-  const categoryOrder = ['Foundations', 'Trusts', 'Private Clients', 'Companies'];
-  const iconMap = { Foundations: '🏛️', Trusts: '⚖️', 'Private Clients': '👤', Companies: '🏢' };
-  const categories = categoryOrder.map(name => ({
-    name,
-    icon: iconMap[name],
-    mandates: State.mandates.filter(m => m.category === name),
-  }));
-
-  const totalPending = categories.reduce((s,c) => s + c.mandates.reduce((ms,m) => ms + m.pendingDocs.length, 0), 0);
-
-  content.innerHTML = `
-    <div class="page-header">
-      <h1>Review Queue</h1>
-      <p>${totalPending} pending document item(s) across all categories</p>
-    </div>
-
-    ${categories.map(cat => `
-      <div style="margin-bottom:32px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid var(--border-default);">
-          <span style="font-size:20px;">${cat.icon}</span>
-          <h2 style="font-size:16px;font-weight:700;color:var(--text-primary);">${cat.name}</h2>
-          <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">${cat.mandates.length} mandate(s)</span>
-        </div>
-
-        ${cat.mandates.map(m => {
-          const progress = Math.round((m.docsApproved / m.docsTotal) * 100);
-          return `
-          <div class="card" style="margin-bottom:14px;">
-            <div class="card-header">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <div class="client-avatar" style="background:var(--gradient-brand);">${(getClientByMandateId(m.id)?.name || '?')[0]}</div>
-                <div>
-                  <div class="card-title">${getClientByMandateId(m.id)?.name || m.id} <span style="font-weight:400;color:var(--text-secondary);">· ${m.mandateName}</span></div>
-                  <div class="card-subtitle">${m.country} &nbsp;·&nbsp; RM: ${m.rm} &nbsp;·&nbsp; Risk: <span class="risk-${m.risk.toLowerCase()}">${m.risk}</span></div>
-                </div>
-              </div>
-              <div class="actions-row">
-                <button class="btn-secondary btn-sm" onclick="openMandateClientDetail('${m.id}')">Full Review</button>
-                <button class="btn-success btn-sm" onclick="approveMandate('${m.id}')">✓ Approve</button>
-                <button class="btn-danger btn-sm" onclick="rejectMandate('${m.id}')">✗ Reject</button>
-                <button class="btn-warning btn-sm" onclick="requestMandateInfo('${m.id}')">Request Info</button>
-              </div>
-            </div>
-            <div class="card-body" style="padding-top:14px;">
-              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-                <div class="progress-bar-wrap" style="flex:1;height:8px;"><div class="progress-bar" style="width:${progress}%;background:${progressColor(progress)};"></div></div>
-                <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${m.docsApproved}/${m.docsTotal} docs approved</span>
-              </div>
-              ${m.pendingDocs.length > 0 ? `
-                <div style="font-size:12px;font-weight:700;color:var(--accent-orange);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">⚠ Pending Items (${m.pendingDocs.length})</div>
-                ${m.pendingDocs.map(pd => `
-                  <div style="padding:12px 14px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center;">
-                    
-                    <div>
-                      <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">${pd.name}</div>
-                      <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                        <span style="font-size:11.5px;color:var(--text-muted);">Owner: ${pd.owner}</span>
-                        <span style="font-size:11.5px;color:var(--text-muted);">Due: ${pd.dueDate || '{DUE_DATE}'}</span>
-                      </div>
-                    </div>
-
-                    <div style="display:flex;flex-direction:column;gap:8px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);padding:12px 16px;border-radius:var(--radius-sm);min-width: 320px;">
-                      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-                        <span style="font-size:13px;font-weight:700;color:var(--accent-red);line-height:1.3;">⚠ ${pd.issue}</span>
-                        <div style="display:flex;gap:6px;flex-shrink:0;">
-                          <span class="status-badge" style="background:rgba(249,115,22,0.12);color:var(--accent-orange);">● Pending</span>
-                          <span style="font-size:11px;padding:2px 8px;border-radius:99px;background:${pd.priority==='High'?'rgba(239,68,68,0.1)':pd.priority==='Medium'?'rgba(245,158,11,0.1)':'rgba(107,114,128,0.1)'};color:${pd.priority==='High'?'var(--accent-red)':pd.priority==='Medium'?'var(--status-pending)':'var(--text-muted)'};">${pd.priority}</span>
-                        </div>
-                      </div>
-                      <span style="font-size:12px;font-weight:600;color:var(--accent-red);">📄 Location: ${pd.page}</span>
-                    </div>
-
-                  </div>
-                `).join('')}
-              ` : `<div style="font-size:13px;color:var(--accent-green);">✓ No pending items</div>`}
-            </div>
-          </div>
-        `}).join('')}
-      </div>
-    `).join('')}
-  `;
-}
-
-function openMandateClientDetail(mandateId) {
-  const client = getClientByMandateId(mandateId);
-  if (!client) {
-    showToast('error', 'No client linked to this mandate.');
-    return;
-  }
-  openClientDetail(client.id);
-}
-
-async function setMandateReviewStatus(mandateId, endpoint, toastMessage, toastType) {
-  try {
-    await apiFetch('POST', `/mandates/${mandateId}/${endpoint}`);
-    showToast(toastType, toastMessage);
-    refreshNotifications();
-    await renderReviewQueue();
-  } catch (err) {
-    showToast('error', err.message || 'Failed to update mandate.');
-  }
-}
-
-function approveMandate(mandateId) {
-  setMandateReviewStatus(mandateId, 'approve', 'Mandate approved.', 'success');
-}
-
-function rejectMandate(mandateId) {
-  setMandateReviewStatus(mandateId, 'reject', 'Mandate rejected.', 'warning');
-}
-
-function requestMandateInfo(mandateId) {
-  setMandateReviewStatus(mandateId, 'request-info', 'Additional information requested from Relationship Manager.', 'info');
 }
 
 function docSummaryMini(client) {
@@ -5549,8 +5178,16 @@ function docStatusColor(s) {
 /* ============================================================
    PAGE: RISK RATINGS
    ============================================================ */
-function renderRiskRatings() {
+async function renderRiskRatings() {
   const content = document.getElementById('page-content');
+  // Mandates used to only get loaded as a side effect of visiting the (now-removed)
+  // Review Queue page — fetch them here directly so this page works standalone.
+  if (!State.mandates.length) {
+    try {
+      const mandates = await apiFetch('GET', '/mandates');
+      State.mandates = mandates.map(m => ({ ...m, id: m.mandateId }));
+    } catch (_) { /* fall through with an empty list — questionnaire card just hides */ }
+  }
   const activeMandateId = State.mandates[0]?.id;
   const currentAnswers = State.riskAnswers[activeMandateId] || {};
   const computed = activeMandateId ? computeRiskScore(currentAnswers) : null;
@@ -5579,8 +5216,8 @@ function renderRiskRatings() {
                 <td>${c.type}</td>
                 <td>${c.country}</td>
                 <td>${c.industry}</td>
-                <td><span style="color:${c.kyc.pep==='No'?'var(--accent-green)':'var(--accent-red)'};font-weight:600;">${c.kyc.pep||'—'}</span></td>
-                <td><span style="color:${c.kyc.sanctions==='No'?'var(--accent-green)':'var(--accent-red)'};font-weight:600;">${c.kyc.sanctions||'—'}</span></td>
+                <td><span style="color:${c.kyc?.pep==='No'?'var(--accent-green)':'var(--accent-red)'};font-weight:600;">${c.kyc?.pep||'—'}</span></td>
+                <td><span style="color:${c.kyc?.sanctions==='No'?'var(--accent-green)':'var(--accent-red)'};font-weight:600;">${c.kyc?.sanctions||'—'}</span></td>
                 <td><span class="risk-${c.risk.toLowerCase()}" style="font-weight:700;font-size:14px;">${c.risk}</span></td>
                 <td><button class="btn-secondary btn-xs" onclick="event.stopPropagation();openClientDetail('${c.id}')">Review</button></td>
               </tr>
@@ -5590,6 +5227,7 @@ function renderRiskRatings() {
       </div>
     </div>
 
+    ${activeMandateId ? `
     <div class="card">
       <div class="card-header">
         <div class="card-title">Mandate Risk Questionnaire</div>
@@ -5655,6 +5293,7 @@ function renderRiskRatings() {
         ${computed ? `<div class="info-box"><p><strong>Computed Risk:</strong> ${computed.level} (score ${computed.score}) · ${computed.reason}</p></div>` : ''}
       </div>
     </div>
+    ` : ''}
 
     <div class="card">
       <div class="card-header"><div class="card-title">Risk Criteria Reference</div></div>

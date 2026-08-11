@@ -2,9 +2,7 @@ const path = require('path');
 const fs   = require('fs');
 const User = require('../models/User');
 const Client = require('../models/Client');
-const ContractReview = require('../models/ContractReview');
 const DocumentRequirement = require('../models/DocumentRequirement');
-const { notify } = require('../services/notify.service');
 const { sendClientInviteEmail } = require('../services/email.service');
 
 const CONTRACTS_DIR = path.join(__dirname, '..');
@@ -75,30 +73,6 @@ function findAppendixFile(clientType, lang) {
   if (!file) return null;
   return { appendix, filePath: path.join(APPENDIX_DIR, file), fileName: file };
 }
-
-exports.previewAppendix = async (req, res) => {
-  const found = findAppendixFile(req.params.clientType, req.params.lang);
-  if (!found) return res.status(404).json({ error: 'No appendix for this client type / language' });
-  if (!fs.existsSync(found.filePath)) return res.status(404).json({ error: 'File not found on disk' });
-
-  try {
-    const mammoth = require('mammoth');
-    const { value: html } = await mammoth.convertToHtml({ path: found.filePath });
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
-      <title>Formular ${found.appendix.letter}</title>
-      <style>
-        body { font-family: Arial, Helvetica, sans-serif; max-width: 820px; margin: 40px auto;
-               padding: 0 32px 60px; line-height: 1.7; color: #1a1a1a; font-size: 13px; }
-        h1,h2,h3 { color: #111; } p { margin: 0.5em 0; }
-        table { border-collapse: collapse; width: 100%; margin: 8px 0; }
-        td, th { border: 1px solid #d1d5db; padding: 6px 10px; }
-      </style>
-    </head><body>${html}</body></html>`;
-    res.json({ html: fullHtml, name: `Formular ${found.appendix.letter}` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
 
 exports.downloadAppendix = (req, res) => {
   const found = findAppendixFile(req.params.clientType, req.params.lang);
@@ -1010,11 +984,9 @@ async function createClientInviteAndEmail(clientName, clientEmail, templateId) {
   return otp;
 }
 
-// Direct-invite path — used when whoever is in the Contract Builder isn't an RM
-// submitting to Compliance for review (i.e. Compliance building + sending a
-// contract themselves). There's no separate review step here, so the client
-// case is created already at the "reviewed" state a Contract Review would reach
-// on approval, same as submitContractReview + approveContractReview together.
+// Contract Builder always sends directly to the client — there's no separate
+// Compliance review step, so the client case is created already at an
+// "approved and in progress" state.
 exports.sendInvite = async (req, res) => {
   const {
     clientName, clientEmail, templateId, templateName, fieldValues,
@@ -1133,143 +1105,3 @@ async function upsertClientCase({ email, clientName, clientType, rm, country, st
   return client;
 }
 
-/* ============================================================
-   CONTRACT REVIEWS — RM submits a built contract package to
-   Compliance for approval before the client is invited. A real
-   Client case is created (or reused, if this client already exists)
-   as soon as the review is submitted, so both the RM ("My Clients")
-   and Compliance ("All Cases") see it immediately.
-   ============================================================ */
-exports.submitContractReview = async (req, res) => {
-  const {
-    templateId, templateName, lang, clientName, clientEmail,
-    fieldValues, rmName, rmEmail,
-    createClientAccount, requiredDocuments,
-  } = req.body;
-
-  if (!clientEmail || !clientName) {
-    return res.status(400).json({ error: 'Client name and email are required' });
-  }
-
-  try {
-    const email = clientEmail.toLowerCase();
-    const clientType = CLIENT_TYPE_LABELS[(fieldValues || {}).client_type] || 'Individual';
-    const docEntries = await buildDocEntries(fieldValues, requiredDocuments, templateName, templateId);
-    const auditEntry = {
-      action: `Contract package submitted by ${rmName || 'the RM'} for compliance review`,
-      user: rmName || 'Relationship Manager',
-      time: new Date().toLocaleString(),
-      type: 'submitted',
-    };
-
-    const client = await upsertClientCase({
-      email, clientName, clientType, rm: rmName, country: (fieldValues || {}).client_country,
-      status: 'pending', progress: 10, docEntries, auditEntry,
-    });
-
-    const review = await ContractReview.create({
-      templateId, templateName, lang, clientName, clientEmail,
-      fieldValues, rmName, rmEmail, clientId: client.clientId,
-      createClientAccount: createClientAccount !== false, requiredDocuments: requiredDocuments || [],
-    });
-    res.json(review);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-exports.listContractReviews = async (_req, res) => {
-  try {
-    const reviews = await ContractReview.find().sort({ createdAt: -1 });
-    res.json(reviews);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-exports.approveContractReview = async (req, res) => {
-  try {
-    const review = await ContractReview.findById(req.params.id);
-    if (!review) return res.status(404).json({ error: 'Contract review not found' });
-    if (review.status !== 'pending') {
-      return res.status(400).json({ error: 'This contract package has already been reviewed' });
-    }
-
-    const otp = review.createClientAccount
-      ? await createClientInviteAndEmail(review.clientName, review.clientEmail, review.templateId)
-      : null;
-
-    review.status = 'approved';
-    review.reviewedAt = new Date();
-    review.otp = otp;
-    await review.save();
-
-    if (review.clientId) {
-      const client = await Client.findOne({ clientId: review.clientId });
-      if (client) {
-        if (review.createClientAccount) {
-          const user = await User.findOne({ email: review.clientEmail.toLowerCase(), role: 'client' });
-          if (user) client.userId = user._id;
-        }
-        client.status = 'in-progress';
-        client.progress = Math.max(client.progress || 0, 40);
-        client.auditTrail.push({
-          action: review.createClientAccount
-            ? 'Compliance approved the contract — client invited to the portal, signed documents outstanding'
-            : 'Compliance approved the contract — processed without portal access, signed documents outstanding',
-          user: 'Compliance',
-          time: new Date().toLocaleString(),
-          type: 'approved',
-        });
-        await client.save();
-      }
-    }
-
-    await notify(
-      `Contract for ${review.clientName} approved${review.createClientAccount ? ' — client invited to the portal' : ''}`,
-      'success'
-    );
-
-    res.json(review);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-exports.rejectContractReview = async (req, res) => {
-  const reason = (req.body.reason || '').trim();
-  if (!reason) return res.status(400).json({ error: 'A rejection reason is required' });
-
-  try {
-    const review = await ContractReview.findById(req.params.id);
-    if (!review) return res.status(404).json({ error: 'Contract review not found' });
-    if (review.status !== 'pending') {
-      return res.status(400).json({ error: 'This contract package has already been reviewed' });
-    }
-
-    review.status = 'rejected';
-    review.reviewedAt = new Date();
-    review.rejectionReason = reason;
-    await review.save();
-
-    if (review.clientId) {
-      const client = await Client.findOne({ clientId: review.clientId });
-      if (client) {
-        client.status = 'rejected';
-        client.auditTrail.push({
-          action: `Contract package rejected by Compliance: ${reason}`,
-          user: 'Compliance',
-          time: new Date().toLocaleString(),
-          type: 'rejected',
-        });
-        await client.save();
-      }
-    }
-
-    await notify(`Contract for ${review.clientName} was rejected by Compliance: ${reason}`, 'warning');
-
-    res.json(review);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
