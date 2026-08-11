@@ -1111,6 +1111,7 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 }
 .kyc-field-missing {
   border-color: var(--accent-orange) !important;
+  background: linear-gradient(135deg, rgba(249,115,22,0.22), rgba(249,115,22,0.05)) !important;
   animation: kyc-field-glow 1.8s ease-in-out infinite;
 }
 

@@ -1,5 +1,6 @@
 const Client = require('../models/Client');
 const { notify } = require('../services/notify.service');
+const { syncKycCorrectionsForClient } = require('../services/kycGapCheck.service');
 
 // RM accounts only ever see clients assigned to their own Kundenberater code;
 // compliance/compliance_external/admin retain full visibility. Fails closed —
@@ -57,6 +58,7 @@ const updateClient = async (req, res) => {
       updates,
       { new: true, upsert: true }
     );
+    if (client) await syncKycCorrectionsForClient(client);
     res.status(200).json(client);
   } catch (err) {
     res.status(500).json({ error: err.message });
