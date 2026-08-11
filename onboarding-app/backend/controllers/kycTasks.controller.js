@@ -1,5 +1,12 @@
 const KycTask = require('../models/KycTask');
 const Client  = require('../models/Client');
+const { mapTaskAnswersToKyc } = require('../config/kycRequiredFields');
+const { syncKycCorrectionsForClient, submitKycFields } = require('../services/kycGapCheck.service');
+
+// The authenticated role, collapsed to the three that matter for KYC
+// submission/verification semantics — never trust a client-supplied
+// "completedBy" for this, the JWT identity is authoritative.
+const submitterRoleFor = (user) => (user.role === 'rm' ? 'rm' : user.role === 'client' ? 'client' : 'compliance');
 
 exports.createKycTask = async (req, res) => {
   const { clientName, clientEmail, clientId, sections } = req.body;
@@ -49,14 +56,23 @@ exports.completeKycTask = async (req, res) => {
     if (task.clientId) {
       const client = await Client.findOne({ clientId: task.clientId });
       if (client) {
-        const completedByRm = req.body.completedBy === 'rm';
+        const submittedBy = submitterRoleFor(req.user);
+        // Fold the task's answers into the ONE shared KYC record (never a
+        // separate copy), then let the gap-check + submission flow move any
+        // now-filled fields out of 'pending'/'needs_correction'.
+        const mapped = mapTaskAnswersToKyc(task.answers || {});
+        client.kyc = { ...(client.kyc || {}), ...mapped };
+        client.kycSubmittedBy = submittedBy;
+        client.kycAwaitingVerification = submittedBy !== 'compliance';
         client.auditTrail.push({
           action: 'KYC questionnaire completed',
-          user: completedByRm ? (task.rmName || 'RM') : task.clientName,
+          user: submittedBy === 'rm' ? (task.rmName || 'RM') : submittedBy === 'compliance' ? 'Compliance' : task.clientName,
           time: new Date().toLocaleString(),
           type: 'submitted',
         });
         await client.save();
+        await syncKycCorrectionsForClient(client);
+        await submitKycFields(client, Object.keys(mapped), submittedBy);
       }
     }
 

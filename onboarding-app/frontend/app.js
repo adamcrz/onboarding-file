@@ -24,7 +24,6 @@ const State = {
 
   kycTasks: [],
   _activeKycTask: null,
-  _activeKycCorrectionId: null,
 
   documentCorrections: [],
 
@@ -697,7 +696,10 @@ function setupRoleUI(role) {
 
   // Notifications panel
   refreshNotifications();
-  if (role !== 'client') { refreshKycTasks(); refreshCorrectionsBadge(); }
+  if (role !== 'client') refreshKycTasks();
+  // Populates State.kycCorrections too — the client portal needs it to know
+  // which of its own KYC fields are gold-flagged, even without a nav badge.
+  refreshCorrectionsBadge();
   if (role === 'rm') updateMyClientsBadge();
 }
 
@@ -719,6 +721,10 @@ async function refreshCorrectionsBadge() {
       apiFetch('GET', '/corrections/kyc'),
       apiFetch('GET', '/corrections/documents'),
     ]);
+    // Cached here (not just counted) so the Client Detail KYC tab can show
+    // which fields are flagged without a separate per-client fetch.
+    State.kycCorrections = kyc.map(c => ({ ...c, id: c._id }));
+    State.documentCorrections = docs.map(c => ({ ...c, id: c._id }));
     const openCount = [...kyc, ...docs].filter(c => c.status !== 'corrected').length;
     const badge = document.getElementById('navbadge-kyc-corrections');
     if (!badge) return;
@@ -850,7 +856,6 @@ function navigateTo(page) {
     'kyc-form': 'KYC Questionnaire',
     'kyc-tasks': 'KYC Tasks',
     'kyc-corrections': 'KYC Corrections',
-    'kyc-correction-detail': 'KYC Correction',
     'client-contract': 'Contract Package',
     'client-upload': 'Upload Signed Documents',
     risk: 'Risk Ratings',
@@ -874,7 +879,6 @@ function navigateTo(page) {
     case 'kyc-form': renderKycForm(); break;
     case 'kyc-tasks': renderKycTasksPage(); break;
     case 'kyc-corrections': renderKycCorrections(); break;
-    case 'kyc-correction-detail': renderKycCorrectionDetail(); break;
     case 'client-contract': renderClientContract(); break;
     case 'client-upload': renderClientUpload(); break;
     case 'risk': renderRiskRatings(); break;
@@ -1804,11 +1808,10 @@ function renderClientOverviewTab(client) {
 }
 
 function renderClientKycTab(client) {
-  // RM and Compliance both get an editable, appendable template (same missing-field
-  // glow as the correction detail view) instead of a dead-end "no data" message —
-  // it's a live working draft that either side can adjust over time, for any client
-  // type we have a field list for. Edits are saved to the client's real record as
-  // you go (blur-save), not just held in local state.
+  // RM and Compliance both see the single shared KYC record — read-only
+  // except for fields with an open correction, which show gold/empty/editable
+  // per clientKycEditableFormHTML. Values only ever arrive via a completed
+  // KYC Task or a resubmitted/approved correction, never a free-text edit here.
   if ((State.currentRole === 'rm' || isCompliance(State.currentRole)) && REQUIRED_KYC_FIELDS[client.type]) {
     return clientKycEditableFormHTML(client);
   }
@@ -4722,41 +4725,55 @@ function _kycFormStubEnd_placeholder() {
    ============================================================ */
 // Required client.kyc fields per client type, shown/editable on the KYC correction
 // detail view. Any of these left empty glows orange until the RM fills it in.
+// Mirrors backend/config/kycRequiredFields.js exactly (key, label, page) —
+// keep both in sync, the backend copy is what actually drives gap detection
+// and correction records; this one only needs to render/group the same way.
 const REQUIRED_KYC_FIELDS = {
   Individual: [
-    ['firstName','First Name'], ['lastName','Last Name'], ['dob','Date of Birth'],
-    ['nationality','Nationality'], ['residency','Residency'], ['taxResidency','Tax Residency'],
-    ['taxId','Tax ID / SSN'], ['passportNumber','Passport Number'], ['passportExpiry','Passport Expiry'],
-    ['address','Address'], ['employmentStatus','Employment Status'], ['occupation','Occupation'],
-    ['annualIncome','Annual Income'], ['sourceOfWealth','Source of Wealth'],
+    ['firstName','First Name','Page 1 — Personal Details'], ['lastName','Last Name','Page 1 — Personal Details'],
+    ['dob','Date of Birth','Page 1 — Personal Details'], ['nationality','Nationality','Page 1 — Personal Details'],
+    ['residency','Residency','Page 1 — Personal Details'],
+    ['taxResidency','Tax Residency','Page 2 — Tax & Identification'], ['taxId','Tax ID / SSN','Page 2 — Tax & Identification'],
+    ['passportNumber','Passport Number','Page 2 — Tax & Identification'], ['passportExpiry','Passport Expiry','Page 2 — Tax & Identification'],
+    ['address','Address','Page 2 — Tax & Identification'],
+    ['employmentStatus','Employment Status','Page 3 — Financial Profile'], ['occupation','Occupation','Page 3 — Financial Profile'],
+    ['annualIncome','Annual Income','Page 3 — Financial Profile'], ['sourceOfWealth','Source of Wealth','Page 3 — Financial Profile'],
   ],
   Corporate: [
-    ['legalName','Legal Name'], ['tradingName','Trading Name'], ['registrationNumber','Registration Number'],
-    ['registrationDate','Registration Date'], ['registrationCountry','Registration Country'], ['jurisdiction','Jurisdiction'],
-    ['businessType','Business Type'], ['industry','Industry'], ['annualTurnover','Annual Turnover'],
-    ['netAssets','Net Assets'], ['employees','Employees'], ['website','Website'],
-    ['address','Registered Address'], ['purpose','Purpose of Account'],
+    ['legalName','Legal Name','Page 1 — Entity Details'], ['tradingName','Trading Name','Page 1 — Entity Details'],
+    ['registrationNumber','Registration Number','Page 1 — Entity Details'], ['registrationDate','Registration Date','Page 1 — Entity Details'],
+    ['registrationCountry','Registration Country','Page 1 — Entity Details'], ['jurisdiction','Jurisdiction','Page 1 — Entity Details'],
+    ['address','Registered Address','Page 1 — Entity Details'],
+    ['businessType','Business Type','Page 2 — Business Profile'], ['industry','Industry','Page 2 — Business Profile'],
+    ['website','Website','Page 2 — Business Profile'], ['purpose','Purpose of Account','Page 2 — Business Profile'],
+    ['annualTurnover','Annual Turnover','Page 3 — Financial Profile'], ['netAssets','Net Assets','Page 3 — Financial Profile'],
+    ['employees','Employees','Page 3 — Financial Profile'],
   ],
   Domiciliary: [
-    ['legalName','Legal Name'], ['registrationNumber','Registration Number'],
-    ['registrationDate','Registration Date'], ['registrationCountry','Registration Country'], ['jurisdiction','Jurisdiction'],
-    ['beneficialOwnerName','Beneficial Owner Name'], ['beneficialOwnerNationality','Beneficial Owner Nationality'],
-    ['sourceOfWealth','Source of Wealth'], ['netAssets','Net Assets'],
-    ['address','Registered Address'], ['purpose','Purpose of Account'],
+    ['legalName','Legal Name','Page 1 — Entity Details'], ['registrationNumber','Registration Number','Page 1 — Entity Details'],
+    ['registrationDate','Registration Date','Page 1 — Entity Details'], ['registrationCountry','Registration Country','Page 1 — Entity Details'],
+    ['jurisdiction','Jurisdiction','Page 1 — Entity Details'], ['address','Registered Address','Page 1 — Entity Details'],
+    ['purpose','Purpose of Account','Page 2 — Beneficial Ownership'],
+    ['beneficialOwnerName','Beneficial Owner Name','Page 2 — Beneficial Ownership'],
+    ['beneficialOwnerNationality','Beneficial Owner Nationality','Page 2 — Beneficial Ownership'],
+    ['sourceOfWealth','Source of Wealth','Page 3 — Financial Profile'], ['netAssets','Net Assets','Page 3 — Financial Profile'],
   ],
   Foundation: [
-    ['foundationName','Foundation Name'], ['registrationNumber','Registration Number'],
-    ['registrationDate','Registration Date'], ['registrationCountry','Registration Country'], ['jurisdiction','Jurisdiction'],
-    ['purpose','Purpose / Object of Foundation'], ['founderName','Founder Name'],
-    ['beneficialOwnerName','Beneficial Owner / Board Member Name'], ['sourceOfWealth','Source of Wealth'],
-    ['netAssets','Net Assets'], ['address','Registered Address'],
+    ['foundationName','Foundation Name','Page 1 — Entity Details'], ['registrationNumber','Registration Number','Page 1 — Entity Details'],
+    ['registrationDate','Registration Date','Page 1 — Entity Details'], ['registrationCountry','Registration Country','Page 1 — Entity Details'],
+    ['jurisdiction','Jurisdiction','Page 1 — Entity Details'], ['address','Registered Address','Page 1 — Entity Details'],
+    ['purpose','Purpose / Object of Foundation','Page 2 — Beneficial Ownership'], ['founderName','Founder Name','Page 2 — Beneficial Ownership'],
+    ['beneficialOwnerName','Beneficial Owner / Board Member Name','Page 2 — Beneficial Ownership'],
+    ['sourceOfWealth','Source of Wealth','Page 3 — Financial Profile'], ['netAssets','Net Assets','Page 3 — Financial Profile'],
   ],
   Trust: [
-    ['trustName','Trust Name'], ['trustDeedDate','Trust Deed Date'], ['jurisdiction','Jurisdiction'],
-    ['settlorName','Settlor Name'], ['settlorNationality','Settlor Nationality'],
-    ['trusteeName','Trustee Name'], ['protectorName','Protector Name (if appointed)'],
-    ['beneficiaries','Beneficiaries'], ['sourceOfWealth','Source of Wealth'],
-    ['netAssets','Net Assets'], ['purpose','Purpose of Trust'],
+    ['trustName','Trust Name','Page 1 — Trust Details'], ['trustDeedDate','Trust Deed Date','Page 1 — Trust Details'],
+    ['jurisdiction','Jurisdiction','Page 1 — Trust Details'],
+    ['settlorName','Settlor Name','Page 2 — Parties'], ['settlorNationality','Settlor Nationality','Page 2 — Parties'],
+    ['trusteeName','Trustee Name','Page 2 — Parties'], ['protectorName','Protector Name (if appointed)','Page 2 — Parties'],
+    ['beneficiaries','Beneficiaries','Page 2 — Parties'],
+    ['purpose','Purpose of Trust','Page 3 — Financial Profile'], ['sourceOfWealth','Source of Wealth','Page 3 — Financial Profile'],
+    ['netAssets','Net Assets','Page 3 — Financial Profile'],
   ],
 };
 
@@ -4792,14 +4809,21 @@ function renderKycCorrectionsList() {
     clientName: State.clients.find(c => c.id === item.clientId)?.name || 'Unknown',
   }));
 
+  const kycStatusMeta = {
+    pending:          { label: 'Pending',          badge: 'status-pending' },
+    needs_correction: { label: 'Needs Correction',  badge: 'status-needs-correction' },
+    resubmitted:      { label: 'Resubmitted',       badge: 'status-under-review' },
+    corrected:        { label: 'Corrected',         badge: 'status-approved' },
+  };
+
   content.innerHTML = `
     <div class="page-header">
       <h1>Corrections</h1>
-      <p>KYC and document items flagged for follow-up${State.currentRole==='rm' ? ' on your clients' : ''}. Fill in what's missing, then mark it resubmitted for Compliance to confirm.</p>
+      <p>KYC and document items flagged for follow-up${State.currentRole==='rm' ? ' on your clients' : ''}. Click an item to go straight to that field, fill it in, and resubmit its section.</p>
     </div>
 
     <div class="tabs">
-      <button class="tab-btn active" id="corrtab-btn-kyc" onclick="switchCorrectionsTab('kyc')">KYC Corrections (${kycItems.filter(c=>c.status==='pending').length})</button>
+      <button class="tab-btn active" id="corrtab-btn-kyc" onclick="switchCorrectionsTab('kyc')">KYC Corrections (${kycItems.filter(c=>c.status!=='corrected').length})</button>
       <button class="tab-btn" id="corrtab-btn-docs" onclick="switchCorrectionsTab('docs')">Document Corrections (${docItems.filter(c=>c.status==='pending').length})</button>
     </div>
 
@@ -4807,7 +4831,7 @@ function renderKycCorrectionsList() {
       <div class="card">
         <div class="card-header">
           <div class="card-title">KYC Correction Items</div>
-          <div class="card-subtitle">${kycItems.filter(c=>c.status==='pending').length} pending · ${kycItems.filter(c=>c.status==='corrected').length} corrected</div>
+          <div class="card-subtitle">${kycItems.filter(c=>c.status!=='corrected').length} open · ${kycItems.filter(c=>c.status==='corrected').length} corrected</div>
         </div>
         <div class="card-body" style="padding:0;">
           <table class="data-table">
@@ -4823,19 +4847,21 @@ function renderKycCorrectionsList() {
             </thead>
             <tbody>
               ${kycItems.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">No KYC corrections.</td></tr>` : kycItems.map(c => `
-                <tr style="${c.status==='pending'?'background:rgba(249,115,22,0.04);':''}cursor:pointer;" onclick="openKycCorrectionDetail('${c.id}')">
+                <tr style="${c.status!=='corrected'?'background:rgba(249,115,22,0.04);':''}cursor:pointer;" onclick="openKycCorrectionDetail('${c.id}')">
                   <td style="font-weight:600;color:var(--accent-purple-light);">${c.mandateId}</td>
                   <td>${c.clientName}</td>
-                  <td style="color:${c.status==='pending'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
+                  <td style="color:${c.status!=='corrected'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
                   <td><span style="color:var(--accent-orange);font-size:12px;">${c.page}</span></td>
                   <td>
-                    <span class="status-badge ${c.status==='pending'?'status-pending':c.status==='corrected'?'status-approved':'status-under-review'}">
-                      ${c.status==='pending'?'Pending':c.status==='corrected'?'Corrected':'Resubmitted'}
+                    <span class="status-badge ${kycStatusMeta[c.status]?.badge || 'status-pending'}">
+                      ${kycStatusMeta[c.status]?.label || c.status}
                     </span>
                   </td>
                   <td onclick="event.stopPropagation()">
-                    ${c.status==='pending' && State.currentRole==='rm' ? `<button class="btn-secondary btn-xs" onclick="updateKycCorrectionStatus('${c.id}','resubmitted')">Mark Resubmitted</button>` : ''}
-                    ${c.status==='resubmitted' && isCompliance(State.currentRole) ? `<button class="btn-success btn-xs" onclick="updateKycCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>` : ''}
+                    ${c.status==='resubmitted' && isCompliance(State.currentRole) ? `
+                      <button class="btn-success btn-xs" onclick="updateKycCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>
+                      <button class="btn-secondary btn-xs" onclick="updateKycCorrectionStatus('${c.id}','needs_correction')">Reject</button>
+                    ` : ''}
                   </td>
                 </tr>
               `).join('')}
@@ -4922,72 +4948,17 @@ async function updateDocumentCorrectionStatus(correctionId, status) {
 }
 
 /* ── KYC Correction detail — per-client editable KYC fields, missing ones glow orange ── */
+// Jumps straight to the specific field a correction is about, rather than a
+// separate detail page — the KYC Details tab already shows it gold/editable.
 function openKycCorrectionDetail(correctionId) {
-  State._activeKycCorrectionId = correctionId;
-  navigateTo('kyc-correction-detail');
-}
-
-function renderKycCorrectionDetail() {
-  const content = document.getElementById('page-content');
-  const correction = State.kycCorrections.find(c => c.id === State._activeKycCorrectionId);
-  if (!correction) { content.innerHTML = `<p style="padding:20px;color:var(--text-muted);">Correction not found.</p>`; return; }
+  const correction = State.kycCorrections.find(c => c.id === correctionId);
+  if (!correction) return;
   const client = State.clients.find(c => c.id === correction.clientId);
-  if (!client) { content.innerHTML = `<p style="padding:20px;color:var(--text-muted);">Client not found.</p>`; return; }
-
-  const fields = REQUIRED_KYC_FIELDS[client.type] || [];
-  if (!client.kyc) client.kyc = {};
-  const k = client.kyc;
-  const missingCount = fields.filter(([key]) => !String(k[key]||'').trim()).length;
-
-  content.innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-      <button class="btn-secondary btn-sm" onclick="navigateTo('kyc-corrections')">← Back</button>
-      <div>
-        <h1 style="font-size:18px;font-weight:700;">${client.name} — KYC Correction</h1>
-        <div style="color:var(--text-secondary);font-size:13px;">${correction.mandateId.toUpperCase()} · ${correction.issue}</div>
-      </div>
-    </div>
-
-    <div class="info-box" style="margin-bottom:20px;">
-      <p>Fields glowing orange are missing or incomplete${missingCount ? ` (${missingCount} remaining)` : ''}. Fill them in — you can save progress and come back later — then mark this item resubmitted once everything is complete. Compliance will confirm it as corrected.</p>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><div class="card-title">${client.type} KYC Information</div></div>
-      <div class="card-body">
-        ${fields.length ? `<div class="cb-fields-grid" id="kyccorr-fields">
-          ${fields.map(([key,label]) => {
-            const val = k[key] || '';
-            const missing = !String(val).trim();
-            return `
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="kyccorr_${key}">${label}</label>
-                <input type="text" id="kyccorr_${key}" value="${String(val).replace(/"/g,'&quot;')}" class="${missing?'kyc-field-missing':''}"
-                       oninput="kycCorrFieldInput('${client.id}','${key}', this)">
-              </div>
-            `;
-          }).join('')}
-        </div>` : `<p style="color:var(--text-muted);">No structured KYC fields are defined for this client type — coordinate directly with Compliance.</p>`}
-      </div>
-    </div>
-
-    <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
-      ${State.currentRole === 'rm' && correction.status === 'pending' ? `
-        <button class="btn-primary" onclick="submitKycCorrectionFromDetail('${correction.id}')">Mark Resubmitted</button>
-      ` : ''}
-      ${isCompliance(State.currentRole) && correction.status === 'resubmitted' ? `
-        <button class="btn-success" onclick="updateKycCorrectionStatus('${correction.id}','corrected')">Mark Corrected</button>
-      ` : ''}
-    </div>
-  `;
-}
-
-function kycCorrFieldInput(clientId, key, el) {
-  const client = State.clients.find(c => c.id === clientId);
   if (!client) return;
-  if (!client.kyc) client.kyc = {};
-  client.kyc[key] = el.value;
-  el.classList.toggle('kyc-field-missing', !el.value.trim());
+  openClientDetail(client.id);
+  switchTab('kyc');
+  const el = document.getElementById(`clientkyc_${correction.fieldKey}`);
+  if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
 }
 
 // Finds a client record by id, checking the logged-in client's own profile first
@@ -5000,69 +4971,137 @@ function resolveKycClient(clientId) {
   return State.clients.find(c => c.id === clientId);
 }
 
-// Shared editable KYC template — used by the staff-side Client Detail "KYC Details"
-// tab (RM + Compliance) and the client's own portal (if they have one). A working
-// draft any of the three can adjust over time, rather than a one-shot submission —
-// missing fields glow, and edits save to the real record on blur.
+// Shared KYC display — used by the staff-side Client Detail "KYC Details" tab
+// (RM + Compliance) and the client's own portal (if they have one). Read-only:
+// values only ever arrive via a completed KYC Task or an approved correction,
+// never free-typed here. The one exception is a field with an OPEN correction
+// (pending or needs_correction) — that renders empty, gold, and editable, and
+// is only ever resolved by filling in every gold field on its page and
+// resubmitting that page as a unit.
 function clientKycEditableFormHTML(client) {
   if (!client.kyc) client.kyc = {};
   const fields = REQUIRED_KYC_FIELDS[client.type] || [];
   const k = client.kyc;
+  const openByKey = new Map(
+    (State.kycCorrections || [])
+      .filter(c => c.clientId === client.id && c.autoGenerated && (c.status === 'pending' || c.status === 'needs_correction'))
+      .map(c => [c.fieldKey, c])
+  );
+
+  const pages = [];
+  const pageIndex = new Map();
+  fields.forEach(([key, label, page]) => {
+    if (!pageIndex.has(page)) { pageIndex.set(page, pages.length); pages.push({ page, fields: [] }); }
+    pages[pageIndex.get(page)].fields.push([key, label]);
+  });
+
+  const canFlag = isCompliance(State.currentRole);
+  const canResubmit = State.currentRole === 'rm' || isCompliance(State.currentRole) || State.currentRole === 'client';
+
+  const verifyBanner = client.kycAwaitingVerification ? `
+    <div class="kyc-verify-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>${isCompliance(State.currentRole)
+        ? `This KYC was submitted by ${client.kycSubmittedBy === 'rm' ? 'the RM' : 'the client'} and is awaiting your verification.`
+        : `Submitted — awaiting Compliance verification.`}</span>
+    </div>
+  ` : '';
+
   return `
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">${client.type} KYC Information</div>
-        <div class="card-subtitle">Working draft — fill in what's known now, adjust it as more comes in.</div>
-      </div>
-      <div class="card-body">
-        <div class="cb-fields-grid">
-          ${fields.map(([key,label]) => {
-            const val = k[key] || '';
-            const missing = !String(val).trim();
-            return `
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="clientkyc_${key}">${label}</label>
-                <input type="text" id="clientkyc_${key}" value="${String(val).replace(/"/g,'&quot;')}" class="${missing?'kyc-field-missing':''}"
-                       oninput="clientKycFieldInput('${client.id}','${key}', this)"
-                       onblur="saveClientKyc('${client.id}')">
-              </div>
-            `;
-          }).join('')}
+    ${verifyBanner}
+    ${pages.map(({ page, fields: pageFields }) => {
+      const hasOpen = pageFields.some(([key]) => openByKey.has(key));
+      return `
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <div class="card-title">${page}</div>
+            ${hasOpen && canResubmit ? `<button class="btn-primary btn-sm" onclick="resubmitKycPage('${client.id}','${page.replace(/'/g,"\\'")}')">Resubmit Section</button>` : ''}
+          </div>
+          <div class="card-body">
+            <div class="cb-fields-grid">
+              ${pageFields.map(([key, label]) => {
+                const correction = openByKey.get(key);
+                const val = k[key] || '';
+                if (correction) {
+                  return `
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label for="clientkyc_${key}">${label} <span style="color:var(--accent-gold);font-weight:600;">— needs correction</span></label>
+                      <input type="text" id="clientkyc_${key}" data-page="${page.replace(/"/g,'&quot;')}" value="" placeholder="Enter ${label}…" class="kyc-field-missing">
+                    </div>
+                  `;
+                }
+                return `
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label>${label}</label>
+                    <div style="display:flex;align-items:center;gap:2px;">
+                      <div class="kyc-field-readonly ${!String(val).trim() ? 'empty' : ''}" style="flex:1;">${String(val).trim() || '—'}</div>
+                      ${canFlag && String(val).trim() ? `<button type="button" class="kyc-flag-btn" title="Flag as incorrect" onclick="flagKycFieldPrompt('${client.id}','${key}','${label.replace(/'/g,"\\'")}')">⚑</button>` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
         </div>
-        ${(k.pep || k.sanctions || k.adverse) ? `
-          <hr class="divider" />
+      `;
+    }).join('')}
+    ${(k.pep || k.sanctions || k.adverse) ? `
+      <div class="card">
+        <div class="card-body">
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
             ${screeningBadge('PEP Status', k.pep)}
             ${screeningBadge('Sanctions', k.sanctions)}
             ${screeningBadge('Adverse Media', k.adverse)}
           </div>
-        ` : ''}
+        </div>
       </div>
-    </div>
+    ` : ''}
   `;
 }
 
-function clientKycFieldInput(clientId, key, el) {
-  const client = resolveKycClient(clientId);
-  if (!client) return;
-  if (!client.kyc) client.kyc = {};
-  client.kyc[key] = el.value;
-  el.classList.toggle('kyc-field-missing', !el.value.trim());
+// Re-renders whichever KYC view is currently showing (staff Client Detail tab
+// or the client's own portal dashboard) after a resubmit/flag action.
+function rerenderKycView() {
+  if (State.currentPage === 'client-detail') { renderClientDetail(); switchTab('kyc'); }
+  else if (State.currentPage === 'dashboard' && State.currentRole === 'client') renderClientDashboard();
 }
 
-async function saveClientKyc(clientId) {
-  const client = resolveKycClient(clientId);
-  if (!client) return;
+async function resubmitKycPage(clientId, page) {
+  const inputs = Array.from(document.querySelectorAll('input.kyc-field-missing')).filter(el => el.dataset.page === page);
+  const values = {};
+  inputs.forEach(el => {
+    const key = el.id.replace('clientkyc_', '');
+    values[key] = el.value.trim();
+  });
+  if (Object.values(values).some(v => !v)) {
+    showToast('warning', `Please fill in every highlighted field in this section before resubmitting.`);
+    return;
+  }
   try {
-    await apiFetch('PUT', `/clients/${clientId}`, { kyc: client.kyc });
+    await apiFetch('POST', '/corrections/kyc/resubmit-section', { clientId, values });
+    showToast('success', 'Section resubmitted.');
+    if (State.currentRole === 'client') {
+      const updated = await apiFetch('GET', '/clients/me').catch(() => null);
+      if (updated) State.myClientProfile = { ...updated, id: updated.clientId };
+      await refreshCorrectionsBadge();
+    } else {
+      await Promise.all([refreshCorrectionsBadge(), refreshClients()]);
+    }
+    rerenderKycView();
   } catch (err) {
-    showToast('error', `Failed to save KYC info: ${err.message}`);
+    showToast('error', `Failed to resubmit section: ${err.message}`);
   }
 }
 
-async function submitKycCorrectionFromDetail(correctionId) {
-  await updateKycCorrectionStatus(correctionId, 'resubmitted');
-  navigateTo('kyc-corrections');
+async function flagKycFieldPrompt(clientId, key, label) {
+  if (!confirm(`Flag "${label}" as incorrect? The current value will be cleared and marked for correction.`)) return;
+  try {
+    await apiFetch('POST', '/corrections/kyc/flag', { clientId, fieldKey: key });
+    await Promise.all([refreshCorrectionsBadge(), refreshClients()]);
+    rerenderKycView();
+  } catch (err) {
+    showToast('error', `Failed to flag field: ${err.message}`);
+  }
 }
 
 /* ============================================================

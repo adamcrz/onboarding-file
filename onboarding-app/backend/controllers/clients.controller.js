@@ -10,6 +10,11 @@ const isOwnedByRm    = (client, user) => user.role !== 'rm' || client.rm === use
 
 // GET /api/clients
 const getAllClients = async (req, res) => {
+  // A client account has exactly one case of its own — GET /clients/me is the
+  // real endpoint for that; this list endpoint is for staff only.
+  if (req.user.role === 'client') {
+    return res.status(403).json({ error: 'Use GET /clients/me for your own case' });
+  }
   try {
     const clients = await Client.find(scopeFilterFor(req.user));
     res.status(200).json(clients);
@@ -53,6 +58,13 @@ const updateClient = async (req, res) => {
     // An RM can never reassign a client to a different Kundenberater by
     // slipping `rm` into the update body — only compliance/admin can.
     if (req.user.role === 'rm') delete updates.rm;
+    // KYC data is never edited through the generic client update — it only
+    // ever changes via a completed KYC Task or a Corrections resubmission/
+    // flag, so it stays a single tracked submission history, not a silent
+    // free-text edit.
+    delete updates.kyc;
+    delete updates.kycSubmittedBy;
+    delete updates.kycAwaitingVerification;
 
     const client = await Client.findOneAndUpdate(
       { clientId: req.params.id },

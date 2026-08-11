@@ -38,7 +38,15 @@ const clientSchema = new mongoose.Schema({
   industry:   { type: String },
   documents:  [documentSchema],
   auditTrail: [auditSchema],
+  // The single shared KYC record — RM, Compliance and the client (if they
+  // have portal access) all read/write the same object, never separate copies.
   kyc:        { type: mongoose.Schema.Types.Mixed, default: {} },
+  // Who last submitted/resubmitted the KYC data, and whether that submission
+  // is still awaiting Compliance's sign-off. A Compliance submission never
+  // needs a separate verification step (self-verifying); an RM or client
+  // submission does.
+  kycSubmittedBy:          { type: String, enum: ['rm', 'compliance', 'client'] },
+  kycAwaitingVerification: { type: Boolean, default: false },
 }, { timestamps: true });
 
 clientSchema.statics.generateClientId = async function () {

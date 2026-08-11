@@ -4,6 +4,8 @@ const ctrl    = require('../controllers/corrections.controller');
 const { protect } = require('../middleware/auth.middleware');
 
 router.get('/kyc',                    protect, ctrl.listKycCorrections);
+router.post('/kyc/resubmit-section',  protect, ctrl.resubmitKycSection);
+router.post('/kyc/flag',              protect, ctrl.flagKycField);
 router.post('/kyc/:id/status',        protect, ctrl.updateKycCorrectionStatus);
 
 router.get('/documents',              protect, ctrl.listDocumentCorrections);

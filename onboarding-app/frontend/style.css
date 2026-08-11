@@ -64,6 +64,8 @@
   --accent-amber: #f59e0b;
   --accent-red: #ef4444;
   --accent-orange: #f97316;
+  --accent-gold: #c9971f;
+  --accent-gold-bg: rgba(201,151,31,0.12);
 
   --status-pending: #f59e0b;
   --status-pending-bg: rgba(245,158,11,0.10);
@@ -508,6 +510,7 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 .status-rejected { color: var(--status-rejected); background: var(--status-rejected-bg); }
 .status-draft { color: var(--status-draft); background: var(--status-draft-bg); }
 .status-info-requested { color: var(--status-info-requested); background: var(--status-info-requested-bg); }
+.status-needs-correction { color: var(--accent-gold); background: var(--accent-gold-bg); }
 .status-in-progress { color: var(--status-in-progress); background: var(--status-in-progress-bg); }
 
 /* Table */
@@ -1104,15 +1107,40 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
 }
 @media (max-width: 700px) { .cb-fields-grid { grid-template-columns: 1fr; } }
 
-/* Missing/incomplete field indicator — used on KYC correction detail views */
+/* A field with an open KYC correction (pending or needs_correction) — empty,
+   editable, and gold-glowing so it's unmistakable what still needs entering.
+   Never shown on a field that isn't actually flagged. */
 @keyframes kyc-field-glow {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(249,115,22,0.28); }
-  50%      { box-shadow: 0 0 0 5px rgba(249,115,22,0.15); }
+  0%, 100% { box-shadow: 0 0 0 3px rgba(201,151,31,0.32); }
+  50%      { box-shadow: 0 0 0 5px rgba(201,151,31,0.16); }
 }
 .kyc-field-missing {
-  border-color: var(--accent-orange) !important;
-  background: linear-gradient(135deg, rgba(249,115,22,0.22), rgba(249,115,22,0.05)) !important;
+  border-color: var(--accent-gold) !important;
+  background: linear-gradient(135deg, rgba(201,151,31,0.24), rgba(201,151,31,0.06)) !important;
   animation: kyc-field-glow 1.8s ease-in-out infinite;
+}
+
+/* Read-only KYC display field — plain, no input chrome, since the value only
+   ever comes from a submitted KYC Task or an approved correction. */
+.kyc-field-readonly {
+  padding: 8px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle); background: var(--bg-secondary);
+  color: var(--text-primary); font-size: 13px; min-height: 18px;
+}
+.kyc-field-readonly.empty { color: var(--text-muted); font-style: italic; }
+
+.kyc-flag-btn {
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  color: var(--text-muted); font-size: 12px; margin-left: 6px;
+  border-radius: var(--radius-sm); transition: color var(--transition-fast);
+}
+.kyc-flag-btn:hover { color: var(--accent-gold); }
+
+.kyc-verify-banner {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--accent-gold-bg); border: 1px solid rgba(201,151,31,0.35);
+  border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 16px;
+  font-size: 13px; color: var(--text-primary);
 }
 
 /* Currency selector */

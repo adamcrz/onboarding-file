@@ -77,4 +77,42 @@ const REQUIRED_KYC_FIELDS = {
   ],
 };
 
-module.exports = { REQUIRED_KYC_FIELDS };
+// The KYC Task questionnaire (KYC_TEMPLATE in frontend/app.js) uses its own,
+// more granular field ids (separate address lines, employer, PEP status, …).
+// This maps the ones that correspond to a REQUIRED_KYC_FIELDS.Individual key
+// so completing a KYC Task writes into the same shared client.kyc record
+// instead of leaving answers stranded in KycTask.answers as a second, silently
+// disconnected copy. Address is special-cased: several template fields
+// combine into the single `address` string.
+const KYC_TEMPLATE_FIELD_MAP = {
+  f_firstname:    'firstName',
+  f_lastname:     'lastName',
+  f_dob:          'dob',
+  f_nationality:  'nationality',
+  f_country:      'residency',
+  f_passport:     'passportNumber',
+  f_passport_expiry: 'passportExpiry',
+  f_tax_country:  'taxResidency',
+  f_tin:          'taxId',
+  f_emp_status:   'employmentStatus',
+  f_occupation:   'occupation',
+  f_income:       'annualIncome',
+  f_sow:          'sourceOfWealth',
+};
+const KYC_TEMPLATE_ADDRESS_FIELDS = ['f_addr1', 'f_addr2', 'f_city', 'f_zip', 'f_ctry'];
+
+// Folds a completed KYC Task's answers into the REQUIRED_KYC_FIELDS.Individual
+// shape, ready to merge into client.kyc. Only touches keys it has a real
+// mapping for — anything template-only (title, PEP, employer, …) stays in the
+// task's own answers, it just isn't part of the obligatory-fields gap check.
+function mapTaskAnswersToKyc(answers) {
+  const kyc = {};
+  for (const [templateKey, kycKey] of Object.entries(KYC_TEMPLATE_FIELD_MAP)) {
+    if (answers[templateKey] !== undefined && answers[templateKey] !== '') kyc[kycKey] = answers[templateKey];
+  }
+  const addressParts = KYC_TEMPLATE_ADDRESS_FIELDS.map(k => answers[k]).filter(Boolean);
+  if (addressParts.length) kyc.address = addressParts.join(', ');
+  return kyc;
+}
+
+module.exports = { REQUIRED_KYC_FIELDS, mapTaskAnswersToKyc };
