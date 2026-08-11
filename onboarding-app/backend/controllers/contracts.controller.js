@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Client = require('../models/Client');
 const DocumentRequirement = require('../models/DocumentRequirement');
 const { sendClientInviteEmail } = require('../services/email.service');
+const { syncKycCorrectionsForClient } = require('../services/kycGapCheck.service');
 
 const CONTRACTS_DIR = path.join(__dirname, '..');
 const APPENDIX_DIR  = path.join(__dirname, '..', '..', 'Form A T S');
@@ -1107,6 +1108,7 @@ async function upsertClientCase({ email, clientName, clientType, rm, country, st
       documents: docEntries, auditTrail: [auditEntry],
     });
   }
+  await syncKycCorrectionsForClient(client);
   return client;
 }
 

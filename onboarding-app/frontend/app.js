@@ -3716,7 +3716,7 @@ async function cbSubmit() {
       rmName: CB.kundenberater, createClientAccount: CB.createClientAccount, requiredDocuments: CB.requiredDocuments,
     });
     await cbCreateKycTask(CB.kundenberater, clientName, clientEmail);
-    CB.result = { otp: res.otp, clientName, clientEmail, kycCreated: true, rmName: CB.kundenberater };
+    CB.result = { otp: res.otp, clientName, clientEmail };
     CB.step = 3;
     cbStep3();
   } catch (err) {
@@ -3772,15 +3772,6 @@ function cbStep3() {
             ` : ''}
           </div>
         </div>
-
-        ${CB.result?.kycCreated ? `
-          <div style="margin:0 auto 20px;max-width:420px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:var(--radius-md);padding:14px 18px;text-align:left;">
-            <div style="font-size:12px;font-weight:700;color:var(--accent-purple);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">KYC Questionnaire Created</div>
-            <div style="font-size:13px;color:var(--text-primary);">
-              The Kundenberater (<strong>${CB.result.rmName || '—'}</strong>) and <strong>${CB.result.clientName}</strong> can both complete it — whoever gets to it first.
-            </div>
-          </div>
-        ` : ''}
 
         <button class="btn-primary" onclick="renderContractBuilding()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

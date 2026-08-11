@@ -35,6 +35,7 @@ const createClient = async (req, res) => {
   try {
     const client = new Client(req.body);
     await client.save();
+    await syncKycCorrectionsForClient(client);
     res.status(201).json(client);
   } catch (err) {
     res.status(500).json({ error: err.message });
