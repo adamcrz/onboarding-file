@@ -104,6 +104,17 @@ async function autoSeedDocumentRequirements() {
     { clientType: 'individual', type: 'Legal',              name: 'Form A — Declaration of Beneficial Ownership' },
     { clientType: 'individual', type: 'Financial',          name: 'Asset Management / Investment Advisory Agreement incl. Risk Profile & Investment Strategy' },
     { clientType: 'individual', type: 'Compliance',         name: 'Confirmation of Tax Compliance Status' },
+    // domiciliary company (Formular A — same beneficial-owner identification as a
+    // natural person; not the same legal form as an operating company or foundation)
+    { clientType: 'domiciliary', type: 'Legal',             name: 'Commercial Register Extract (Zefix, < 12 months)' },
+    { clientType: 'domiciliary', type: 'Legal',             name: 'Memorandum & Articles of Association (Statutes/Bylaws)' },
+    { clientType: 'domiciliary', type: 'Legal',             name: 'Certificate of Incorporation' },
+    { clientType: 'domiciliary', type: 'Legal',             name: 'Certificate of Good Standing' },
+    { clientType: 'domiciliary', type: 'Legal',             name: 'Certificate of Incumbency' },
+    { clientType: 'domiciliary', type: 'Legal',             name: 'Form A — Declaration of Beneficial Ownership' },
+    { clientType: 'domiciliary', type: 'Legal',             name: 'Board Resolution Confirming Signing Authority' },
+    { clientType: 'domiciliary', type: 'Identification',    name: 'Copy of ID — Authorized Signatories' },
+    { clientType: 'domiciliary', type: 'Compliance',        name: 'Confirmation of Tax Compliance Status' },
     // company
     { clientType: 'company', type: 'Legal',                 name: 'Commercial Register Extract (Zefix, < 12 months)' },
     { clientType: 'company', type: 'Legal',                 name: 'Memorandum & Articles of Association (Statutes/Bylaws)' },

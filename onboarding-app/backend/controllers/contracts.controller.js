@@ -11,13 +11,17 @@ const CONTRACTS_DIR = path.join(__dirname, '..');
 const APPENDIX_DIR  = path.join(__dirname, '..', '..', 'Form A T S');
 
 // Beneficial-owner identification appendix (Swiss VSB 20) — which form applies
-// depends on the client's legal form: natural person (A), operating company (K),
-// domiciliary company / foundation (S), or trust (T).
+// depends on the client's legal form: natural person (A), domiciliary company (A —
+// same beneficial-owner identification as a natural person), operating company (K),
+// foundation (S), or trust (T). Domiciliary Company and Foundation used to be
+// bundled as one option under Formular S — they're separate legal forms with
+// separate forms and must not be lumped together.
 const APPENDICES = {
-  individual: { letter: 'A', label: 'Individual',  files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formulare A.docx',            EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare A.docx' } },
-  company:    { letter: 'K', label: 'Company',      files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formulare K.docx',            EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare K.docx' } },
-  foundation: { letter: 'S', label: 'Foundation',   files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formular S - Multi BO.docx',  EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare S - Mulit BO.docx' } },
-  trust:      { letter: 'T', label: 'Trust',        files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formular T - Multi (2).docx', EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare T - Multi BO.docx' } },
+  individual:  { letter: 'A', label: 'Individual',    files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formulare A.docx',            EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare A.docx' } },
+  domiciliary: { letter: 'A', label: 'Domiciliary',   files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formulare A.docx',            EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare A.docx' } },
+  company:     { letter: 'K', label: 'Company',        files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formulare K.docx',            EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare K.docx' } },
+  foundation:  { letter: 'S', label: 'Foundation',     files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formular S - Multi BO.docx',  EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare S - Mulit BO.docx' } },
+  trust:       { letter: 'T', label: 'Trust',          files: { DE: 'Vermögensverwaltungsvertrag DE - Anhang Formular T - Multi (2).docx', EN: 'Vermögensverwaltungsvertrag EN - Anhang Formulare T - Multi BO.docx' } },
 };
 
 const TEMPLATES = [
@@ -1057,7 +1061,7 @@ exports.sendInvite = async (req, res) => {
 // Maps the Contract Builder's client-legal-form selector to the `type` values
 // used throughout the rest of the app (client avatars, KYC field requirements, …).
 const CLIENT_TYPE_LABELS = {
-  individual: 'Individual', company: 'Corporate', foundation: 'Foundation', trust: 'Trust',
+  individual: 'Individual', domiciliary: 'Domiciliary', company: 'Corporate', foundation: 'Foundation', trust: 'Trust',
 };
 
 // The "Contract Package" placeholder doc + one entry per checked Required

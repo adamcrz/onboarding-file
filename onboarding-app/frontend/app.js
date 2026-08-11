@@ -2725,6 +2725,17 @@ let DOCUMENT_CHECKLIST_OPTIONS = {
     'Asset Management / Investment Advisory Agreement incl. Risk Profile & Investment Strategy',
     'Confirmation of Tax Compliance Status',
   ],
+  domiciliary: [
+    'Commercial Register Extract (Zefix, < 12 months)',
+    'Memorandum & Articles of Association (Statutes/Bylaws)',
+    'Certificate of Incorporation',
+    'Certificate of Good Standing',
+    'Certificate of Incumbency',
+    'Form A — Declaration of Beneficial Ownership',
+    'Board Resolution Confirming Signing Authority',
+    'Copy of ID — Authorized Signatories',
+    'Confirmation of Tax Compliance Status',
+  ],
   company: [
     'Commercial Register Extract (Zefix, < 12 months)',
     'Memorandum & Articles of Association (Statutes/Bylaws)',
@@ -2764,11 +2775,16 @@ let DOCUMENT_CHECKLIST_OPTIONS = {
 // Legal form of the contracting party — determines which VSB 20 beneficial-owner
 // appendix (Formular A/K/S/T) applies. Only relevant for templates containing the
 // FormularLetter bookmark (currently the DE All-In and DE Advisory contracts).
+// Domiciliary Company and Foundation were previously bundled as one option under
+// Formular S — they're separate legal forms with separate forms: a Domiciliary
+// Company uses Formular A (same beneficial-owner identification as a natural
+// person), an Operating Company uses Formular K, and Foundation keeps Formular S.
 const CLIENT_LEGAL_FORMS = [
-  { value: 'individual', letter: 'A', label: 'Individual / Natural Person' },
-  { value: 'company',    letter: 'K', label: 'Operating Company' },
-  { value: 'foundation', letter: 'S', label: 'Domiciliary Company / Foundation' },
-  { value: 'trust',      letter: 'T', label: 'Trust' },
+  { value: 'individual',  letter: 'A', label: 'Individual / Natural Person' },
+  { value: 'domiciliary', letter: 'A', label: 'Domiciliary Company' },
+  { value: 'company',     letter: 'K', label: 'Operating Company' },
+  { value: 'foundation',  letter: 'S', label: 'Foundation' },
+  { value: 'trust',       letter: 'T', label: 'Trust' },
 ];
 
 // Real Kundenberater (RM) short codes, sourced from the firm's own portfolio export —
