@@ -64,8 +64,8 @@
   --accent-amber: #f59e0b;
   --accent-red: #ef4444;
   --accent-orange: #f97316;
-  --accent-gold: #c9971f;
-  --accent-gold-bg: rgba(201,151,31,0.12);
+  --accent-gold: #eab308;
+  --accent-gold-bg: rgba(234,179,8,0.14);
 
   --status-pending: #f59e0b;
   --status-pending-bg: rgba(245,158,11,0.10);
@@ -1111,12 +1111,12 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
    editable, and gold-glowing so it's unmistakable what still needs entering.
    Never shown on a field that isn't actually flagged. */
 @keyframes kyc-field-glow {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(201,151,31,0.32); }
-  50%      { box-shadow: 0 0 0 5px rgba(201,151,31,0.16); }
+  0%, 100% { box-shadow: 0 0 0 3px rgba(234,179,8,0.40); }
+  50%      { box-shadow: 0 0 0 6px rgba(234,179,8,0.20); }
 }
 .kyc-field-missing {
   border-color: var(--accent-gold) !important;
-  background: linear-gradient(135deg, rgba(201,151,31,0.24), rgba(201,151,31,0.06)) !important;
+  background: linear-gradient(135deg, rgba(234,179,8,0.30), rgba(234,179,8,0.08)) !important;
   animation: kyc-field-glow 1.8s ease-in-out infinite;
 }
 

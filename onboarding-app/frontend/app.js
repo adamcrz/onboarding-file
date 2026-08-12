@@ -24,6 +24,7 @@ const State = {
 
   kycTasks: [],
   _activeKycTask: null,
+  _activeKycCorrectionId: null,
 
   documentCorrections: [],
 
@@ -856,6 +857,7 @@ function navigateTo(page) {
     'kyc-form': 'KYC Questionnaire',
     'kyc-tasks': 'KYC Tasks',
     'kyc-corrections': 'KYC Corrections',
+    'kyc-correction-detail': 'KYC Correction',
     'client-contract': 'Contract Package',
     'client-upload': 'Upload Signed Documents',
     risk: 'Risk Ratings',
@@ -879,6 +881,7 @@ function navigateTo(page) {
     case 'kyc-form': renderKycForm(); break;
     case 'kyc-tasks': renderKycTasksPage(); break;
     case 'kyc-corrections': renderKycCorrections(); break;
+    case 'kyc-correction-detail': renderKycCorrectionDetailPage(); break;
     case 'client-contract': renderClientContract(); break;
     case 'client-upload': renderClientUpload(); break;
     case 'risk': renderRiskRatings(); break;
@@ -1808,99 +1811,74 @@ function renderClientOverviewTab(client) {
 }
 
 function renderClientKycTab(client) {
-  // RM and Compliance both see the single shared KYC record — read-only
-  // except for fields with an open correction, which show gold/empty/editable
-  // per clientKycEditableFormHTML. Values only ever arrive via a completed
-  // KYC Task or a resubmitted/approved correction, never a free-text edit here.
-  if ((State.currentRole === 'rm' || isCompliance(State.currentRole)) && REQUIRED_KYC_FIELDS[client.type]) {
-    return clientKycEditableFormHTML(client);
+  // The KYC Details tab is always a plain read-only view of the single shared
+  // KYC record — the full set of obligatory fields, whichever are filled or
+  // not. Editing only ever happens through KYC Corrections (gold/editable,
+  // clientKycEditableFormHTML), never here.
+  if (REQUIRED_KYC_FIELDS[client.type]) {
+    return clientKycReadOnlyHTML(client);
   }
-
-  if (!client.kyc || !Object.keys(client.kyc).length) {
-    return `<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg><p>No KYC data available for this client.</p></div>`;
-  }
-
-  if (client.type === 'Individual') {
-    const k = client.kyc;
-    return `
-      <div class="card">
-        <div class="card-header"><div class="card-title">Individual KYC Information</div></div>
-        <div class="card-body">
-          <div class="grid-2">
-            ${infoRow('Full Name', `${k.title} ${k.firstName} ${k.lastName}`)}
-            ${infoRow('Date of Birth', k.dob)}
-            ${infoRow('Nationality', k.nationality)}
-            ${infoRow('Residency', k.residency)}
-            ${infoRow('Tax Residency', k.taxResidency)}
-            ${infoRow('Tax ID / SSN', k.taxId)}
-            ${infoRow('Passport Number', k.passportNumber)}
-            ${infoRow('Passport Expiry', k.passportExpiry)}
-            ${infoRow('Address', k.address)}
-            ${infoRow('Employment', k.employmentStatus)}
-            ${infoRow('Occupation', k.occupation)}
-            ${infoRow('Annual Income', k.annualIncome)}
-            ${infoRow('Source of Wealth', k.sourceOfWealth)}
-          </div>
-          <hr class="divider" />
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-            ${screeningBadge('PEP Status', k.pep)}
-            ${screeningBadge('Sanctions', k.sanctions)}
-            ${screeningBadge('Adverse Media', k.adverse)}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (client.type === 'Corporate') {
-    const k = client.kyc;
-    return `
-      <div class="card">
-        <div class="card-header"><div class="card-title">Corporate KYC Information</div></div>
-        <div class="card-body">
-          <div class="kyc-section-title">Company Details</div>
-          <div class="grid-2">
-            ${infoRow('Legal Name', k.legalName)}
-            ${infoRow('Trading Name', k.tradingName)}
-            ${infoRow('Registration No.', k.registrationNumber)}
-            ${infoRow('Registration Date', k.registrationDate)}
-            ${infoRow('Country', k.registrationCountry)}
-            ${infoRow('Jurisdiction', k.jurisdiction)}
-            ${infoRow('Business Type', k.businessType)}
-            ${infoRow('Industry', k.industry)}
-            ${infoRow('Annual Turnover', k.annualTurnover)}
-            ${infoRow('Net Assets', k.netAssets)}
-            ${infoRow('Employees', k.employees)}
-            ${infoRow('Website', k.website)}
-            ${infoRow('Registered Address', k.address)}
-            ${infoRow('Purpose of Account', k.purpose)}
-          </div>
-          <hr class="divider" />
-          <div class="kyc-section-title">Directors</div>
-          ${(k.directors||[]).map(d => `
-            <div style="background:var(--bg-elevated);border-radius:var(--radius-md);padding:14px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-              ${infoRow('Name', d.name)} ${infoRow('Nationality', d.nationality)} ${infoRow('Passport', d.passport)}
-            </div>
-          `).join('')}
-          <hr class="divider" />
-          <div class="kyc-section-title">Ultimate Beneficial Owners (UBOs)</div>
-          ${(k.ubos||[]).map(u => `
-            <div style="background:var(--bg-elevated);border-radius:var(--radius-md);padding:14px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-              ${infoRow('Name', u.name)} ${infoRow('Ownership', u.ownership)} ${infoRow('Nationality', u.nationality)}
-            </div>
-          `).join('')}
-          <hr class="divider" />
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-            ${screeningBadge('PEP Status', k.pep)}
-            ${screeningBadge('Sanctions', k.sanctions)}
-            ${screeningBadge('Adverse Media', k.adverse)}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
   return `<div class="card"><div class="card-body"><p class="text-muted">KYC details not available.</p></div></div>`;
+}
+
+// Plain read-only display of every obligatory KYC field for this client type,
+// grouped by page, whether filled or still blank — no inputs, no editing.
+function clientKycReadOnlyHTML(client) {
+  if (!client.kyc) client.kyc = {};
+  const fields = REQUIRED_KYC_FIELDS[client.type] || [];
+  const k = client.kyc;
+
+  const pages = [];
+  const pageIndex = new Map();
+  fields.forEach(([key, label, page]) => {
+    if (!pageIndex.has(page)) { pageIndex.set(page, pages.length); pages.push({ page, fields: [] }); }
+    pages[pageIndex.get(page)].fields.push([key, label]);
+  });
+
+  const openCount = (State.kycCorrections || []).filter(c =>
+    c.clientId === client.id && c.autoGenerated && (c.status === 'pending' || c.status === 'needs_correction')
+  ).length;
+
+  const verifyBanner = client.kycAwaitingVerification ? `
+    <div class="kyc-verify-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>${isCompliance(State.currentRole)
+        ? `This KYC was submitted by ${client.kycSubmittedBy === 'rm' ? 'the RM' : 'the client'} and is awaiting your verification.`
+        : `Submitted — awaiting Compliance verification.`}</span>
+    </div>
+  ` : (openCount > 0 ? `
+    <div class="kyc-verify-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>${openCount} field${openCount === 1 ? '' : 's'} need${openCount === 1 ? 's' : ''} correction.
+        <a href="#" onclick="navigateTo('kyc-corrections');return false;" style="color:inherit;font-weight:600;">Resolve in KYC Corrections →</a>
+      </span>
+    </div>
+  ` : '');
+
+  return `
+    ${verifyBanner}
+    ${pages.map(({ page, fields: pageFields }) => `
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header"><div class="card-title">${page}</div></div>
+        <div class="card-body">
+          <div class="grid-2">
+            ${pageFields.map(([key, label]) => infoRow(label, k[key])).join('')}
+          </div>
+        </div>
+      </div>
+    `).join('')}
+    ${(k.pep || k.sanctions || k.adverse) ? `
+      <div class="card">
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+            ${screeningBadge('PEP Status', k.pep)}
+            ${screeningBadge('Sanctions', k.sanctions)}
+            ${screeningBadge('Adverse Media', k.adverse)}
+          </div>
+        </div>
+      </div>
+    ` : ''}
+  `;
 }
 
 function screeningBadge(label, val) {
@@ -4952,10 +4930,33 @@ async function updateDocumentCorrectionStatus(correctionId, status) {
 function openKycCorrectionDetail(correctionId) {
   const correction = State.kycCorrections.find(c => c.id === correctionId);
   if (!correction) return;
+  State._activeKycCorrectionId = correctionId;
+  navigateTo('kyc-correction-detail');
+}
+
+// The editable/gold correction-resolution view — reached only via KYC
+// Corrections, never the plain read-only KYC Details tab. Shows the whole
+// KYC (all pages, filled or not) via clientKycEditableFormHTML so open
+// corrections elsewhere on the same client stay visible for context, and
+// scrolls/focuses the exact field the clicked correction was about.
+function renderKycCorrectionDetailPage() {
+  const content = document.getElementById('page-content');
+  const correction = State.kycCorrections.find(c => c.id === State._activeKycCorrectionId);
+  if (!correction) { content.innerHTML = `<p style="padding:20px;color:var(--text-muted);">Correction not found.</p>`; return; }
   const client = State.clients.find(c => c.id === correction.clientId);
-  if (!client) return;
-  openClientDetail(client.id);
-  switchTab('kyc');
+  if (!client) { content.innerHTML = `<p style="padding:20px;color:var(--text-muted);">Client not found.</p>`; return; }
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button class="btn-secondary btn-sm" onclick="navigateTo('kyc-corrections')">← Back</button>
+      <div>
+        <h1 style="font-size:18px;font-weight:700;">${client.name} — KYC Correction</h1>
+        <div style="color:var(--text-secondary);font-size:13px;">${correction.issue} · ${correction.page}</div>
+      </div>
+    </div>
+    ${clientKycEditableFormHTML(client)}
+  `;
+
   const el = document.getElementById(`clientkyc_${correction.fieldKey}`);
   if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
 }
@@ -5061,7 +5062,8 @@ function clientKycEditableFormHTML(client) {
 // Re-renders whichever KYC view is currently showing (staff Client Detail tab
 // or the client's own portal dashboard) after a resubmit/flag action.
 function rerenderKycView() {
-  if (State.currentPage === 'client-detail') { renderClientDetail(); switchTab('kyc'); }
+  if (State.currentPage === 'kyc-correction-detail') renderKycCorrectionDetailPage();
+  else if (State.currentPage === 'client-detail') { renderClientDetail(); switchTab('kyc'); }
   else if (State.currentPage === 'dashboard' && State.currentRole === 'client') renderClientDashboard();
 }
 
