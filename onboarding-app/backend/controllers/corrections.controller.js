@@ -140,6 +140,9 @@ exports.flagKycField = async (req, res) => {
   try {
     const client = await Client.findOne({ clientId });
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!client.kycSubmittedBy) {
+      return res.status(400).json({ error: 'This client has not submitted a KYC yet — nothing to flag' });
+    }
 
     const correction = await flagFieldIncorrect(client, fieldKey);
     if (!correction) return res.status(400).json({ error: 'Unknown field for this client type' });

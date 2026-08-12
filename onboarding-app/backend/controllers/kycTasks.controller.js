@@ -44,9 +44,9 @@ exports.completeKycTask = async (req, res) => {
     if (req.user.role === 'rm' && task.rmName !== req.user.rmCode) {
       return res.status(403).json({ error: 'Not authorised to complete this task' });
     }
-    if (task.status === 'completed') {
-      return res.status(400).json({ error: 'This KYC task has already been completed' });
-    }
+    // Re-submittable on purpose: the same form/task is reused for later
+    // corrections too (a partial first submission, or a Compliance-flagged
+    // field fixed afterward), not just a single one-time completion.
 
     task.status = 'completed';
     task.completedAt = new Date();
