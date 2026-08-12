@@ -3918,7 +3918,11 @@ async function cbSubmit() {
       clientName, clientEmail, templateId: CB.selectedId, templateName: tpl?.name || CB.selectedId, fieldValues,
       rmName: CB.kundenberater, createClientAccount: CB.createClientAccount, requiredDocuments: CB.requiredDocuments,
     });
-    await cbCreateKycTask(CB.kundenberater, clientName, clientEmail);
+    // Without the real clientId, the KYC Task can't resolve back to this
+    // client's REQUIRED_KYC_FIELDS and silently falls back to the old
+    // generic KYC_TEMPLATE snapshot — showing a different set of fields
+    // than the client's actual profile (Kunden profile) uses.
+    await cbCreateKycTask(CB.kundenberater, clientName, clientEmail, res.clientId);
     CB.result = { otp: res.otp, clientName, clientEmail };
     CB.step = 3;
     cbStep3();

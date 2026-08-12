@@ -80,6 +80,25 @@ test.describe('Signed-contract checkbox/initials validation', () => {
 test.describe('Signed-contract upload flow (full UI, RM role)', () => {
   let consoleErrors;
 
+  // These tests click "the first client row" rather than targeting a
+  // specific client, so they depend on rm@demo.com having at least one —
+  // true of any dev DB with real usage history, but not guaranteed right
+  // after a reset-db run. Seed one deterministically instead of assuming.
+  test.beforeAll(async ({ request }) => {
+    const loginRes = await request.post('/api/auth/login', { data: { email: 'rm@demo.com', password: 'Demo1234!', role: 'rm' } });
+    const { token } = await loginRes.json();
+    const existing = await (await request.get('/api/clients', { headers: { Authorization: `Bearer ${token}` } })).json();
+    if (existing.length > 0) return;
+    await request.post('/api/contracts/invite', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        clientName: 'Seed Client', clientEmail: `seed-${Date.now()}@e2e.local`,
+        templateId: 'en-disc-all-in', templateName: 'Discretionary All-In',
+        fieldValues: { client_type: 'individual' }, createClientAccount: false, requiredDocuments: [],
+      },
+    });
+  });
+
   test.beforeEach(async ({ page }) => {
     consoleErrors = [];
     page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });

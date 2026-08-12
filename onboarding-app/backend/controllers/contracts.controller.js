@@ -1061,7 +1061,7 @@ exports.sendInvite = async (req, res) => {
     const message = otp
       ? `Invitation sent to ${clientEmail}`
       : 'Contract processed — no portal account created';
-    res.json({ success: true, message, otp });
+    res.json({ success: true, message, otp, clientId: client.clientId });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
