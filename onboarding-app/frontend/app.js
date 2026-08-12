@@ -1966,7 +1966,6 @@ function renderClientDocsTab(client) {
           <div class="card-title">Document Package</div>
           <div class="card-subtitle">Documents are separated into Blank Documents and Signed Documents for review clarity</div>
         </div>
-        ${canUpload ? `<button class="btn-primary btn-sm" onclick="triggerFileInput()">+ Upload Signed Doc</button>` : ''}
       </div>
       ${isClient ? `
         <div style="padding:0 22px 16px;">
