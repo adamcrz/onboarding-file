@@ -916,40 +916,47 @@ exports.previewContract = async (req, res) => {
   }
 };
 
+// Builds the filled .docx buffer for a template — shared by the HTTP
+// generateContract endpoint (streamed straight to whoever's filling the
+// Contract Builder form) and sendInvite (persisted to disk so there's a real
+// file for KUBE to later download, fill in further, sign, and re-upload).
+function buildFilledContractBuffer(template, fieldValues = {}, fieldDefs = []) {
+  const PizZip = require('pizzip');
+  const filePath = path.join(CONTRACTS_DIR, template.file);
+  if (!fs.existsSync(filePath)) throw new Error('Template file not found on disk');
+
+  const replacements = buildReplacementMap(fieldValues, fieldDefs);
+  const content = fs.readFileSync(filePath, 'binary');
+  const zip = new PizZip(content);
+  const checkboxMap = buildCheckboxReplacements(fieldValues, fieldDefs);
+
+  ['word/document.xml','word/header1.xml','word/footer1.xml','word/header2.xml','word/footer2.xml']
+    .forEach(xmlFile => {
+      if (!zip.files[xmlFile]) return;
+      let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
+      xml = applyAllocMinToXml(xml, fieldValues);
+      xml = applyPreciousMetalsRowToXml(xml, fieldValues);
+      xml = applyPerformanceFeeClauseToXml(xml, fieldValues, template.lang);
+      xml = applyFormularLetterToXml(xml, fieldValues);
+      xml = applyContractTypeCheckboxToXml(xml, fieldValues);
+      xml = applyOwnProductsChoiceToXml(xml, fieldValues);
+      Object.entries(checkboxMap).forEach(([from, to]) => {
+        const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        xml = xml.replace(new RegExp(esc, 'g'), to);
+      });
+      zip.file(xmlFile, xml);
+    });
+
+  return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
 exports.generateContract = async (req, res) => {
   const template = TEMPLATES.find(t => t.id === req.params.templateId);
   if (!template) return res.status(404).json({ error: 'Template not found' });
-  const filePath = path.join(CONTRACTS_DIR, template.file);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on disk' });
 
   try {
-    const PizZip = require('pizzip');
     const { fieldValues = {}, fieldDefs = [] } = req.body;
-    const replacements = buildReplacementMap(fieldValues, fieldDefs);
-
-    const content = fs.readFileSync(filePath, 'binary');
-    const zip = new PizZip(content);
-    const checkboxMap = buildCheckboxReplacements(fieldValues, fieldDefs);
-
-    ['word/document.xml','word/header1.xml','word/footer1.xml','word/header2.xml','word/footer2.xml']
-      .forEach(xmlFile => {
-        if (!zip.files[xmlFile]) return;
-        let xml = applyReplacementsToXml(zip.files[xmlFile].asText(), replacements);
-        xml = applyAllocMinToXml(xml, fieldValues);
-        xml = applyPreciousMetalsRowToXml(xml, fieldValues);
-        xml = applyPerformanceFeeClauseToXml(xml, fieldValues, template.lang);
-        xml = applyFormularLetterToXml(xml, fieldValues);
-        xml = applyContractTypeCheckboxToXml(xml, fieldValues);
-        xml = applyOwnProductsChoiceToXml(xml, fieldValues);
-        // Apply checkbox state
-        Object.entries(checkboxMap).forEach(([from, to]) => {
-          const esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          xml = xml.replace(new RegExp(esc, 'g'), to);
-        });
-        zip.file(xmlFile, xml);
-      });
-
-    const buffer = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+    const buffer = buildFilledContractBuffer(template, fieldValues, fieldDefs);
     res.setHeader('Content-Disposition', `attachment; filename="${template.file}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.send(buffer);
@@ -1019,6 +1026,31 @@ exports.sendInvite = async (req, res) => {
       email, clientName, clientType, rm: effectiveRmName, country: (fieldValues || {}).client_country,
       status: 'pending', progress: 40, docEntries, auditEntry,
     });
+
+    // Persist the actual filled contract to disk now, not just a placeholder
+    // document entry with no file — this is what KUBE later downloads, adds
+    // its own values to, signs, and re-uploads. Best-effort: a template
+    // that can't be found/rendered shouldn't block the invite itself.
+    try {
+      const template = TEMPLATES.find(t => t.id === templateId);
+      if (template) {
+        const buffer = buildFilledContractBuffer(template, fieldValues || {}, []);
+        const dir = path.join(__dirname, '..', 'uploads', client.clientId);
+        fs.mkdirSync(dir, { recursive: true });
+        const savedPath = path.join(dir, `${Date.now()}-${template.file}`);
+        fs.writeFileSync(savedPath, buffer);
+
+        const packageDoc = client.documents.find(d => d.docId === docEntries[0].docId);
+        if (packageDoc) {
+          packageDoc.filePath = savedPath;
+          packageDoc.size = (buffer.length / 1024 / 1024).toFixed(1) + ' MB';
+          packageDoc.date = new Date().toISOString().slice(0, 10);
+          await client.save();
+        }
+      }
+    } catch (genErr) {
+      console.error('Failed to persist generated contract for', client.clientId, ':', genErr.message);
+    }
 
     const otp = willCreateAccount ? await createClientInviteAndEmail(clientName, clientEmail, templateId) : null;
     if (otp) {

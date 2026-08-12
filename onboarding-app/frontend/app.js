@@ -1123,11 +1123,11 @@ function renderComplianceDashboard() {
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
                       ${d.name}
                     </div>
-                    <button class="btn-secondary btn-xs" onclick="showToast('info','Downloading ${d.name}…')">↓</button>
+                    ${d.filePath ? `<button class="btn-secondary btn-xs" onclick="downloadDoc('${c.id}','${d.id}')">↓</button>` : `<span style="font-size:11px;color:var(--text-muted);">No file yet</span>`}
                   </div>
                 `).join('')}
                 <div style="margin-top:8px;">
-                  <button class="btn-primary btn-sm" style="width:100%;" onclick="showToast('success','Contract package for ${c.name} downloaded.')">
+                  <button class="btn-primary btn-sm" style="width:100%;" onclick="downloadFullPackage('${c.id}')">
                     Download Full Contract Package
                   </button>
                 </div>
@@ -2041,7 +2041,7 @@ function renderClientDocsTab(client) {
             <div class="doc-actions">
               <span class="status-badge status-${d.status}">${statusLabel(d.status)}</span>
               ${d.templateAvailable && canUpload ? `<button class="btn-secondary btn-xs" onclick="downloadTemplate('${d.id}')">${downloadIcon()} Template</button>` : ''}
-              ${d.signedVersion || d.date !== '-' ? `<button class="btn-icon" title="Download" onclick="downloadDoc('${d.id}')">${downloadIcon()}</button>` : ''}
+              ${d.filePath ? `<button class="btn-icon" title="Download" onclick="downloadDoc('${client.id}','${d.id}')">${downloadIcon()}</button>` : ''}
               ${canReview && d.status === 'pending' ? `
                 <button class="btn-success btn-xs" onclick="approveDoc('${client.id}','${d.id}')">Approve</button>
                 <button class="btn-danger btn-xs" onclick="requestDocInfo('${client.id}','${d.id}')">Request Info</button>
@@ -2230,7 +2230,51 @@ async function requestDocInfo(clientId, docId) {
   }
 }
 
-function downloadDoc(docId) { showToast('info', 'Document download started.'); }
+// The whole completed contract package as one zip, once every document has
+// a real file on record — not just the individually corrected pages.
+async function downloadFullPackage(clientId) {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/clients/${clientId}/documents/package`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({})))?.error || 'Package download failed');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${clientId}_Full_Package.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('success', 'Full contract package downloaded.');
+  } catch (err) {
+    showToast('error', err.message || 'Failed to download the full package.');
+  }
+}
+
+// Downloads whatever file is currently on record for this document slot —
+// the actual generated/uploaded bytes, not a stub.
+async function downloadDoc(clientId, docId) {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/clients/${clientId}/documents/${docId}/download`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({})))?.error || 'Download failed');
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : 'document';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast('error', err.message || 'Failed to download document.');
+  }
+}
 
 function showUploadModal(docId) {
   triggerFileInput();
@@ -2303,9 +2347,9 @@ function contractCheckFailureReason(result, templateId) {
   return 'no option appears to be ticked.';
 }
 
-async function flagDocumentCorrection(clientId, docName, issue) {
+async function flagDocumentCorrection(clientId, docId, docName, issue, page) {
   try {
-    await apiFetch('POST', '/corrections/documents', { clientId, docName, issue });
+    await apiFetch('POST', '/corrections/documents', { clientId, docId, docName, issue, page });
   } catch (err) {
     console.warn('Failed to record document correction:', err.message);
   }
@@ -2407,18 +2451,24 @@ async function validateSignedContractPdf(file, templateId) {
   const results = [];
   for (const region of map.regions) {
     const rendered = await getPage(region.page);
-    if (!rendered) { results.push({ id: region.id, label: region.label, ok: false, reason: 'page not found in upload' }); continue; }
+    if (!rendered) { results.push({ id: region.id, label: region.label, ok: false, reason: 'page not found in upload', page: region.page }); continue; }
     const ticked = region.boxes.map(b => regionHasInk(rendered.ctx, rendered.width, rendered.height, b));
     const tickedCount = ticked.filter(Boolean).length;
     let ok;
     if (region.rule === 'at-least-one') ok = tickedCount >= 1;
     else if (region.rule === 'at-most-one') ok = tickedCount <= 1;
     else ok = tickedCount >= 1; // 'ink-present' — single box, same test
-    results.push({ id: region.id, label: region.label, ok, tickedCount });
+    results.push({ id: region.id, label: region.label, ok, tickedCount, page: region.page });
   }
   return { supported: true, results };
 }
 
+// Uploads a document for real (persisted server-side — see clients.controller
+// uploadDocument) and runs the same client-side signature/checkbox detection
+// as before to flag any correction needed. A "Signed Contract" upload targets
+// the client's existing Contract Package document slot so it replaces/
+// versions that one rather than creating an unrelated new document; other
+// upload types create a fresh document entry.
 async function simulateUpload(file) {
   const client = getActiveClientForUpload();
   if (!client) {
@@ -2427,16 +2477,13 @@ async function simulateUpload(file) {
   }
   State.selectedClientId = client.id;
   const docType = document.getElementById('upload-doc-type')?.value || 'Uploaded Document';
-  const newDoc = {
-    id: 'D' + Date.now(), name: file.name, type: docType,
-    status: 'pending', uploadedBy: State.currentRole === 'client' ? 'Client' : 'RM',
-    date: new Date().toISOString().slice(0,10), size: (file.size/1024/1024).toFixed(1)+' MB', required: false,
-    signedVersion: true, templateAvailable: false
-  };
+
+  let missingNote = '';
+  let templateId = null;
+  const pendingCorrections = []; // [{ docId, docName, issue, page }] — docId filled in once we know it
 
   if (docType === 'ID Document') {
     const expiryStr = document.getElementById('upload-id-expiry')?.value || '';
-    newDoc.expiryDate = expiryStr;
     const issues = [];
 
     const hasStamp = await detectSignatureStamp(file);
@@ -2449,43 +2496,80 @@ async function simulateUpload(file) {
     }
 
     if (issues.length) {
-      newDoc.missingNote = issues.join(' ');
-      await flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
-      showToast('warning', `${file.name} uploaded, but flagged for correction: ${issues.join(' ')}`);
+      missingNote = issues.join(' ');
+      pendingCorrections.push({ docName: file.name, issue: missingNote });
     }
   }
 
+  let targetDocId = '';
   if (docType === 'Signed Contract') {
-    const templateId = document.getElementById('upload-contract-template')?.value;
+    templateId = document.getElementById('upload-contract-template')?.value;
+    const templateDoc = client.documents.find(d => d.type === 'Template');
+    if (templateDoc) targetDocId = templateDoc.docId;
+
     const { supported, results } = await validateSignedContractPdf(file, templateId);
     if (!supported) {
-      newDoc.missingNote = 'Automatic verification isn\'t available for this template/file type yet — please review manually.';
-      await flagDocumentCorrection(client.id, newDoc.name, newDoc.missingNote);
-      showToast('warning', `${file.name} uploaded — automatic verification not available for this template, flagged for manual review.`);
+      missingNote = 'Automatic verification isn\'t available for this template/file type yet — please review manually.';
+      pendingCorrections.push({ docName: file.name, issue: missingNote });
     } else {
       const failed = results.filter(r => !r.ok);
       if (failed.length) {
-        newDoc.missingNote = 'Automatic check found issues: ' + failed.map(r => r.label).join('; ') + '.';
+        missingNote = 'Automatic check found issues: ' + failed.map(r => r.label).join('; ') + '.';
         for (const r of failed) {
-          await flagDocumentCorrection(client.id, newDoc.name, `${r.label}: ${contractCheckFailureReason(r, templateId)}`);
+          pendingCorrections.push({
+            docName: file.name,
+            issue: `${r.label}: ${contractCheckFailureReason(r, templateId)}`,
+            page: r.page ? `Page ${r.page}` : undefined,
+          });
         }
-        showToast('warning', `${file.name} uploaded, but ${failed.length} check(s) failed — flagged for correction.`);
       }
     }
   }
 
-  client.documents.push(newDoc);
+  // Real persistence — the file actually lands on disk and the document
+  // entry it belongs to gets its filePath (and version history) updated.
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('name', file.name);
+  formData.append('type', docType);
+  if (targetDocId) formData.append('docId', targetDocId);
+
+  let uploadedDocId = targetDocId;
+  try {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API_BASE}/clients/${client.id}/documents/upload`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData,
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result?.error || 'Upload failed');
+    uploadedDocId = result.docId;
+    // The backend response carries the full, authoritative client record —
+    // adopt it wholesale so State stays in sync with what was actually saved.
+    Object.assign(client, normalizeClientRecord(result.client));
+  } catch (err) {
+    showToast('error', `Failed to save the uploaded file: ${err.message}`);
+    return;
+  }
+
+  for (const c of pendingCorrections) {
+    await flagDocumentCorrection(client.id, uploadedDocId, c.docName, c.issue, c.page);
+  }
+  if (missingNote) {
+    showToast('warning', `${file.name} uploaded, but flagged for correction: ${missingNote}`);
+  }
+
   const submissions = ensureClientSubmissionBucket(client.id);
   submissions.unshift({
     id: `sub-${Date.now()}`,
     name: file.name,
     date: new Date().toISOString().slice(0,10),
     status: 'pending',
-    size: newDoc.size
+    size: (file.size/1024/1024).toFixed(1)+' MB',
   });
   client.progress = Math.min(client.progress + 10, 95);
-  addClientAudit(client.id, `Document uploaded: ${file.name}`, 'uploaded');
-  if (!newDoc.missingNote) showToast('success', `${file.name} uploaded successfully.`);
+  if (!missingNote) showToast('success', `${file.name} uploaded successfully.`);
   if (State.currentPage === 'client-upload') {
     renderClientUpload();
     return;

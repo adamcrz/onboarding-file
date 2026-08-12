@@ -113,7 +113,7 @@ test.describe('Signed-contract upload flow (full UI, RM role)', () => {
     await uploadSignedContract(page, 'test_fail.pdf', 'en-disc-all-in');
 
     const toast = await page.evaluate(() => document.querySelector('.toast')?.textContent || '');
-    expect(toast).toContain('check(s) failed');
+    expect(toast).toContain('flagged for correction');
 
     await page.click('#nav-kyc-corrections');
     await page.waitForTimeout(300);

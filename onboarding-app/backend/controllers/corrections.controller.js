@@ -176,12 +176,12 @@ exports.listDocumentCorrections = async (req, res) => {
 // Called automatically by upload-time validation (missing signature stamp,
 // failed checkbox/initials check) as well as manual flags.
 exports.createDocumentCorrection = async (req, res) => {
-  const { clientId, docName, issue } = req.body;
+  const { clientId, docId, docName, issue, page } = req.body;
   if (!clientId || !docName || !issue) {
     return res.status(400).json({ error: 'clientId, docName and issue are required' });
   }
   try {
-    const item = await DocumentCorrection.create({ clientId, docName, issue, status: 'pending' });
+    const item = await DocumentCorrection.create({ clientId, docId, docName, issue, page, status: 'pending' });
     res.json(item);
   } catch (err) {
     res.status(500).json({ error: err.message });

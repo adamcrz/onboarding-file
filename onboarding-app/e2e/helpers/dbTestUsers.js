@@ -36,4 +36,23 @@ async function deleteAccountByEmailAndRole(email, role) {
   return !!user;
 }
 
-module.exports = { deleteE2eTestUsers, deleteAccountByEmailAndRole };
+// Deletes clients whose email matches a given pattern (used by the file-
+// storage/document-upload spec, which creates real client cases + real files
+// on disk via /contracts/invite rather than mocking anything) — also removes
+// whatever it uploaded under backend/uploads/<clientId> so test runs don't
+// leave real files behind.
+async function deleteClientsByEmailPattern(pattern) {
+  const fs = require('fs');
+  await mongoose.connect(process.env.MONGO_URI);
+  const clients = await Client.find({ email: pattern });
+  for (const c of clients) {
+    const uploadDir = path.join(__dirname, '../../backend/uploads', c.clientId);
+    if (fs.existsSync(uploadDir)) fs.rmSync(uploadDir, { recursive: true, force: true });
+  }
+  const ids = clients.map((c) => c._id);
+  if (ids.length) await Client.deleteMany({ _id: { $in: ids } });
+  await mongoose.disconnect();
+  return ids.length;
+}
+
+module.exports = { deleteE2eTestUsers, deleteAccountByEmailAndRole, deleteClientsByEmailPattern };

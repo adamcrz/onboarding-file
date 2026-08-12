@@ -1,5 +1,17 @@
 const mongoose = require('mongoose');
 
+// A prior upload for this same document slot, kept so the full history of
+// what was originally submitted vs. what replaced it stays reconstructable —
+// a corrected re-upload replaces `filePath` on the parent but pushes the
+// version it's replacing here first, it never creates an unrelated document.
+const documentVersionSchema = new mongoose.Schema({
+  filePath:   { type: String },
+  uploadedBy: { type: String },
+  date:       { type: String },
+  size:       { type: String },
+  status:     { type: String },
+}, { _id: false, timestamps: true });
+
 const documentSchema = new mongoose.Schema({
   docId:             { type: String },
   clientId:          { type: String },
@@ -15,6 +27,7 @@ const documentSchema = new mongoose.Schema({
   missingNote:       { type: String },
   filePath:          { type: String },
   expiryDate:        { type: String },
+  versions:          [documentVersionSchema],
 }, { timestamps: true });
 
 const auditSchema = new mongoose.Schema({
