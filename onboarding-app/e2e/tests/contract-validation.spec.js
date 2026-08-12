@@ -141,4 +141,76 @@ test.describe('Signed-contract upload flow (full UI, RM role)', () => {
     const bodyText = await page.locator('#corrtab-docs').innerText();
     expect(bodyText).not.toContain('test_pass.pdf');
   });
+
+  test('re-uploading a corrected signed contract auto-resolves the prior correction for that same document', async ({ page, request }) => {
+    // The shared dev client this describe block's beforeEach lands on has
+    // accumulated years of ad hoc manual-test debris (dozens of stale
+    // test_fail.pdf corrections), so a generic "does the list still mention
+    // X" assertion would never be reliable there. Use a dedicated, disposable
+    // client created fresh via the real API instead, and jump straight to it.
+    const loginRes = await request.post('/api/auth/login', { data: { email: 'rm@demo.com', password: 'Demo1234!', role: 'rm' } });
+    const { token } = await loginRes.json();
+    const clientEmail = `autoresolve-${Date.now()}@e2e.local`;
+    const inviteRes = await request.post('/api/contracts/invite', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        clientName: 'Autoresolve Test', clientEmail, templateId: 'en-disc-all-in', templateName: 'Discretionary All-In',
+        fieldValues: { client_type: 'individual' }, createClientAccount: false, requiredDocuments: [],
+      },
+    });
+    expect(inviteRes.ok()).toBe(true);
+    const clientsRes = await request.get('/api/clients', { headers: { Authorization: `Bearer ${token}` } });
+    const newClient = (await clientsRes.json()).find((c) => c.email === clientEmail);
+    expect(newClient).toBeTruthy();
+
+    try {
+      // The page's State.clients was populated by the beforeEach's login,
+      // before this client existed server-side — refresh it first so
+      // openClientDetail can actually find the new record.
+      await page.evaluate(() => refreshClients());
+      await page.waitForTimeout(300);
+      await page.evaluate((id) => openClientDetail(id), newClient.clientId);
+      await page.waitForTimeout(400);
+      await page.evaluate(() => switchTab('docs'));
+      await page.waitForTimeout(300);
+
+      await uploadSignedContract(page, 'test_fail.pdf', 'en-disc-all-in');
+      let toast = await page.evaluate(() => document.querySelector('.toast')?.textContent || '');
+      expect(toast).toContain('flagged for correction');
+
+      // The UI keeps resolved corrections visible as history (badge flips
+      // to "Corrected" rather than the row disappearing), so verify the
+      // actual record state via the API rather than scraping table text.
+      let corrections = await (await request.get('/api/corrections/documents', { headers: { Authorization: `Bearer ${token}` } })).json();
+      let mine = corrections.filter((c) => c.clientId === newClient.clientId);
+      expect(mine.length).toBeGreaterThan(0);
+      expect(mine.every((c) => c.status === 'pending')).toBe(true);
+
+      // Same client, same document slot (Signed Contract always targets the
+      // existing Contract Package doc) — a corrected re-upload must close
+      // out the stale issue rather than leaving it sitting open forever.
+      await page.evaluate((id) => openClientDetail(id), newClient.clientId);
+      await page.waitForTimeout(400);
+      await page.evaluate(() => switchTab('docs'));
+      await page.waitForTimeout(300);
+      await uploadSignedContract(page, 'test_pass.pdf', 'en-disc-all-in');
+      // Two toasts can coexist in the DOM briefly (each lingers ~4s before
+      // auto-dismissing) — take the most recent one, not the first match.
+      toast = await page.evaluate(() => {
+        const all = document.querySelectorAll('.toast');
+        return all[all.length - 1]?.textContent || '';
+      });
+      expect(toast).toContain('uploaded successfully');
+
+      corrections = await (await request.get('/api/corrections/documents', { headers: { Authorization: `Bearer ${token}` } })).json();
+      mine = corrections.filter((c) => c.clientId === newClient.clientId);
+      // The stale issues from the failing upload are auto-closed, and the
+      // passing re-upload introduces no new ones — nothing should be left open.
+      expect(mine.length).toBeGreaterThan(0);
+      expect(mine.every((c) => c.status === 'corrected')).toBe(true);
+    } finally {
+      const { deleteClientsByEmailPattern } = require('../helpers/dbTestUsers');
+      await deleteClientsByEmailPattern(clientEmail);
+    }
+  });
 });

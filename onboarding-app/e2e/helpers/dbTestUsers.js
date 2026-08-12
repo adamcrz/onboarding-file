@@ -8,6 +8,8 @@ require('dotenv').config({ path: path.join(__dirname, '../../backend/.env') });
 const mongoose = require(path.join(__dirname, '../../backend/node_modules/mongoose'));
 const User = require('../../backend/models/User');
 const Client = require('../../backend/models/Client');
+const KycCorrection = require('../../backend/models/KycCorrection');
+const DocumentCorrection = require('../../backend/models/DocumentCorrection');
 
 async function deleteE2eTestUsers() {
   await mongoose.connect(process.env.MONGO_URI);
@@ -40,7 +42,10 @@ async function deleteAccountByEmailAndRole(email, role) {
 // storage/document-upload spec, which creates real client cases + real files
 // on disk via /contracts/invite rather than mocking anything) — also removes
 // whatever it uploaded under backend/uploads/<clientId> so test runs don't
-// leave real files behind.
+// leave real files behind. Also deletes their KYC/document corrections:
+// clientId (e.g. "CLT-0003") is a recycled sequential string, not a stable
+// foreign key, so leaving orphaned corrections behind would silently
+// misattach them to whichever future client happens to land on the same id.
 async function deleteClientsByEmailPattern(pattern) {
   const fs = require('fs');
   await mongoose.connect(process.env.MONGO_URI);
@@ -50,6 +55,11 @@ async function deleteClientsByEmailPattern(pattern) {
     if (fs.existsSync(uploadDir)) fs.rmSync(uploadDir, { recursive: true, force: true });
   }
   const ids = clients.map((c) => c._id);
+  const clientIds = clients.map((c) => c.clientId);
+  if (clientIds.length) {
+    await KycCorrection.deleteMany({ clientId: { $in: clientIds } });
+    await DocumentCorrection.deleteMany({ clientId: { $in: clientIds } });
+  }
   if (ids.length) await Client.deleteMany({ _id: { $in: ids } });
   await mongoose.disconnect();
   return ids.length;

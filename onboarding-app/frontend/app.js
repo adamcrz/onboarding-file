@@ -2355,6 +2355,23 @@ async function flagDocumentCorrection(clientId, docId, docName, issue, page) {
   }
 }
 
+// Every re-upload of the same document slot re-runs validation from
+// scratch, so whatever was open against the PREVIOUS version of the file is
+// stale the moment a new one lands — close it out here before any fresh
+// issues from this upload get flagged, so the correction list always
+// reflects only the current file's real problems, not an ever-growing pile.
+async function resolvePriorDocumentCorrections(clientId, docId) {
+  try {
+    const all = await apiFetch('GET', '/corrections/documents');
+    const stale = all.filter(c => c.clientId === clientId && c.docId === docId && (c.status === 'pending' || c.status === 'resubmitted'));
+    for (const item of stale) {
+      await apiFetch('POST', `/corrections/documents/${item._id}/status`, { status: 'corrected' });
+    }
+  } catch (err) {
+    console.warn('Failed to auto-resolve prior document corrections:', err.message);
+  }
+}
+
 /* ============================================================
    SIGNED CONTRACT VALIDATION — checks a client's uploaded, physically-signed
    contract scan for required initials/checkboxes/signatures, the same way
@@ -2553,6 +2570,9 @@ async function simulateUpload(file) {
     return;
   }
 
+  if (docType === 'Signed Contract' && targetDocId) {
+    await resolvePriorDocumentCorrections(client.id, uploadedDocId);
+  }
   for (const c of pendingCorrections) {
     await flagDocumentCorrection(client.id, uploadedDocId, c.docName, c.issue, c.page);
   }
