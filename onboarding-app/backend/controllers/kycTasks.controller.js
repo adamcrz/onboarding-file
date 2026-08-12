@@ -60,7 +60,7 @@ exports.completeKycTask = async (req, res) => {
         // Fold the task's answers into the ONE shared KYC record (never a
         // separate copy), then let the gap-check + submission flow move any
         // now-filled fields out of 'pending'/'needs_correction'.
-        const mapped = mapTaskAnswersToKyc(task.answers || {});
+        const mapped = mapTaskAnswersToKyc(task.answers || {}, client.type);
         client.kyc = { ...(client.kyc || {}), ...mapped };
         client.kycSubmittedBy = submittedBy;
         client.kycAwaitingVerification = submittedBy !== 'compliance';

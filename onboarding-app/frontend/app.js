@@ -1130,8 +1130,8 @@ function renderComplianceDashboard() {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
                     KYC Data
                   </div>
-                  <button class="btn-secondary btn-sm" onclick="exportKycData('${c.id}')">
-                    Export .xlsx
+                  <button class="btn-secondary btn-sm" onclick="downloadKycPdf('${c.id}')">
+                    Download PDF
                   </button>
                 </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;">
@@ -1152,12 +1152,29 @@ function renderComplianceDashboard() {
   `;
 }
 
-function exportKycData(clientId) {
-  const c = State.clients.find(c => c.id === clientId);
-  if (!c) return;
-  const filename = c.name.replace(/\s+/g, '_');
-  c.auditTrail.push({ action: 'KYC data exported (.xlsx)', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'submitted' });
-  showToast('success', `KYC_Data_${filename}.xlsx downloaded.`);
+// Downloads a real PDF summary of the client's KYC record — the .xlsx export
+// only has Question-Ident mappings for 3 fields today, so this is the
+// working option in the meantime (see kycPdfExport.service.js).
+async function downloadKycPdf(clientId) {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/kyc/export/pdf/${clientId}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({})))?.error || 'Export failed');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `KYC_${clientId}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    const c = State.clients.find(c => c.id === clientId);
+    if (c) c.auditTrail.push({ action: 'KYC data exported (.pdf)', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'submitted' });
+    showToast('success', 'KYC PDF downloaded.');
+  } catch (err) {
+    showToast('error', err.message || 'Failed to download KYC PDF.');
+  }
 }
 
 function exportToAssetmax(clientId) {
@@ -1243,6 +1260,25 @@ function renderKycFill() {
   const isRM = State.currentRole === 'rm';
   const fillerLabel = isRM ? `Filling on behalf of: <strong>${task.clientName}</strong>` : `Please complete all required fields below.`;
 
+  // Prefer the client's real obligatory-field list (works for every client
+  // type, and already matches client.kyc's own keys) over the task's
+  // KYC_TEMPLATE snapshot, which only ever modelled Individual clients.
+  const client = task.clientId ? resolveKycClient(task.clientId) : null;
+  const useRequiredFields = client && REQUIRED_KYC_FIELDS[client.type];
+
+  let sections;
+  if (useRequiredFields) {
+    const kyc = client.kyc || {};
+    const pageIndex = new Map();
+    sections = [];
+    REQUIRED_KYC_FIELDS[client.type].forEach(([key, label, page]) => {
+      if (!pageIndex.has(page)) { pageIndex.set(page, sections.length); sections.push({ title: page, fields: [] }); }
+      sections[pageIndex.get(page)].fields.push({ id: key, label, type: 'text', required: true, value: kyc[key] || '' });
+    });
+  } else {
+    sections = task.sections;
+  }
+
   content.innerHTML = `
     <div class="page-header">
       <h1>KYC Questionnaire</h1>
@@ -1250,11 +1286,11 @@ function renderKycFill() {
     </div>
 
     <div class="info-box" style="margin-bottom:20px;">
-      <p>Your information is processed strictly for compliance purposes and kept confidential.</p>
+      <p>Your information is processed strictly for compliance purposes and kept confidential. You can submit what you know now and come back to fill in the rest later.</p>
     </div>
 
     <form id="kyc-fill-form">
-      ${task.sections.map(sec => `
+      ${sections.map(sec => `
         <div class="card" style="margin-bottom:16px;">
           <div class="card-header" style="padding:12px 16px;">
             <div style="font-size:14px;font-weight:700;">${sec.title}</div>
@@ -1264,18 +1300,18 @@ function renderKycFill() {
               <div class="form-group" style="margin-bottom:14px;">
                 <label style="font-size:12px;font-weight:600;">${f.label}${f.required?' <span style="color:var(--accent-red);">*</span>':''}</label>
                 ${f.type === 'select'
-                  ? `<select name="${f.id}" ${f.required?'required':''} style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
+                  ? `<select name="${f.id}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
                       <option value="">— select —</option>
-                      ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
+                      ${(f.options||[]).map(o=>`<option value="${o}" ${f.value===o?'selected':''}>${o}</option>`).join('')}
                     </select>`
                   : f.type === 'textarea'
-                  ? `<textarea name="${f.id}" rows="3" ${f.required?'required':''} placeholder="${f.label}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);resize:vertical;"></textarea>`
+                  ? `<textarea name="${f.id}" rows="3" placeholder="${f.label}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);resize:vertical;">${f.value||''}</textarea>`
                   : f.type === 'yesno'
                   ? `<div style="display:flex;gap:16px;margin-top:4px;">
-                      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="${f.id}" value="yes" ${f.required?'required':''}> Yes</label>
-                      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="${f.id}" value="no"> No</label>
+                      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="${f.id}" value="yes" ${f.value==='yes'?'checked':''}> Yes</label>
+                      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="${f.id}" value="no" ${f.value==='no'?'checked':''}> No</label>
                     </div>`
-                  : `<input type="${f.type}" name="${f.id}" ${f.required?'required':''} placeholder="${f.label}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">`
+                  : `<input type="${f.type}" name="${f.id}" placeholder="${f.label}" value="${String(f.value||'').replace(/"/g,'&quot;')}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">`
                 }
               </div>
             `).join('')}
@@ -1811,14 +1847,14 @@ function renderClientOverviewTab(client) {
 }
 
 function renderClientKycTab(client) {
-  // The KYC Details tab is always a plain read-only view of the single shared
-  // KYC record — the full set of obligatory fields, whichever are filled or
-  // not. Editing only ever happens through KYC Corrections (gold/editable,
-  // clientKycEditableFormHTML), never here.
-  if (REQUIRED_KYC_FIELDS[client.type]) {
-    return clientKycReadOnlyHTML(client);
+  // Always a plain read-only view of the single shared KYC record. First-time
+  // completion happens through KYC Tasks ("Fill KYC Form"); once submitted,
+  // any later fix happens through KYC Corrections. Neither editing flow lives
+  // on this tab — it only ever displays what's already been submitted.
+  if (!REQUIRED_KYC_FIELDS[client.type]) {
+    return `<div class="card"><div class="card-body"><p class="text-muted">KYC details not available.</p></div></div>`;
   }
-  return `<div class="card"><div class="card-body"><p class="text-muted">KYC details not available.</p></div></div>`;
+  return clientKycReadOnlyHTML(client);
 }
 
 // Plain read-only display of every obligatory KYC field for this client type,
@@ -1853,7 +1889,14 @@ function clientKycReadOnlyHTML(client) {
         <a href="#" onclick="navigateTo('kyc-corrections');return false;" style="color:inherit;font-weight:600;">Resolve in KYC Corrections →</a>
       </span>
     </div>
-  ` : '');
+  ` : (!client.kycSubmittedBy ? `
+    <div class="kyc-verify-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>No KYC submitted yet.
+        <a href="#" onclick="navigateTo('kyc-tasks');return false;" style="color:inherit;font-weight:600;">Complete via KYC Tasks →</a>
+      </span>
+    </div>
+  ` : ''));
 
   return `
     ${verifyBanner}
@@ -4773,6 +4816,17 @@ async function renderKycCorrections() {
   renderKycCorrectionsList();
 }
 
+// Groups correction items by mandate (client) so each renders as its own box
+// instead of one long flat table mixing every client's fields together.
+function kycGroupsByMandate(items) {
+  const byClient = new Map();
+  items.forEach(c => {
+    if (!byClient.has(c.clientId)) byClient.set(c.clientId, []);
+    byClient.get(c.clientId).push(c);
+  });
+  return Array.from(byClient.entries());
+}
+
 function renderKycCorrectionsList() {
   const content = document.getElementById('page-content');
   const scopeToOwn = c => State.currentRole !== 'rm' || State.clients.find(cl => cl.id === c.clientId)?.rm === currentRmName();
@@ -4805,47 +4859,53 @@ function renderKycCorrectionsList() {
     </div>
 
     <div id="corrtab-kyc" class="tab-content active">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">KYC Correction Items</div>
-          <div class="card-subtitle">${kycItems.filter(c=>c.status!=='corrected').length} open · ${kycItems.filter(c=>c.status==='corrected').length} corrected</div>
-        </div>
-        <div class="card-body" style="padding:0;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Mandate ID</th>
-                <th>Client</th>
-                <th>KYC Issue</th>
-                <th>Page Ref.</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${kycItems.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">No KYC corrections.</td></tr>` : kycItems.map(c => `
-                <tr style="${c.status!=='corrected'?'background:rgba(249,115,22,0.04);':''}cursor:pointer;" onclick="openKycCorrectionDetail('${c.id}')">
-                  <td style="font-weight:600;color:var(--accent-purple-light);">${c.mandateId}</td>
-                  <td>${c.clientName}</td>
-                  <td style="color:${c.status!=='corrected'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
-                  <td><span style="color:var(--accent-orange);font-size:12px;">${c.page}</span></td>
-                  <td>
-                    <span class="status-badge ${kycStatusMeta[c.status]?.badge || 'status-pending'}">
-                      ${kycStatusMeta[c.status]?.label || c.status}
-                    </span>
-                  </td>
-                  <td onclick="event.stopPropagation()">
-                    ${c.status==='resubmitted' && isCompliance(State.currentRole) ? `
-                      <button class="btn-success btn-xs" onclick="updateKycCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>
-                      <button class="btn-secondary btn-xs" onclick="updateKycCorrectionStatus('${c.id}','needs_correction')">Reject</button>
-                    ` : ''}
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      ${kycItems.length === 0 ? `
+        <div class="card"><div class="card-body"><p style="text-align:center;color:var(--text-muted);padding:20px;">No KYC corrections.</p></div></div>
+      ` : kycGroupsByMandate(kycItems).map(([clientId, items]) => {
+        const openCount = items.filter(c=>c.status!=='corrected').length;
+        const correctedCount = items.filter(c=>c.status==='corrected').length;
+        return `
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-header">
+              <div>
+                <div class="card-title">${items[0].mandateId} — ${items[0].clientName}</div>
+                <div class="card-subtitle">${openCount} open · ${correctedCount} corrected</div>
+              </div>
+            </div>
+            <div class="card-body" style="padding:0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>KYC Issue</th>
+                    <th>Page Ref.</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${items.map(c => `
+                    <tr style="${c.status!=='corrected'?'background:rgba(249,115,22,0.04);':''}cursor:pointer;" onclick="openKycCorrectionDetail('${c.id}')">
+                      <td style="color:${c.status!=='corrected'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
+                      <td><span style="color:var(--accent-orange);font-size:12px;">${c.page}</span></td>
+                      <td>
+                        <span class="status-badge ${kycStatusMeta[c.status]?.badge || 'status-pending'}">
+                          ${kycStatusMeta[c.status]?.label || c.status}
+                        </span>
+                      </td>
+                      <td onclick="event.stopPropagation()">
+                        ${c.status==='resubmitted' && isCompliance(State.currentRole) ? `
+                          <button class="btn-success btn-xs" onclick="updateKycCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>
+                          <button class="btn-secondary btn-xs" onclick="updateKycCorrectionStatus('${c.id}','needs_correction')">Reject</button>
+                        ` : ''}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }).join('')}
     </div>
 
     <div id="corrtab-docs" class="tab-content">
@@ -4978,7 +5038,11 @@ function resolveKycClient(clientId) {
 // (pending or needs_correction) — that renders empty, gold, and editable, and
 // is only ever resolved by filling in every gold field on its page and
 // resubmitting that page as a unit.
-function clientKycEditableFormHTML(client) {
+// firstTime=true renders every field as a plain (non-gold) editable input —
+// used for a client's very first KYC submission, before anything has ever
+// been flagged missing. Otherwise only fields with an open correction are
+// editable (gold), matching the normal correction-resolution flow.
+function clientKycEditableFormHTML(client, firstTime = false) {
   if (!client.kyc) client.kyc = {};
   const fields = REQUIRED_KYC_FIELDS[client.type] || [];
   const k = client.kyc;
@@ -4995,7 +5059,7 @@ function clientKycEditableFormHTML(client) {
     pages[pageIndex.get(page)].fields.push([key, label]);
   });
 
-  const canFlag = isCompliance(State.currentRole);
+  const canFlag = isCompliance(State.currentRole) && !firstTime;
   const canResubmit = State.currentRole === 'rm' || isCompliance(State.currentRole) || State.currentRole === 'client';
 
   const verifyBanner = client.kycAwaitingVerification ? `
@@ -5010,18 +5074,26 @@ function clientKycEditableFormHTML(client) {
   return `
     ${verifyBanner}
     ${pages.map(({ page, fields: pageFields }) => {
-      const hasOpen = pageFields.some(([key]) => openByKey.has(key));
+      const hasOpen = firstTime || pageFields.some(([key]) => openByKey.has(key));
       return `
         <div class="card" style="margin-bottom:16px;">
           <div class="card-header">
             <div class="card-title">${page}</div>
-            ${hasOpen && canResubmit ? `<button class="btn-primary btn-sm" onclick="resubmitKycPage('${client.id}','${page.replace(/'/g,"\\'")}')">Resubmit Section</button>` : ''}
+            ${hasOpen && canResubmit ? `<button class="btn-primary btn-sm" onclick="resubmitKycPage('${client.id}','${page.replace(/'/g,"\\'")}')">${firstTime ? 'Submit Section' : 'Resubmit Section'}</button>` : ''}
           </div>
           <div class="card-body">
             <div class="cb-fields-grid">
               ${pageFields.map(([key, label]) => {
                 const correction = openByKey.get(key);
                 const val = k[key] || '';
+                if (firstTime) {
+                  return `
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label for="clientkyc_${key}">${label}</label>
+                      <input type="text" id="clientkyc_${key}" data-page="${page.replace(/"/g,'&quot;')}" value="${String(val).replace(/"/g,'&quot;')}" placeholder="Enter ${label}…">
+                    </div>
+                  `;
+                }
                 if (correction) {
                   return `
                     <div class="form-group" style="margin-bottom:0;">
@@ -5067,20 +5139,28 @@ function rerenderKycView() {
   else if (State.currentPage === 'dashboard' && State.currentRole === 'client') renderClientDashboard();
 }
 
-async function resubmitKycPage(clientId, page) {
-  const inputs = Array.from(document.querySelectorAll('input.kyc-field-missing')).filter(el => el.dataset.page === page);
+async function resubmitKycPage(clientId, page, firstTime) {
+  const inputs = Array.from(document.querySelectorAll('input[data-page]')).filter(el => el.dataset.page === page);
   const values = {};
   inputs.forEach(el => {
     const key = el.id.replace('clientkyc_', '');
     values[key] = el.value.trim();
   });
-  if (Object.values(values).some(v => !v)) {
+  // A correction resolution is about fixing specifically-flagged fields, so
+  // all of them must be filled in before resubmitting. A first-time
+  // submission can be partial — whatever's still blank just becomes a
+  // tracked gap afterward instead of blocking submission outright.
+  if (!firstTime && Object.values(values).some(v => !v)) {
     showToast('warning', `Please fill in every highlighted field in this section before resubmitting.`);
+    return;
+  }
+  if (firstTime && Object.values(values).every(v => !v)) {
+    showToast('warning', `Please fill in at least one field before submitting.`);
     return;
   }
   try {
     await apiFetch('POST', '/corrections/kyc/resubmit-section', { clientId, values });
-    showToast('success', 'Section resubmitted.');
+    showToast('success', firstTime ? 'Section submitted.' : 'Section resubmitted.');
     if (State.currentRole === 'client') {
       const updated = await apiFetch('GET', '/clients/me').catch(() => null);
       if (updated) State.myClientProfile = { ...updated, id: updated.clientId };

@@ -3,7 +3,7 @@ const DocumentCorrection = require('../models/DocumentCorrection');
 const Client             = require('../models/Client');
 const { notify }         = require('../services/notify.service');
 const { REQUIRED_KYC_FIELDS } = require('../config/kycRequiredFields');
-const { submitKycFields, flagFieldIncorrect, refreshVerificationFlag } = require('../services/kycGapCheck.service');
+const { submitKycFields, flagFieldIncorrect, refreshVerificationFlag, syncKycCorrectionsForClient } = require('../services/kycGapCheck.service');
 
 const isComplianceRole = (role) => role === 'compliance' || role === 'compliance_external' || role === 'admin';
 
@@ -114,6 +114,10 @@ exports.resubmitKycSection = async (req, res) => {
       type: 'submitted',
     });
     await client.save();
+    // First submission (or any later one) is what makes "still missing"
+    // meaningful — detect gaps now, across every field, not just the ones
+    // just submitted, then move whichever of those had an open correction.
+    await syncKycCorrectionsForClient(client);
     await submitKycFields(client, Object.keys(filteredValues), submittedBy);
 
     res.json(client);

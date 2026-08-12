@@ -101,12 +101,20 @@ const KYC_TEMPLATE_FIELD_MAP = {
 };
 const KYC_TEMPLATE_ADDRESS_FIELDS = ['f_addr1', 'f_addr2', 'f_city', 'f_zip', 'f_ctry'];
 
-// Folds a completed KYC Task's answers into the REQUIRED_KYC_FIELDS.Individual
-// shape, ready to merge into client.kyc. Only touches keys it has a real
-// mapping for — anything template-only (title, PEP, employer, …) stays in the
-// task's own answers, it just isn't part of the obligatory-fields gap check.
-function mapTaskAnswersToKyc(answers) {
+// Folds a completed KYC Task's answers into the REQUIRED_KYC_FIELDS shape,
+// ready to merge into client.kyc. Two answer shapes are handled: the legacy
+// KYC_TEMPLATE one (f_firstname, f_addr1, …, Individual-only, needs the
+// mapping below) and the current one the fill form now actually sends, whose
+// field names already are REQUIRED_KYC_FIELDS keys for the client's own type
+// (firstName, legalName, …) — those pass through unchanged. Anything
+// template-only with no mapping (title, PEP, employer, …) is dropped here;
+// it isn't part of the obligatory-fields gap check.
+function mapTaskAnswersToKyc(answers, clientType) {
   const kyc = {};
+  const validKeys = new Set((REQUIRED_KYC_FIELDS[clientType] || []).map(f => f.key));
+  for (const [key, value] of Object.entries(answers)) {
+    if (validKeys.has(key) && value !== undefined && value !== '') kyc[key] = value;
+  }
   for (const [templateKey, kycKey] of Object.entries(KYC_TEMPLATE_FIELD_MAP)) {
     if (answers[templateKey] !== undefined && answers[templateKey] !== '') kyc[kycKey] = answers[templateKey];
   }

@@ -4,7 +4,6 @@ const User = require('../models/User');
 const Client = require('../models/Client');
 const DocumentRequirement = require('../models/DocumentRequirement');
 const { sendClientInviteEmail } = require('../services/email.service');
-const { syncKycCorrectionsForClient } = require('../services/kycGapCheck.service');
 
 const CONTRACTS_DIR = path.join(__dirname, '..');
 const APPENDIX_DIR  = path.join(__dirname, '..', '..', 'Form A T S');
@@ -1018,7 +1017,7 @@ exports.sendInvite = async (req, res) => {
 
     const client = await upsertClientCase({
       email, clientName, clientType, rm: effectiveRmName, country: (fieldValues || {}).client_country,
-      status: 'in-progress', progress: 40, docEntries, auditEntry,
+      status: 'pending', progress: 40, docEntries, auditEntry,
     });
 
     const otp = willCreateAccount ? await createClientInviteAndEmail(clientName, clientEmail, templateId) : null;
@@ -1108,7 +1107,9 @@ async function upsertClientCase({ email, clientName, clientType, rm, country, st
       documents: docEntries, auditTrail: [auditEntry],
     });
   }
-  await syncKycCorrectionsForClient(client);
+  // No gap-check here — a client (new or re-invited) hasn't attempted their
+  // KYC yet at this point, so nothing should read as "missing" until their
+  // first real submission (see completeKycTask / resubmitKycSection).
   return client;
 }
 

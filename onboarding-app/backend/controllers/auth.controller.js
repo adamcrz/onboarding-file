@@ -3,7 +3,6 @@ const jwt    = require('jsonwebtoken');
 const User   = require('../models/User');
 const Client = require('../models/Client');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email.service');
-const { syncKycCorrectionsForClient } = require('../services/kycGapCheck.service');
 
 const SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
@@ -53,14 +52,16 @@ const register = async (req, res) => {
 
     if (user.role === 'client') {
       const clientId = await Client.generateClientId();
-      const client = await Client.create({
+      // No gap-check here — a brand new client hasn't attempted their KYC
+      // yet, so nothing should read as "missing" until their first
+      // submission (see completeKycTask / resubmitKycSection).
+      await Client.create({
         clientId,
         userId: user._id,
         email:  user.email,
         name:   user.name,
         status: 'pending',
       });
-      await syncKycCorrectionsForClient(client);
     }
 
     let emailPreviewUrl = null;
