@@ -1,6 +1,17 @@
 const { test, expect } = require('@playwright/test');
 const { readTableRows } = require('../helpers/docxTable');
 
+// Contract generation is staff-only: the templates are the firm's own
+// paperwork, and generating on them is not something an anonymous caller
+// should be able to do. Sign in the way the other API specs do.
+async function staffToken(request) {
+  const res = await request.post('/api/auth/login', {
+    data: { email: 'compliance@demo.com', password: 'Demo1234!', role: 'compliance' },
+  });
+  expect(res.ok(), 'staff login failed').toBe(true);
+  return (await res.json()).token;
+}
+
 // The DE and EN "All-In" templates' currency allocation table had a broken
 // row: AUD and GBP shared a single malformed table row (label text missing
 // or swapped, values colored red as an editing leftover), so one of the two
@@ -22,7 +33,9 @@ const FIELD_VALUES = {
 // Contract Builder UI — silently drops any allocation entered for it.
 for (const [templateId, othersLabel] of [['de-all-in', 'Andere'], ['en-disc-all-in', 'Others']]) {
   test(`${templateId}: currency table has all 7 currencies, each with its own clean row`, async ({ request }) => {
+    const token = await staffToken(request);
     const res = await request.post(`/api/contracts/generate/${templateId}`, {
+      headers: { Authorization: `Bearer ${token}` },
       data: { fieldValues: FIELD_VALUES, fieldDefs: [] },
     });
     expect(res.ok()).toBe(true);
