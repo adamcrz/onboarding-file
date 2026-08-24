@@ -40,6 +40,16 @@ const documentSchema = new mongoose.Schema({
   missingNote:       { type: String },
   filePath:          filePathField,
   expiryDate:        { type: String },
+  // When this document was last taken out of the system. Together with an
+  // approved status it is what makes a file finished business: reviewed,
+  // signed off, and in the hands of whoever needed it — so the copy held in
+  // the database can be released and the archive relied on instead.
+  downloadedAt:      { type: Date },
+  downloadedBy:      { type: String },
+  // Set once the file has been dropped from the database. The record and the
+  // archive copy are untouched; this only says where to look for the bytes.
+  purgedFromStore:   { type: Boolean, default: false },
+  purgedAt:          { type: Date },
   versions:          [documentVersionSchema],
 }, { timestamps: true });
 
@@ -88,6 +98,12 @@ const clientSchema = new mongoose.Schema({
   status:     { type: String, default: 'pending' },
   rm:         { type: String },
   progress:   { type: Number, default: 0 },
+  // The final export — the point the mandate leaves the system as a finished
+  // package. Everything it contains is in the archive by then, so the copies
+  // held in the database can be released.
+  exportedAt:       { type: Date },
+  exportedBy:       { type: String },
+  filesReleasedAt:  { type: Date },
   country:    { type: String },
   industry:   { type: String },
   documents:  [documentSchema],

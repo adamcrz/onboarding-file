@@ -69,6 +69,23 @@ app.use((err, _req, res, _next) => {
 async function connectDB() {
   let uri = process.env.MONGO_URI;
 
+  // A settings file copied from the template but never filled in is the most
+  // likely first-run problem, and the driver's own message for it ("Invalid
+  // scheme...") reads like a bug in the app. Say what is actually wrong and
+  // what to do about it.
+  if (uri && !/^mongodb(\+srv)?:\/\//.test(uri.trim())) {
+    console.error('');
+    console.error('❌  The database address in backend/.env is not filled in.');
+    console.error('');
+    console.error(`    MONGO_URI is currently: ${uri.trim()}`);
+    console.error('');
+    console.error('    Open settings-template.txt in the SharePoint folder, replace the');
+    console.error('    two PASTE_HERE lines with the real values, then delete');
+    console.error('    backend\\.env on this PC and run "1 - INSTALL (run once).bat" again.');
+    console.error('');
+    process.exit(1);
+  }
+
   if (!uri) {
     // No MONGO_URI — spin up an in-process MongoDB (no install needed)
     try {

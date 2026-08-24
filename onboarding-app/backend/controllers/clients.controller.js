@@ -13,6 +13,7 @@ const { checkContractRequirementsFile, checkIdDocumentStampFile, inferContractTe
 const { replacePdfPageRange, extractPdfPages } = require('../services/pdfPageSplice.service');
 const { requirementsFor } = require('../config/contractRequirements');
 const { withMandateProgress, mandateProgress } = require('../services/mandateProgress.service');
+const fileStore = require('../services/fileStore.service');
 const { validateKycSubmission, missingKycFieldDefinitions } = require('../config/kycRequiredFields');
 const {
   mandateRiskFields: currentMandateRiskFields,
@@ -65,6 +66,9 @@ const createClient = async (req, res) => {
   try {
     const client = new Client(req.body);
     await client.save();
+    // Somewhere obvious to look for this mandate's paperwork from the moment
+    // the case exists, rather than only once the first file lands.
+    fileStore.ensureClientArchiveDir(client.clientId);
     res.status(201).json(client);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -169,6 +173,9 @@ const deleteClient = async (req, res) => {
       // at a client who no longer exists, and would read as belonging to the
       // new holder of a recycled id once one is issued.
       Notification.deleteMany({ clientId: client.clientId }),
+      // The shared store is keyed by the same clientId prefix, so the files go
+      // with the case rather than sitting in the database unreferenced.
+      fileStore.deleteClientFiles(client.clientId).catch(() => 0),
       Client.db.collection('kyctaskmigrationarchives').deleteMany({ clientRef: client._id }),
       Client.db.collection('kycmigrationmanualreviews').deleteMany({ clientRef: client._id }),
     ]);
@@ -294,6 +301,7 @@ async function runUploadChecks({ doc, type, templateId, expiryDate, mimeType, on
 
   if (type === 'ID Document') {
     const issues = [];
+    await fileStore.ensureLocalQuiet(doc.filePath);
     const hasStamp = await checkIdDocumentStampFile(doc.filePath, mimeType);
     if (hasStamp === false) {
       issues.push('Automatic check found no signature/stamp with date in the bottom-right corner — please re-upload a clearer scan.');
@@ -330,6 +338,7 @@ async function runUploadChecks({ doc, type, templateId, expiryDate, mimeType, on
       return { missingNote, pendingCorrections };
     }
 
+    await fileStore.ensureLocalQuiet(doc.filePath);
     const { supported, findings } = await checkContractRequirementsFile(doc.filePath, templateId, { onlyRuleIds });
     if (!supported) {
       missingNote = spec
@@ -443,6 +452,10 @@ const uploadDocument = async (req, res) => {
       client.documents.push(doc);
     }
 
+    // Into the shared store as well, so the file exists for every user of this
+    // database rather than only on the machine that received the upload.
+    await fileStore.putFile(req.file.path);
+
     let missingNote = '';
     let pendingCorrections = [];
     try {
@@ -533,6 +546,8 @@ const replaceDocumentPage = async (req, res) => {
 
     const doc = client.documents.find((d) => d.docId === req.params.docId);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
+    // Pull it down from the shared store if this machine has never held it.
+    await fileStore.ensureLocalQuiet(doc.filePath);
     if (!doc.filePath || !fs.existsSync(doc.filePath)) {
       return res.status(409).json({ error: 'This document has no existing file to splice a page into yet — upload the full document first' });
     }
@@ -560,6 +575,7 @@ const replaceDocumentPage = async (req, res) => {
     const uploadedBy = req.user.role === 'rm' ? 'RM' : req.user.role === 'client' ? 'Client' : 'Compliance';
     doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
     doc.filePath = splicedPath;
+    await fileStore.putFile(splicedPath);
     doc.uploadedBy = uploadedBy;
     doc.date = new Date().toISOString().slice(0, 10);
     doc.size = (splicedBuffer.length / 1024 / 1024).toFixed(1) + ' MB';
@@ -765,6 +781,7 @@ const uploadContractDraft = async (req, res) => {
         draft.versions.push({ filePath: draft.filePath, uploadedBy: draft.uploadedBy, date: draft.date, size: draft.size, status: draft.status });
       }
       draft.filePath = req.file.path;
+      await fileStore.putFile(req.file.path);
       draft.uploadedBy = uploadedBy;
       draft.date = dateLabel;
       draft.size = sizeLabel;
@@ -845,6 +862,7 @@ const submitContractFinal = async (req, res) => {
     if (!draft || !draft.filePath) {
       return res.status(409).json({ error: 'Upload a completed version before submitting for final download.' });
     }
+    await fileStore.ensureLocalQuiet(draft.filePath);
     if (!fs.existsSync(draft.filePath)) return res.status(409).json({ error: 'The uploaded version is missing on disk' });
 
     const openIssues = await DocumentCorrection.countDocuments({
@@ -861,6 +879,7 @@ const submitContractFinal = async (req, res) => {
     // and all of its history stay exactly as they are.
     const finalPath = path.join(path.dirname(draft.filePath), `${Date.now()}-final${path.extname(draft.filePath) || '.pdf'}`);
     fs.copyFileSync(draft.filePath, finalPath);
+    await fileStore.putFile(finalPath);
 
     let final = client.documents.find((d) => d.type === FINAL_TYPE);
     if (final) {
@@ -1117,7 +1136,17 @@ const downloadDocument = async (req, res) => {
     if (!canAccessClient(client, req.user)) return res.status(403).json({ error: 'Not authorised for this client' });
     const doc = client.documents.find(d => d.docId === req.params.docId);
     if (!doc || !doc.filePath) return res.status(404).json({ error: 'No file has been uploaded for this document yet' });
+    // The file may have been uploaded from another machine — fetch it from the
+    // shared store before deciding it is missing.
+    await fileStore.ensureLocalQuiet(doc.filePath);
     if (!fs.existsSync(doc.filePath)) return res.status(404).json({ error: 'File is missing on disk' });
+
+    // Record that it left the system. An approved document that has been
+    // downloaded is finished business, and its copy in the database can be
+    // released once the archive holds it — see scripts/purgeSettledFiles.js.
+    doc.downloadedAt = new Date();
+    doc.downloadedBy = req.user.role === 'rm' ? 'RM' : req.user.role === 'client' ? 'Client' : 'Compliance';
+    client.save().catch((err) => console.warn('Could not record the download:', err.message));
 
     res.download(doc.filePath, `${doc.name}${path.extname(doc.filePath)}`);
   } catch (err) {
@@ -1134,6 +1163,7 @@ const downloadFullPackage = async (req, res) => {
     if (!client) return res.status(404).json({ error: 'Client not found' });
     if (!canAccessClient(client, req.user)) return res.status(403).json({ error: 'Not authorised for this client' });
 
+    for (const d of client.documents) await fileStore.ensureLocalQuiet(d.filePath);
     const filesToZip = client.documents.filter(d => d.filePath && fs.existsSync(d.filePath));
     if (!filesToZip.length) return res.status(404).json({ error: 'No uploaded documents to package yet' });
 
@@ -1310,15 +1340,41 @@ const downloadMandateExport = async (req, res) => {
     if (!canAccessClient(client, req.user)) return res.status(403).json({ error: 'Not authorised for this client' });
 
     await refreshMandateRiskSchema();
+    // buildMandatePackage reads each document straight off the disk, so every
+    // file has to be present locally before it runs.
+    for (const d of (client.documents || [])) await fileStore.ensureLocalQuiet(d.filePath);
     const { buildMandatePackage } = require('../services/mandateExport.service');
     const { buffer, fileName, fileCount } = buildMandatePackage(client, currentMandateRiskFields());
 
+    const actor = String(req.user.email || req.user.name || 'Compliance');
     client.auditTrail.push({
       action: `Mandate exported (KYC + Mandatsrisiko sheets and ${fileCount} document${fileCount === 1 ? '' : 's'})`,
-      user: String(req.user.email || req.user.name || 'Compliance'),
+      user: actor,
       time: new Date().toLocaleString(),
       type: 'approved',
     });
+    client.exportedAt = new Date();
+    client.exportedBy = actor;
+
+    // The export is the mandate leaving the system as a finished package, so
+    // this is the point its files stop needing to be in the database. Each one
+    // is written to the archive and read back byte for byte before its copy
+    // here is dropped; anything that cannot be verified is kept. Downloads
+    // still work afterwards — they fall back to the archive.
+    const release = await fileStore.releaseClientFiles(client);
+    if (release.released) {
+      client.filesReleasedAt = new Date();
+      client.auditTrail.push({
+        action: `${release.released} file(s) archived and released from the database (${(release.bytes / 1048576).toFixed(2)} MB)`,
+        user: actor,
+        time: new Date().toLocaleString(),
+        type: 'uploaded',
+      });
+    }
+    if (release.kept.length) {
+      console.warn(`⚠  ${release.kept.length} file(s) kept in the database — no verified archive copy:`);
+      release.kept.forEach((k) => console.warn('   ', k));
+    }
     await client.save();
 
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);

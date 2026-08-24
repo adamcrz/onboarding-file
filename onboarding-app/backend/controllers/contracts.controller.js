@@ -7,6 +7,7 @@ const { sendClientInviteEmail } = require('../services/email.service');
 const { ensureKycTaskForClient } = require('../services/kycTask.service');
 const { assertKycTypeChangeAllowed } = require('../services/kycTypeIntegrity.service');
 const { clientUploadDir } = require('../config/paths');
+const fileStore = require('../services/fileStore.service');
 
 const CONTRACTS_DIR = path.join(__dirname, '..');
 const APPENDIX_DIR  = path.join(__dirname, '..', '..', 'Form A T S');
@@ -1040,6 +1041,9 @@ exports.sendInvite = async (req, res) => {
     // same server request. The frontend's follow-up call is now only an
     // idempotent compatibility call, so a task can never miss its client link.
     await ensureKycTaskForClient(client, effectiveRmName);
+    // Give the mandate its folder in the archive straight away, so the
+    // documents have somewhere to land and somewhere to be looked for.
+    fileStore.ensureClientArchiveDir(client.clientId);
 
     // Persist the actual filled contract to disk now, not just a placeholder
     // document entry with no file — this is what KUBE later downloads, adds
@@ -1052,6 +1056,9 @@ exports.sendInvite = async (req, res) => {
         const dir = clientUploadDir(client.clientId);
         const savedPath = path.join(dir, `${Date.now()}-${template.file}`);
         fs.writeFileSync(savedPath, buffer);
+        // The generated contract is the first document of the mandate — it has
+        // to reach the shared store or nobody else can download it.
+        await fileStore.putFile(savedPath, buffer);
 
         const packageDoc = client.documents.find(d => d.docId === docEntries[0].docId);
         if (packageDoc) {

@@ -13,6 +13,7 @@ const { buildKycXlsx } = require('./mandateExport.service');
 // file preserved in versions[] like every other document here.
 const KYC_DOCUMENT_NAME = 'KYC Questionnaire';
 const { UPLOADS_ROOT } = require('../config/paths');
+const fileStore = require('./fileStore.service');
 
 async function writeKycExcelDocument(clientOrId, actor = 'System') {
   const id = clientOrId?._id || clientOrId;
@@ -24,6 +25,9 @@ async function writeKycExcelDocument(clientOrId, actor = 'System') {
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `${Date.now()}-${fileName}`);
   fs.writeFileSync(filePath, buffer);
+  // Generated sheets are documents of the mandate like any other, so they
+  // belong in the shared store too.
+  await fileStore.putFile(filePath, buffer);
 
   const existing = client.documents.find((d) => d.name === KYC_DOCUMENT_NAME);
   const today = new Date().toISOString().slice(0, 10);
@@ -88,6 +92,9 @@ async function writeMandateRiskExcelDocument(clientOrId, actor = 'System') {
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `${Date.now()}-${client.clientId}_${safeName(client.name)}_Mandatsrisiko.xlsx`);
   fs.writeFileSync(filePath, buffer);
+  // Generated sheets are documents of the mandate like any other, so they
+  // belong in the shared store too.
+  await fileStore.putFile(filePath, buffer);
 
   const doc = client.documents.find((d) => d.name === MANDATE_RISK_DOCUMENT_NAME);
   const today = new Date().toISOString().slice(0, 10);
