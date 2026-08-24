@@ -118,6 +118,13 @@ connectDB()
   .then(seedDocumentRequirements)
   .then(refreshMandateRiskSchema)
   .then(() => {
+    // Say plainly whether the periodic email check is armed. Discovering it is
+    // off only when it fails to challenge anybody is worse than a line of log.
+    const reverifyStatus = require('./services/loginReverify.service').status();
+    console.log(reverifyStatus.enabled
+      ? `🔐  Login re-verification: on, every ${reverifyStatus.days} days`
+      : `🔓  Login re-verification: off (${reverifyStatus.reason})`);
+
     app.listen(PORT, () => {
       console.log(`🚀  Server running — open http://localhost:${PORT} in your browser`);
     });

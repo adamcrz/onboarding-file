@@ -14,7 +14,7 @@ router.post('/kyc/:id/status',        protect, ctrl.updateKycCorrectionStatus);
 router.get('/documents',              protect, ctrl.listDocumentCorrections);
 router.get('/documents/:id/download', protect, ctrl.downloadCorrectionPages);
 router.post('/documents/:id/upload',  protect, uploadClientDoc.single('file'), ctrl.uploadCorrectedPages);
-router.post('/documents',             ctrl.createDocumentCorrection);
+router.post('/documents',             protect, ctrl.createDocumentCorrection);
 router.post('/documents/:id/status',  protect, ctrl.updateDocumentCorrectionStatus);
 
 module.exports = router;
