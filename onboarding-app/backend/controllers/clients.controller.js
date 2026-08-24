@@ -14,6 +14,7 @@ const { replacePdfPageRange, extractPdfPages } = require('../services/pdfPageSpl
 const { requirementsFor } = require('../config/contractRequirements');
 const { withMandateProgress, mandateProgress } = require('../services/mandateProgress.service');
 const fileStore = require('../services/fileStore.service');
+const { queuePdfRendition } = require('../services/pdfRendition.service');
 const { validateKycSubmission, missingKycFieldDefinitions } = require('../config/kycRequiredFields');
 const {
   mandateRiskFields: currentMandateRiskFields,
@@ -533,12 +534,23 @@ const uploadDocument = async (req, res) => {
       { clientId: client.clientId, page: 'contract-prep' },
     );
 
+    // A signed contract that arrived as Word gets a PDF rendition, so the page
+    // somebody flags can actually be downloaded, corrected and put back. Queued
+    // rather than awaited: Word takes ten to fifteen seconds on a long
+    // contract, and the upload is already complete and correct without it.
+    if (doc.signedVersion && /\.docx?$/i.test(doc.filePath || '')) {
+      queuePdfRendition(client.clientId, doc.docId);
+    }
+
     res.status(200).json({
       success: true,
       docId: doc.docId,
       client: withMandateProgress(client),
       documentProgress: progressNow,
       missingNote: missingNote || null,
+      // So the screen can say a conversion is under way rather than looking
+      // unchanged for ten seconds and then changing on its own.
+      pdfRenditionQueued: Boolean(doc.signedVersion && /\.docx?$/i.test(doc.filePath || '')),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

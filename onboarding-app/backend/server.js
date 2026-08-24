@@ -136,6 +136,16 @@ connectDB()
     // across. See services/archiveSync.service.js.
     require('./services/archiveSync.service').startArchiveSync();
 
+    // Whether a signed Word contract can be turned into a PDF here, which is
+    // what makes "download page 2, correct it, upload it" possible at all.
+    // Said once at startup rather than discovered when a page download quietly
+    // hands back a whole document.
+    require('./services/docxToPdf.service').converterAvailable()
+      .then((c) => console.log(c
+        ? `📄  Word to PDF: ${c} — page-level corrections available on Word contracts`
+        : '📄  Word to PDF: no converter here — Word contracts are corrected whole, not page by page'))
+      .catch(() => {});
+
     app.listen(PORT, () => {
       console.log(`🚀  Server running — open http://localhost:${PORT} in your browser`);
     });
