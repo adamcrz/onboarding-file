@@ -1,40 +1,40 @@
 # Render Blueprint — one Node service serving both the API and the frontend,
 # backed by MongoDB Atlas.
 #
-# Point Render at this repository ("New → Blueprint") and it reads this file.
+# GitHub cannot host this: Pages serves static files only, and this is a
+# long-running Node server holding a database connection. Render runs it from
+# the same repository, on a push.
+#
 # The app lives in onboarding-app/ inside the repo, which is why every path
 # below is prefixed with it.
 #
-# Two values are deliberately absent and are set in the dashboard instead,
-# because this file is committed: MONGO_URI and JWT_SECRET. Both are marked
-# `sync: false`, which makes Render prompt for them on the first deploy.
+# MONGO_URI and JWT_SECRET are deliberately absent and set in the dashboard,
+# because this file is committed. Both are marked `sync: false`, which makes
+# Render prompt for them on the first deploy.
 services:
   - type: web
     name: onboarding-app
     runtime: node
-    plan: starter          # the disk below needs a paid instance; the free tier has no persistent storage
-    region: frankfurt      # closest to Switzerland — put the Atlas cluster in the same region
+    # No disk, and none needed. Uploaded files live in the database (GridFS),
+    # and the uploads folder is only a cache that refills itself from there on
+    # first access — so an instance that is rebuilt, restarted or moved loses
+    # nothing. That is what makes the free plan viable here; it was not before
+    # the files went into the database.
+    #
+    # Free instances sleep after ~15 minutes idle and take up to a minute to
+    # wake. Change to `starter` (about $7/month) if that wait is not wanted.
+    plan: free
+    region: frankfurt      # closest to Switzerland — keep the Atlas cluster here too
     healthCheckPath: /api/health
 
     buildCommand: npm --prefix onboarding-app/backend ci --omit=dev
     startCommand: npm --prefix onboarding-app/backend start
 
-    # Uploaded contracts and supporting documents are written to the filesystem,
-    # not into MongoDB. Without a disk they sit in the container's ephemeral
-    # storage and every deploy destroys them silently. UPLOADS_DIR below points
-    # the app at this mount.
-    disk:
-      name: uploads
-      mountPath: /var/data/uploads
-      sizeGB: 1
-
     envVars:
       - key: NODE_VERSION
-        value: "20"            # package.json pins engines to >=20 <21
+        value: "20"
       - key: NODE_ENV
         value: production      # HSTS, secure cookies, strict rate limits, no demo users
-      - key: UPLOADS_DIR
-        value: /var/data/uploads
       - key: DOCUMENT_AUTO_VERIFY
         value: "false"         # keep off: turning it on requires Chromium in the image
       - key: ALLOW_DATABASE_RESET
@@ -43,6 +43,10 @@ services:
       # Without this the build downloads ~400MB of browsers it would never use.
       - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
         value: "1"
+      # ARCHIVE_DIR is deliberately unset here. The archive is a OneDrive-synced
+      # SharePoint library, which exists on the office machines and not in a
+      # container. Files therefore stay in the database on this instance, and
+      # the archiving and release steps are the local installs' job.
 
       # Set these in the Render dashboard, never in this file.
       - key: MONGO_URI
@@ -50,10 +54,9 @@ services:
       - key: JWT_SECRET
         sync: false            # 48+ random bytes; the server refuses to start on a weak one
 
-      # Both are the service's own public URL, e.g.
-      # https://onboarding-app.onrender.com — not known until the first deploy
-      # finishes, so fill them in afterwards and redeploy.
-      - key: ALLOWED_ORIGINS
-        sync: false
+      # The service's own public URL, e.g. https://onboarding-app.onrender.com.
+      # Not known until the first deploy finishes, so fill it in afterwards and
+      # redeploy. ALLOWED_ORIGINS can stay unset: the app serves its own pages,
+      # and same-origin requests are always accepted.
       - key: FRONTEND_URL
         sync: false
