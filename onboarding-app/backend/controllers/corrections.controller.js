@@ -6,6 +6,7 @@ const Client             = require('../models/Client');
 const { extractPdfPages, replacePdfPageRange } = require('../services/pdfPageSplice.service');
 const { checkContractRequirementsFile, inferContractTemplateId } = require('../services/pdfChecker.service');
 const { notifyRm }       = require('../services/notify.service');
+const fileStore          = require('../services/fileStore.service');
 const {
   REQUIRED_KYC_FIELDS,
   validateKycSubmission,
@@ -419,6 +420,8 @@ exports.downloadCorrectionPages = async (req, res) => {
     const { correction, client } = await resolveCorrectionForUser(req.params.id, req.user);
     const doc = client.documents.find((d) => d.docId === correction.docId);
     if (!doc || !doc.filePath) return res.status(404).json({ error: 'No uploaded file for this document yet' });
+    // Uploaded from another machine? Fetch it from the shared store first.
+    await fileStore.ensureLocalQuiet(doc.filePath);
     if (!fs.existsSync(doc.filePath)) return res.status(404).json({ error: 'File is missing on disk' });
 
     // An issue with no page range (an unreadable scan, a non-PDF upload, a
@@ -480,6 +483,7 @@ exports.uploadCorrectedPages = async (req, res) => {
 
     const doc = client.documents.find((d) => d.docId === correction.docId);
     if (!doc || !doc.filePath) return res.status(409).json({ error: 'This document has no existing file to merge a correction into' });
+    await fileStore.ensureLocalQuiet(doc.filePath);
     if (!fs.existsSync(doc.filePath)) return res.status(409).json({ error: 'The original file is missing on disk' });
 
     const actor = req.user.role === 'rm' ? 'RM' : req.user.role === 'client' ? 'Client' : 'Compliance';
@@ -495,6 +499,7 @@ exports.uploadCorrectedPages = async (req, res) => {
       fs.copyFileSync(req.file.path, replacedPath);
       doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
       doc.filePath = replacedPath;
+      await fileStore.putFile(replacedPath);
       doc.uploadedBy = actor;
       doc.date = new Date().toISOString().slice(0, 10);
       doc.size = (fs.statSync(replacedPath).size / 1024 / 1024).toFixed(1) + ' MB';
@@ -541,6 +546,7 @@ exports.uploadCorrectedPages = async (req, res) => {
     fs.writeFileSync(mergedPath, mergedBuffer);
     doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
     doc.filePath = mergedPath;
+    await fileStore.putFile(mergedPath);
     doc.uploadedBy = actor;
     doc.date = new Date().toISOString().slice(0, 10);
     doc.size = (mergedBuffer.length / 1024 / 1024).toFixed(1) + ' MB';
