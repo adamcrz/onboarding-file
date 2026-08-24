@@ -1,0 +1,58 @@
+# Onboarding Tool - settings
+#
+# "1 - INSTALL (run once).bat" copies this file onto each PC as the app's
+# .env file, and appends that machine's own archive folder to the end.
+#
+# ===========================================================================
+#  ADAM: two values below say PASTE_HERE. Fill them in once, and everyone
+#  else can just run the two .bat files.
+#
+#  Anyone who can open this SharePoint folder will be able to read the
+#  database password once you paste it in - so keep this folder restricted
+#  to the people who work on onboarding. If it ever needs to be wider than
+#  that, ask for separate database logins per person instead; that way one
+#  person's credentials can be withdrawn without changing everyone's.
+# ===========================================================================
+
+PORT=5000
+
+# Runs over http://localhost on each PC, so this stays "development".
+# Production mode turns on HTTPS-only cookies, which would stop the login
+# working on a local machine that has no certificate.
+NODE_ENV=development
+
+# The shared database - this is what makes everyone see the same clients,
+# mandates, KYC tasks and documents.
+# Paste the connection string that starts with  mongodb+srv://
+MONGO_URI=PASTE_HERE
+
+# Signs the login sessions on this PC. Paste the long random key.
+JWT_SECRET=PASTE_HERE
+
+# Working copy of documents on this PC. Blank means the app's own folder,
+# which is correct - permanent copies go to the archive instead.
+UPLOADS_DIR=
+
+# Left blank on purpose: localhost is allowed automatically, and the app
+# serves its own pages, so nothing cross-site is involved.
+ALLOWED_ORIGINS=
+
+FRONTEND_URL=http://localhost:5000
+
+# Email is off - the app prints a preview link into the black window rather
+# than sending anything. Fill these in only when real client invitations
+# should go out.
+EMAIL_HOST=
+EMAIL_PORT=587
+EMAIL_USER=
+EMAIL_PASS=
+EMAIL_FROM="Tramondo Onboarding" <noreply@tramondo.com>
+
+# Automatic signature checking. Off - documents are reviewed by a person.
+DOCUMENT_AUTO_VERIFY=false
+
+# Never set this to true. It enables a command that erases the database.
+ALLOW_DATABASE_RESET=false
+
+# ARCHIVE_DIR is appended below automatically by the install script, because
+# the path contains your own Windows user name.
