@@ -6,6 +6,18 @@ async function seedDemoUsers() {
   const count = await User.countDocuments();
   if (count > 0) return;
 
+  // These three accounts share one password that is written in plain text in
+  // this file, in the README, and in every copy of this repository. That is
+  // fine on a laptop and unacceptable on anything reachable from the internet:
+  // a fresh production database would otherwise come up with a working
+  // Compliance login that anyone who has seen the source already knows.
+  // Provision real accounts with scripts/createAccount.js instead.
+  if (process.env.NODE_ENV === 'production') {
+    console.log('ℹ  Production: demo users not seeded. Create accounts with:');
+    console.log('   npm run create-account -- --name "..." --email ... --password ... --role rm --rmCode XXX\n');
+    return;
+  }
+
   const demos = [
     { name: 'Compliance Team', email: 'compliance@demo.com', password: 'Demo1234!', role: 'compliance' },
     { name: 'Sarah Mitchell',  email: 'rm@demo.com',         password: 'Demo1234!', role: 'rm', rmCode: 'DEMO' },
@@ -30,7 +42,11 @@ async function seedDocumentRequirements() {
   const count = await DocumentRequirement.countDocuments();
   if (count > 0) return;
 
+  // Power of Attorney (EAM) applies to every legal form — it is what
+  // authorises the external asset manager to act, so it is always required.
+  const POA_EAM = 'Power of Attorney (EAM)';
   const rows = [
+    ...['individual','domiciliary','company','foundation','trust'].map(t => ({ clientType: t, type: 'Legal', name: POA_EAM })),
     // individual — Form A and the Asset Management Agreement itself are already
     // embedded in the generated contract, so they're not listed again here.
     { clientType: 'individual', type: 'Identification',    name: 'Copy of Official Identification Document (Passport / ID / Driving Licence)' },

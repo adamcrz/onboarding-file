@@ -1,14 +1,11 @@
 const { test, expect } = require('@playwright/test');
 const { deleteE2eTestUsers, deleteAccountByEmailAndRole } = require('../helpers/dbTestUsers');
 
-// Business rule: an account is unique per (email, role) — the same email may
-// hold one account per role category (e.g. an RM account AND a Compliance
-// account), but never two accounts in the same category. Which category a
-// registration creates is decided by the portal the user picked on the
-// login screen (sent as `role`), same as it already decides which account
-// login checks — an unrecognized/missing role falls back to 'client'.
+// Public registration creates client accounts only; staff identities are
+// trusted roles and must be provisioned administratively. Email uniqueness
+// stays scoped per role, so a staff email can still have a client account.
 
-test.describe('Registration: one account per email per role category', () => {
+test.describe('Registration: public client accounts only', () => {
   test.afterAll(async () => {
     await deleteE2eTestUsers();
   });
@@ -28,46 +25,15 @@ test.describe('Registration: one account per email per role category', () => {
     expect(body.error).toMatch(/already exists/i);
   });
 
-  test('an unrecognized role falls back to client instead of being trusted blindly', async ({ request }) => {
+  test('caller-selected staff or unknown roles are rejected', async ({ request }) => {
     const email = `sneaky-${Date.now()}@e2e.local`;
-    const res = await request.post('/api/auth/register', {
-      data: { name: 'Sneaky', email, password: 'Testpass1', role: 'super-admin' },
-    });
-    expect(res.ok()).toBe(true);
-
-    // If 'super-admin' had been trusted as its own category, registering it
-    // again would succeed (different, unrecognized "category"). Since it
-    // actually falls back to 'client' both times, the second attempt must
-    // collide with the same (email, 'client') account and be rejected.
-    const again = await request.post('/api/auth/register', {
-      data: { name: 'Sneaky Again', email, password: 'Testpass1', role: 'super-admin' },
-    });
-    expect(again.ok()).toBe(false);
-
-    // A real client-category registration for that email must also collide.
-    const asClient = await request.post('/api/auth/register', {
-      data: { name: 'Sneaky As Explicit Client', email, password: 'Testpass1', role: 'client' },
-    });
-    expect(asClient.ok()).toBe(false);
-  });
-
-  test('the same email can hold one RM account and one Compliance account, but not two of the same', async ({ request }) => {
-    const email = `dual-${Date.now()}@e2e.local`;
-
-    const rm = await request.post('/api/auth/register', {
-      data: { name: 'Adam', email, password: 'Testpass1', role: 'rm' },
-    });
-    expect(rm.ok()).toBe(true);
-
-    const compliance = await request.post('/api/auth/register', {
-      data: { name: 'Adam', email, password: 'Testpass1', role: 'compliance' },
-    });
-    expect(compliance.ok()).toBe(true);
-
-    const dupeRm = await request.post('/api/auth/register', {
-      data: { name: 'Adam', email, password: 'Testpass1', role: 'rm' },
-    });
-    expect(dupeRm.ok()).toBe(false);
+    for (const role of ['rm', 'compliance', 'compliance_external', 'super-admin']) {
+      const response = await request.post('/api/auth/register', {
+        data: { name: 'Sneaky', email, password: 'Testpass1', role },
+      });
+      expect(response.status()).toBe(403);
+      expect((await response.json()).error).toMatch(/staff accounts/i);
+    }
   });
 
   test('the same email already used by an RM account can still register as a client', async ({ request }) => {

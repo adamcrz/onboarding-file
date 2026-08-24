@@ -1,14 +1,9 @@
 const multer = require('multer');
-const fs     = require('fs');
-const path   = require('path');
-
-const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
+const { UPLOADS_ROOT, clientUploadDir } = require('../config/paths');
 
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
-    const dir = path.join(UPLOADS_ROOT, req.params.id);
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
+    cb(null, clientUploadDir(req.params.id));
   },
   filename: (_req, file, cb) => {
     const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');

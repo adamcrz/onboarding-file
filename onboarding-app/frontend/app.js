@@ -42,6 +42,15 @@ function isCompliance(role) {
   return role === 'compliance' || role === 'compliance_external';
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const ROLES = {
   compliance: {
     label: 'Internal Compliance Officer',
@@ -52,12 +61,13 @@ const ROLES = {
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
-      { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
-      { id: 'kyc-tasks', label: 'KYC Tasks', icon: formIcon() },
+      { id: 'kyc-tasks', label: 'KYC & Mandate Risk Tasks', icon: formIcon() },
+      { id: 'contract-prep', label: 'Contract Tasks', icon: contractIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
-      { id: 'kyc-form', label: 'KYC Questionnaire', icon: formIcon() },
+      { id: 'kyc-form', label: 'KYC Schema', icon: formIcon() },
+      { id: 'mandate-risk-schema', label: 'Mandate Risk Schema', icon: formIcon() },
     ]
   },
   // External Compliance — same format/permissions as Internal Compliance for now.
@@ -70,12 +80,13 @@ const ROLES = {
       { section: 'Compliance' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
       { id: 'clients', label: 'All Cases', icon: usersIcon() },
-      { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
-      { id: 'kyc-tasks', label: 'KYC Tasks', icon: formIcon() },
+      { id: 'kyc-tasks', label: 'KYC & Mandate Risk Tasks', icon: formIcon() },
+      { id: 'contract-prep', label: 'Contract Tasks', icon: contractIcon() },
       { id: 'audit', label: 'Audit Trail', icon: auditIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
-      { id: 'kyc-form', label: 'KYC Questionnaire', icon: formIcon() },
+      { id: 'kyc-form', label: 'KYC Schema', icon: formIcon() },
+      { id: 'mandate-risk-schema', label: 'Mandate Risk Schema', icon: formIcon() },
     ]
   },
   rm: {
@@ -86,8 +97,8 @@ const ROLES = {
     nav: [
       { section: 'My Clients' },
       { id: 'dashboard', label: 'Dashboard', icon: homeIcon() },
-      { id: 'kyc-corrections', label: 'Corrections', icon: checklistIcon() },
-      { id: 'kyc-tasks', label: 'KYC Tasks', icon: formIcon() },
+      { id: 'kyc-tasks', label: 'KYC & Mandate Risk Tasks', icon: formIcon() },
+      { id: 'contract-prep', label: 'Contract Tasks', icon: contractIcon() },
       { id: 'clients', label: 'My Clients', icon: usersIcon() },
       { section: 'Tools' },
       { id: 'contract-building', label: 'Contract Building', icon: fileIcon() },
@@ -101,8 +112,11 @@ const ROLES = {
     nav: [
       { section: 'My Application' },
       { id: 'dashboard', label: 'Application Status', icon: statusIcon() },
+      // Same Contract Tasks screen the staff roles use — one place to
+      // download the blank, upload the completed version and see what is
+      // still outstanding, instead of two separate client-only pages.
+      { id: 'contract-prep', label: 'Contract Tasks', icon: contractIcon() },
       { id: 'client-contract', label: 'Contract Package', icon: contractIcon() },
-      { id: 'client-upload', label: 'Upload Signed Docs', icon: uploadIcon() },
       { id: 'audit', label: 'Activity', icon: clockIcon() },
     ]
   }
@@ -239,7 +253,7 @@ function roleLoginFormHTML() {
     </div>
 
     <h1 class="login-title">Sign in</h1>
-    <p class="login-subtitle">Logging in as <strong>${meta.name}</strong></p>
+    <p class="login-subtitle">Logging in as <strong>${escapeHtml(meta.name)}</strong></p>
 
     <div class="form-group" style="margin-top:20px;">
       <label for="login-email">Email</label>
@@ -260,9 +274,13 @@ function roleLoginFormHTML() {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
     </button>
 
-    <div style="text-align:center;margin-top:16px;">
-      <button class="auth-link-btn" onclick="setAuthPanel('register')">New to the portal? Create account</button>
-    </div>
+    ${role === 'client' ? `
+      <div style="text-align:center;margin-top:16px;">
+        <button class="auth-link-btn" onclick="setAuthPanel('register')">New to the portal? Create account</button>
+      </div>
+    ` : `
+      <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--text-muted);">Staff accounts are provisioned by an administrator.</p>
+    `}
 
     <p class="login-footer" style="margin-top:20px;">SHA cryptography &nbsp;·&nbsp; Protected by 256-bit TLS encryption</p>
   `;
@@ -271,6 +289,14 @@ function roleLoginFormHTML() {
 function registerFormHTML() {
   const role = AuthState.selectedRole;
   const meta = ROLE_META[role];
+  if (role && role !== 'client') {
+    return `
+      <button class="auth-back-btn" onclick="setAuthPanel('role-login')">&larr; Back</button>
+      <h1 class="login-title">Staff account required</h1>
+      <p class="login-subtitle">${escapeHtml(meta?.name || 'Staff')} accounts are provisioned by an administrator. Please sign in with your assigned account.</p>
+      <button class="btn-primary btn-full" onclick="setAuthPanel('role-login')">Return to Sign In</button>
+    `;
+  }
   return `
     <button class="auth-back-btn" onclick="setAuthPanel('login')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -289,7 +315,7 @@ function registerFormHTML() {
     </div>
 
     <h1 class="login-title">Create account</h1>
-    <p class="login-subtitle">${meta ? `Creating a new ${meta.name} account` : 'Join your compliance portal'}</p>
+    <p class="login-subtitle">${meta ? `Creating a new ${escapeHtml(meta.name)} account` : 'Join your compliance portal'}</p>
 
     <div class="form-group">
       <label for="reg-name">Full Name *</label>
@@ -424,8 +450,9 @@ async function enterApp(role) {
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('main-screen').classList.add('active');
   State.currentRole = role;
-  setupRoleUI(role);
-  await loadStateFromBackend();
+  // Both run concurrently, but neither page navigation nor any per-field
+  // correction status can be trusted until both have actually landed.
+  await Promise.all([setupRoleUI(role), loadStateFromBackend()]);
   if (role === 'rm') updateMyClientsBadge();
   navigateTo('dashboard');
 }
@@ -446,7 +473,7 @@ async function login() {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch('http://localhost:5000/api/auth/login', {
+    const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, role: demoRole }),
@@ -473,7 +500,9 @@ async function login() {
     }
 
     const backendRole = data.user.role;
-    localStorage.setItem('token', data.token);
+    // The session itself is the httpOnly cookie the server just set. Nothing
+    // credential-bearing is kept here — only who is signed in, for the UI.
+    localStorage.setItem('sessionActive', '1');
     localStorage.setItem('user', JSON.stringify(data.user));
     enterApp(backendRole);
 
@@ -499,7 +528,16 @@ function resetLoginBtn() {
   }
 }
 
-function logout() {
+async function logout() {
+  // Only the server can clear an httpOnly cookie; without this call the
+  // session would stay valid until it expired on its own.
+  try {
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+  } catch (_) { /* sign out locally regardless */ }
+  // A poll left running would keep asking for the signed-out user's bell.
+  stopNotificationPolling();
+  State.notifications = [];
+  notificationsLoadedOnce = false;
   localStorage.removeItem('token');
   localStorage.removeItem('user');
   localStorage.removeItem('sessionRole');
@@ -536,7 +574,7 @@ async function register() {
   try {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 5000);
-    const res  = await fetch('http://localhost:5000/api/auth/register', {
+    const res  = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password, role }),
@@ -564,7 +602,7 @@ async function resendVerification() {
   const btn = document.getElementById('resend-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
   try {
-    const res  = await fetch('http://localhost:5000/api/auth/resend-verification', {
+    const res  = await fetch(`${API_BASE}/auth/resend-verification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: AuthState.pendingEmail }),
@@ -589,7 +627,7 @@ async function forgotPassword() {
   if (!email) { showToast('warning', 'Please enter your email.'); return; }
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
   try {
-    const res  = await fetch('http://localhost:5000/api/auth/forgot-password', {
+    const res  = await fetch(`${API_BASE}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
@@ -614,7 +652,7 @@ async function doResetPassword() {
 
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   try {
-    const res  = await fetch(`http://localhost:5000/api/auth/reset-password/${AuthState.resetToken}`, {
+    const res  = await fetch(`${API_BASE}/auth/reset-password/${AuthState.resetToken}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
@@ -622,7 +660,7 @@ async function doResetPassword() {
     const data = await res.json();
     if (!res.ok) { showToast('error', data.error || 'Reset failed.'); if (btn) { btn.disabled = false; btn.textContent = 'Set New Password'; } return; }
 
-    localStorage.setItem('token', data.token);
+    localStorage.setItem('sessionActive', '1');
     localStorage.setItem('user', JSON.stringify(data.user));
     AuthState.resetToken = '';
     showToast('success', 'Password updated! Signing you in…');
@@ -635,10 +673,10 @@ async function doResetPassword() {
 
 async function handleEmailVerification(token) {
   try {
-    const res  = await fetch(`http://localhost:5000/api/auth/verify-email/${token}`);
+    const res  = await fetch(`${API_BASE}/auth/verify-email/${token}`);
     const data = await res.json();
     if (res.ok) {
-      localStorage.setItem('token', data.token);
+      localStorage.setItem('sessionActive', '1');
       localStorage.setItem('user', JSON.stringify(data.user));
       showToast('success', 'Email verified! Welcome to ComplianceOS.');
       setTimeout(() => enterApp(data.user.role), 800);
@@ -661,7 +699,7 @@ function selectRole(el, role) {
 /* ============================================================
    SHELL SETUP
    ============================================================ */
-function setupRoleUI(role) {
+async function setupRoleUI(role) {
   const cfg = ROLES[role];
   // Prefer the real logged-in user's own name over the static per-role demo
   // label — cfg.label ("Sarah Mitchell" etc.) is only a fallback for sessions
@@ -685,10 +723,10 @@ function setupRoleUI(role) {
       nav.innerHTML += `
         <button class="nav-item" id="nav-${item.id}" onclick="navigateTo('${item.id}')">
           ${item.icon}
-          <span>${item.label}</span>
+          <span>${escapeHtml(item.label)}</span>
           ${item.badge ? `<span class="nav-badge">${item.badge}</span>` : ''}
           ${item.id === 'kyc-tasks' ? `<span class="nav-badge" id="navbadge-kyc-tasks" style="display:none;"></span>` : ''}
-          ${item.id === 'kyc-corrections' ? `<span class="nav-badge" id="navbadge-kyc-corrections" style="display:none;"></span>` : ''}
+          ${item.id === 'contract-prep' ? `<span class="nav-badge" id="navbadge-contract-prep" style="display:none;"></span>` : ''}
           ${item.id === 'clients' && role === 'rm' ? `<span class="nav-badge" id="navbadge-clients" style="display:none;"></span>` : ''}
         </button>
       `;
@@ -697,31 +735,115 @@ function setupRoleUI(role) {
 
   // Notifications panel
   refreshNotifications();
-  if (role !== 'client') refreshKycTasks();
-  // Populates State.kycCorrections too — the client portal needs it to know
-  // which of its own KYC fields are gold-flagged, even without a nav badge.
-  refreshCorrectionsBadge();
+  // Both awaited (unlike refreshNotifications above): refreshKycTasks calls
+  // rerenderCurrentDashboard when it resolves, which would clobber whatever
+  // page the user has already navigated to if it lands after the fact — and
+  // every KYC correction status badge/glow (KYC form, Client Detail tab,
+  // Corrections page) reads from State.kycCorrections, so a page reached
+  // before refreshCorrectionsBadge resolves would silently show every field
+  // as if it had no correction at all, regardless of its real status.
+  await Promise.all([
+    refreshKycTasks(),
+    refreshCorrectionsBadge(),
+    // The Contract Tasks badge counts mandates, so the list has to be in
+    // before the count means anything.
+    refreshClients(),
+  ]);
   if (role === 'rm') updateMyClientsBadge();
+  startNotificationPolling();
 }
 
-// A task counting as "still needs attention" depends on the client's actual
-// KYC completeness, not just whether the form was submitted once — a
-// partial submission marks the task 'completed' but the client can still
-// have open corrections, and a task submitted long ago can be reopened by a
-// later Compliance flag. Only genuinely gap-free clients drop off the list.
-function kycTaskStillNeedsAttention(task) {
-  if (task.status === 'pending') return true;
+// A task counting as "still needs attention" depends on the explicit workflow
+// plus any field reopened by Compliance. Only approved, correction-free KYCs
+// are allowed into the final green state.
+function clientForKycTask(task) {
+  return State.clients.find(c => c.id === task.clientId || c.clientId === task.clientId)
+    || (State.myClientProfile
+      && (State.myClientProfile.id === task.clientId || State.myClientProfile.clientId === task.clientId)
+      ? State.myClientProfile
+      : null);
+}
+
+function clientKycWorkflowStatus(client) {
+  if (['draft', 'under_review', 'approved'].includes(client?.kycStatus)) {
+    return client.kycStatus;
+  }
+  if (!client?.kycSubmittedBy) return 'draft';
+  return client.kycAwaitingVerification ? 'under_review' : 'approved';
+}
+
+function kycTaskHasActionableFields(task) {
   return (State.kycCorrections || []).some(c =>
-    c.clientId === task.clientId && c.autoGenerated && (c.status === 'pending' || c.status === 'needs_correction')
+    c.clientId === task.clientId && c.autoGenerated
+    && (c.status === 'pending' || c.status === 'needs_correction' || c.status === 'saved')
   );
 }
 
-function updateKycTasksBadge() {
-  const pendingCount = State.kycTasks.filter(kycTaskStillNeedsAttention).length;
-  const badge = document.getElementById('navbadge-kyc-tasks');
+// Normalize new workflow responses and pre-workflow records into the only
+// three states the UI communicates. A submitted questionnaire is never shown
+// as complete while Compliance still needs to sign it off.
+function kycTaskWorkflowStatus(task) {
+  if (kycTaskHasActionableFields(task)) return 'pending';
+
+  const client = clientForKycTask(task);
+  const status = task.kycStatus || task.status;
+  if (status === 'approved' || client?.kycStatus === 'approved') return 'approved';
+  if (status === 'under_review' || status === 'under-review'
+      || client?.kycStatus === 'under_review' || client?.kycAwaitingVerification) {
+    return 'under_review';
+  }
+  // Legacy `completed` tasks predate the explicit lifecycle. The linked
+  // Client flags decide whether they are still under review or were approved.
+  if (status === 'completed') {
+    return client?.kycAwaitingVerification ? 'under_review' : 'approved';
+  }
+  return 'pending';
+}
+
+function kycTaskStillNeedsAttention(task) {
+  return kycTaskWorkflowStatus(task) === 'pending';
+}
+
+// Shows/hides a sidebar count. Kept in one place so every nav entry that
+// needs a badge behaves identically.
+function setNavBadge(id, count) {
+  const badge = document.getElementById(`navbadge-${id}`);
   if (!badge) return;
-  if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = 'flex'; }
+  if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; }
   else badge.style.display = 'none';
+}
+
+function updateKycTasksBadge() {
+  const kycCount = isCompliance(State.currentRole)
+    ? State.kycTasks.filter(task => kycTaskWorkflowStatus(task) === 'under_review').length
+    : State.kycTasks.filter(kycTaskStillNeedsAttention).length;
+  // The Tasks entry covers both tabs, so its badge counts both.
+  const riskCount = State.kycTasks.filter(t =>
+    (t.mandateRiskMissing || 0) > 0 && (t.mandateRiskStatus || 'draft') !== 'approved').length;
+  setNavBadge('kyc-tasks', kycCount + riskCount);
+}
+
+// Mandates with outstanding work on the Contract Tasks screen.
+//
+// A flagged document is one kind of outstanding work, but it was the only kind
+// this counted — so an RM with a mandate whose paperwork simply isn't in yet
+// saw no badge at all and had nothing telling them to open the page. Anything
+// short of its full document set counts, which is the same n-documents figure
+// the progress bars show.
+function updateContractTasksBadge() {
+  const open = new Set((State.documentCorrections || [])
+    .filter(c => c.status !== 'corrected')
+    .map(c => c.clientId));
+
+  const mine = State.currentRole === 'client'
+    ? (State.myClientProfile ? [State.myClientProfile] : [])
+    : State.clients.filter(c => State.currentRole !== 'rm' || c.rm === currentRmName());
+  mine.forEach(c => {
+    const p = c.documentProgress;
+    if (p && p.total > 0 && p.outstanding > 0) open.add(c.id || c.clientId);
+  });
+
+  setNavBadge('contract-prep', open.size);
 }
 
 // Every list here is already scoped server-side to the logged-in RM's own
@@ -738,20 +860,17 @@ async function refreshCorrectionsBadge() {
     // which fields are flagged without a separate per-client fetch.
     State.kycCorrections = kyc.map(c => ({ ...c, id: c._id }));
     State.documentCorrections = docs.map(c => ({ ...c, id: c._id }));
-    const openCount = [...kyc, ...docs].filter(c => c.status !== 'corrected').length;
-    const badge = document.getElementById('navbadge-kyc-corrections');
-    if (!badge) return;
-    if (openCount > 0) { badge.textContent = openCount; badge.style.display = 'flex'; }
-    else badge.style.display = 'none';
+    updateContractTasksBadge();
+    updateKycTasksBadge();
+    // This runs after essentially every action that changes someone's queue,
+    // so it is also the natural moment to pick up whatever that action just
+    // raised. Not awaited: a slow bell must not hold up the badges.
+    refreshNotifications({ announce: true });
   } catch (_) { /* leave badge hidden */ }
 }
 
 function updateMyClientsBadge() {
-  const badge = document.getElementById('navbadge-clients');
-  if (!badge) return;
-  const count = State.clients.length;
-  if (count > 0) { badge.textContent = count; badge.style.display = 'flex'; }
-  else badge.style.display = 'none';
+  setNavBadge('clients', State.clients.length);
 }
 
 function updateNotifBadge() {
@@ -764,12 +883,50 @@ function updateNotifBadge() {
 // Pulls the current notification list from the backend into the State cache
 // (mapping Mongo's `_id` to the plain `id` the rest of the app expects, and
 // `createdAt` to a display string), then re-renders the dropdown.
-async function refreshNotifications() {
+// Whether this session has already seen a full list. Distinguishes "nothing
+// new" from "we haven't looked yet" — going by the cached list being empty
+// would swallow the first notification of every session that started with an
+// empty bell, which is exactly the case worth announcing.
+let notificationsLoadedOnce = false;
+
+async function refreshNotifications({ announce = false } = {}) {
+  const seenBefore = new Set(State.notifications.map(n => n.id));
+  const hadBaseline = notificationsLoadedOnce;
   try {
     const items = await apiFetch('GET', '/notifications');
     State.notifications = items.map(n => ({ ...n, id: n._id, time: new Date(n.createdAt).toLocaleString() }));
+    notificationsLoadedOnce = true;
+    // Anything unread that wasn't in the list a moment ago has just happened,
+    // so it is shown rather than left sitting silently behind the bell. Never
+    // on the session's first load — that would fire a toast for every
+    // notification in the backlog at once.
+    if (announce && hadBaseline) {
+      State.notifications
+        .filter(n => !n.read && !seenBefore.has(n.id))
+        .slice(0, 3)
+        .forEach(n => showToast(n.type === 'warning' ? 'warning' : n.type === 'success' ? 'success' : 'info', n.text));
+    }
   } catch (_) { /* keep whatever was cached */ }
   renderNotificationDropdown();
+}
+
+// The bell is only useful if it fills in while the page is open — otherwise a
+// flagged document raised by Compliance is invisible to the RM until they
+// happen to reload.
+let notificationPollTimer = null;
+function startNotificationPolling() {
+  if (notificationPollTimer) clearInterval(notificationPollTimer);
+  notificationPollTimer = setInterval(() => {
+    if (!hasAuthToken()) return;
+    // Nothing to poll for behind a hidden tab; the next visible tick catches up.
+    if (document.hidden) return;
+    refreshNotifications({ announce: true });
+  }, 30000);
+}
+
+function stopNotificationPolling() {
+  if (notificationPollTimer) clearInterval(notificationPollTimer);
+  notificationPollTimer = null;
 }
 
 function renderNotificationDropdown() {
@@ -779,12 +936,12 @@ function renderNotificationDropdown() {
       <span style="font-size:14px;font-weight:600;">Notifications</span>
       <button onclick="markAllRead()" style="background:none;border:none;font-size:12px;color:var(--accent-purple-light);cursor:pointer;">Mark all read</button>
     </div>
-    ${State.notifications.map(n => `
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border-subtle);${!n.read ? 'background:rgba(99,102,241,0.04)' : ''};cursor:pointer;" onclick="markRead('${n.id}')">
-        <div style="font-size:13px;color:var(--text-primary);">${n.text}</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${n.time}</div>
+    ${State.notifications.length ? State.notifications.map(n => `
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border-subtle);${!n.read ? 'background:rgba(99,102,241,0.04)' : ''};cursor:pointer;" onclick="openNotification('${escapeHtml(n.id)}')">
+        <div style="font-size:13px;color:var(--text-primary);">${escapeHtml(n.text)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${escapeHtml(n.time)}</div>
       </div>
-    `).join('')}
+    `).join('') : `<div style="padding:20px 16px;font-size:13px;color:var(--text-muted);text-align:center;">Nothing new.</div>`}
   `;
   updateNotifBadge();
 }
@@ -802,6 +959,20 @@ async function markRead(id) {
   try { await apiFetch('POST', `/notifications/${id}/read`); } catch (_) { /* best-effort */ }
 }
 
+// Clicking a notification should take you to the work it is about, not just
+// grey it out — the page it names is where the thing actually gets done.
+function openNotification(id) {
+  const n = State.notifications.find(x => x.id === id);
+  markRead(id);
+  // Only somewhere this role actually has: a notification can outlive the nav
+  // it was written for, and navigating to a page that isn't there would blank
+  // the screen.
+  if (n?.page && document.getElementById(`nav-${n.page}`)) {
+    document.getElementById('notif-dropdown').classList.remove('open');
+    navigateTo(n.page);
+  }
+}
+
 function toggleNotifications() {
   document.getElementById('notif-dropdown').classList.toggle('open');
   refreshNotifications();
@@ -811,6 +982,28 @@ document.addEventListener('click', e => {
     document.getElementById('notif-dropdown').classList.remove('open');
   }
 });
+
+// Live feedback for every editable KYC field. Gold means the value is either
+// empty or differs from the last value persisted by Save Progress. Typing a
+// value therefore does not make the warning disappear prematurely: the field
+// remains gold until the save request succeeds and the form is re-rendered
+// from canonical Client.kyc data.
+function kycLiveGlowSync(target) {
+  const group = target.closest('[data-kyc-control]');
+  if (!group) return;
+  const glowEl = group.querySelector('[data-kyc-glow-eligible]');
+  if (!glowEl) return;
+  const key = group.dataset.kycKey;
+  const controls = Array.from(group.querySelectorAll('input, select, textarea'));
+  const selected = controls.find(c => c.name === key && (c.type !== 'radio' || c.checked));
+  const currentValue = String(selected?.value ?? '').trim();
+  const savedValue = String(group.dataset.kycSavedValue ?? '').trim();
+  const stillRejected = group.dataset.kycCorrectionStatus === 'pending'
+    || group.dataset.kycCorrectionStatus === 'needs_correction';
+  glowEl.classList.toggle('kyc-field-missing', stillRejected || !currentValue || currentValue !== savedValue);
+}
+document.addEventListener('input', e => kycLiveGlowSync(e.target));
+document.addEventListener('change', e => kycLiveGlowSync(e.target));
 
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('collapsed');
@@ -866,14 +1059,19 @@ function navigateTo(page) {
     analytics: 'Analytics',
     settings: 'Settings',
     'new-client': 'New Client Onboarding',
-    'kyc-form': 'KYC Questionnaire',
-    'kyc-tasks': 'KYC Tasks',
-    'kyc-corrections': 'KYC Corrections',
+    'kyc-form': 'KYC Schema',
+    'kyc-tasks': 'KYC & Mandate Risk Tasks',
+    'kyc-corrections': 'KYC Uploads',
     'client-contract': 'Contract Package',
     'client-upload': 'Upload Signed Documents',
     risk: 'Risk Ratings',
     'client-detail': 'Client Details',
     'kyc-fill': 'KYC Questionnaire',
+    'kyc-review': 'KYC Review',
+    'contract-prep': 'Contract Tasks',
+    'party-kyc': 'Related-Party KYC',
+    'mandate-risk': 'Mandate Risk',
+    'mandate-risk-schema': 'Mandate Risk Schema',
   };
   document.getElementById('topbar-title').textContent = titles[page] || page;
 
@@ -897,6 +1095,11 @@ function navigateTo(page) {
     case 'risk': renderRiskRatings(); break;
     case 'client-detail': renderClientDetail(); break;
     case 'kyc-fill': renderKycFill(); break;
+    case 'kyc-review': renderKycReview(); break;
+    case 'contract-prep': renderContractPreparation(); break;
+    case 'party-kyc': renderRelatedPartyKyc(); break;
+    case 'mandate-risk': renderMandateRisk(); break;
+    case 'mandate-risk-schema': renderMandateRiskSchema(); break;
   }
 }
 
@@ -921,7 +1124,9 @@ function rerenderCurrentDashboard() {
 // the bundled mock State data. Endpoints that require `protect` will 401 (and
 // apiFetch force-reloads on 401), so anything that fires automatically on
 // login/navigation must skip the call rather than fall through to that.
-function hasAuthToken() { return !!localStorage.getItem('token'); }
+// Script cannot read an httpOnly cookie, so "signed in" is answered by the
+// marker set at login and cleared on 401 — the server remains the authority.
+function hasAuthToken() { return localStorage.getItem('sessionActive') === '1'; }
 
 async function refreshKycTasks() {
   if (!hasAuthToken()) return;
@@ -967,11 +1172,11 @@ function renderDashboard() {
             <div class="client-row" onclick="openClientDetail('${c.id}')">
               <div class="client-avatar" style="background:${clientGradient(c.type)}">${c.name[0]}</div>
               <div class="client-info">
-                <div class="client-name">${c.name}</div>
-                <div class="client-type">${c.type} · ${c.country}</div>
+                <div class="client-name">${escapeHtml(c.name)}</div>
+                <div class="client-type">${escapeHtml(c.type)} · ${escapeHtml(c.country)}</div>
               </div>
               <div class="client-meta">
-                <span class="status-badge status-${c.status}">${statusLabel(c.status)}</span>
+                <span class="status-badge status-${escapeHtml(c.status)}">${statusLabel(c.status)}</span>
                 <div class="client-date">${c.created}</div>
               </div>
             </div>
@@ -990,7 +1195,7 @@ function renderDashboard() {
           ${State.clients.map(c => `
             <div style="margin-bottom:18px;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <span style="font-size:13px;font-weight:500;">${c.name}</span>
+                <span style="font-size:13px;font-weight:500;">${escapeHtml(c.name)}</span>
                 <span style="font-size:12px;color:var(--text-muted);">${c.progress}%</span>
               </div>
               <div class="progress-bar-wrap">
@@ -1039,9 +1244,11 @@ function clientGradient(type) {
   return map[type] || 'linear-gradient(135deg,#6366f1,#8b5cf6)';
 }
 
-function statCard(color, value, label, change, positive, icon) {
+// `onClick` turns the tile into a way into the page it counts — the number on
+// its own tells you something is waiting without saying where to deal with it.
+function statCard(color, value, label, change, positive, icon, onClick = '') {
   return `
-    <div class="stat-card">
+    <div class="stat-card"${onClick ? ` onclick="${onClick}" style="cursor:pointer;" title="Open ${escapeHtml(label)}"` : ''}>
       <div class="stat-header">
         <div class="stat-icon" style="background:${color}22;color:${color}">${icon}</div>
         ${change ? `<span class="stat-change ${positive ? 'positive' : 'negative'}">${change}</span>` : ''}
@@ -1052,11 +1259,97 @@ function statCard(color, value, label, change, positive, icon) {
   `;
 }
 
+// The four conditions a mandate has to meet before it can leave the system,
+// each answerable from the client record alone. Kept in one place so the
+// export list, the per-row checklist and the validate action can never
+// disagree about what "ready" means.
+function exportReadiness(client) {
+  const docs = client.documents || [];
+  const withFiles = docs.filter(d => d.filePath);
+  const outstanding = docs.filter(d => d.required && !d.filePath);
+  return {
+    kyc: clientKycWorkflowStatus(client) === 'approved',
+    risk: (client.mandateRisk || {}).status === 'approved',
+    documentsIn: outstanding.length === 0,
+    outstanding: outstanding.length,
+    // Nothing to validate is not the same as validated: a mandate with no
+    // documents at all must not read as signed off.
+    contracts: withFiles.length > 0 && withFiles.every(d => d.status === 'approved'),
+    toValidate: withFiles.filter(d => d.status !== 'approved').length,
+    documentCount: withFiles.length,
+  };
+}
+
+// One mandate in the export zone: what it still needs, or the click that
+// downloads it. The checklist is shown either way — a reviewer should be able
+// to see why something is or isn't exportable without opening the case.
+function exportRowHTML(c) {
+  const r = exportReadiness(c);
+  const line = (ok, label, detail) => `
+    <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:2px 0;">
+      <span style="color:${ok ? 'var(--status-approved)' : 'var(--status-info-requested)'};font-weight:700;width:12px;">${ok ? '✓' : '○'}</span>
+      <span style="min-width:118px;color:var(--text-secondary);">${escapeHtml(label)}</span>
+      <span style="color:${ok ? 'var(--status-approved)' : 'var(--text-muted)'};">${escapeHtml(detail)}</span>
+    </div>`;
+
+  const canExport = r.contracts;
+  return `
+    <div class="client-row" style="align-items:flex-start;${canExport ? 'cursor:pointer;' : 'cursor:default;'}"
+         ${canExport ? `onclick="downloadMandateExport('${escapeHtml(c.id)}')" title="Download the full export for ${escapeHtml(c.name)}"` : ''}>
+      <div class="client-avatar" style="background:${clientGradient(c.type)}">${escapeHtml((c.name || '?')[0])}</div>
+      <div class="client-info" style="flex:1;">
+        <div class="client-name">${escapeHtml(c.name)}</div>
+        <div class="client-type" style="margin-bottom:6px;">${escapeHtml(c.id)} · ${escapeHtml(c.type)} · RM: ${escapeHtml(c.rm || '—')}</div>
+        ${line(r.kyc, 'KYC', 'Approved')}
+        ${line(r.risk, 'Mandate Risk', 'Approved')}
+        ${line(r.contracts, 'Contracts', r.contracts
+          ? `Validated · ${r.documentCount} document${r.documentCount === 1 ? '' : 's'}`
+          : `${r.toValidate} to validate`)}
+      </div>
+      <div class="client-meta" style="display:flex;align-items:center;gap:10px;">
+        ${canExport
+          ? `<span class="status-badge status-approved">Ready to export</span>`
+          : isCompliance(State.currentRole)
+            ? `<button class="btn-primary btn-sm" onclick="event.stopPropagation();validateContracts('${escapeHtml(c.id)}')">Validate contracts</button>`
+            : `<span class="status-badge status-pending">Awaiting contract validation</span>`}
+      </div>
+    </div>`;
+}
+
+// Compliance signing off the contract paperwork — the last gate before a
+// mandate can be exported.
+async function validateContracts(clientId) {
+  const client = resolveKycClient(clientId);
+  const count = exportReadiness(client || {}).toValidate;
+  if (!confirm(`Validate the contract paperwork for ${decodeEntities(client?.name || clientId)}?\n\n${count} document${count === 1 ? '' : 's'} will be marked as checked and approved by Compliance, and the mandate becomes ready to export.`)) return;
+  try {
+    const res = await apiFetch('POST', `/clients/${clientId}/validate-contracts`, {});
+    showToast('success', `Contracts validated — ${res.validated} document${res.validated === 1 ? '' : 's'} approved. Ready to export.`);
+    await refreshClients();
+    renderComplianceDashboard();
+  } catch (err) {
+    showToast('error', err.message || 'Could not validate the contracts.');
+  }
+}
+
 /* --- Compliance Dashboard --- */
 function renderComplianceDashboard() {
   const content = document.getElementById('page-content');
-  const pending = State.clients.filter(c => c.status === 'under-review' || c.status === 'pending');
-  const readyForExport = State.clients.filter(c => c.status === 'approved');
+  const pending = State.clients.filter(c => clientKycWorkflowStatus(c) === 'under_review');
+  const approvedKyc = State.clients.filter(c => clientKycWorkflowStatus(c) === 'approved');
+  // A mandate reaches the export zone when its questionnaires are signed off
+  // and its paperwork is all in. Whether the contracts themselves have been
+  // validated decides what it can do there — see exportReadiness.
+  const readyForExport = State.clients.filter(c => {
+    const r = exportReadiness(c);
+    return r.kyc && r.risk && r.documentsIn;
+  });
+  const rejected = State.clients.filter(c => c.status === 'rejected');
+  // The mandate-risk questionnaire has its own lifecycle alongside the KYC, so
+  // it gets its own tiles rather than being invisible until someone opens Tasks.
+  const riskStatusOf = (t) => t.mandateRiskStatus || 'draft';
+  const riskOutstanding = (State.kycTasks || []).filter(t => ['draft', 'saved'].includes(riskStatusOf(t)));
+  const riskUnderReview = (State.kycTasks || []).filter(t => riskStatusOf(t) === 'under_review');
 
   content.innerHTML = `
     <div class="page-header">
@@ -1064,102 +1357,105 @@ function renderComplianceDashboard() {
       <p>Pending cases and Assetmax data export</p>
     </div>
     <div class="stats-grid">
-      ${statCard('#f59e0b', pending.length, 'Awaiting Review', '', false, checklistIcon())}
-      ${statCard('#10b981', '1', 'Approved This Month', '', true, checkIcon())}
-      ${statCard('#ef4444', '1', 'Rejected', '', false, xIcon())}
-      ${statCard('#06b6d4', readyForExport.length, 'Ready for Assetmax Export', '', false, `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`)}
+      ${statCard('#f59e0b', pending.length, 'KYC Awaiting Review', '', false, checklistIcon(), `openTasksTab('kyc')`)}
+      ${statCard('#10b981', approvedKyc.length, 'KYC Approved', '', true, checkIcon(), `openTasksTab('kyc')`)}
+      ${statCard('#8b5cf6', riskOutstanding.length, 'Mandate Risk Outstanding', '', false, shieldIcon(), `openTasksTab('risk')`)}
+      ${statCard('#0ea5e9', riskUnderReview.length, 'Mandate Risk Under Review', '', false, shieldIcon(), `openTasksTab('risk')`)}
+      ${statCard('#ef4444', rejected.length, 'Rejected Cases', '', false, xIcon(), `navigateTo('clients')`)}
+      ${statCard('#06b6d4', readyForExport.length, 'Ready for Assetmax Export', '', false, `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`, `document.getElementById('assetmax-export')?.scrollIntoView({behavior:'smooth'})`)}
     </div>
     <div class="info-box warning">
-      <p><strong>⚠ Action Required:</strong> ${pending.length} case(s) are awaiting compliance review. Please review and action them to avoid delays.</p>
+      <p><strong>⚠ Action Required:</strong> ${pending.length} KYC questionnaire(s) are under review. Open KYC Tasks to validate every field and approve them.</p>
     </div>
 
     <div class="grid-2">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Pending Cases (${pending.length})</div>
-          <button class="btn-secondary btn-sm" onclick="navigateTo('clients')">View All Cases</button>
+          <div class="card-title">KYC Awaiting Review (${pending.length})</div>
+          <button class="btn-secondary btn-sm" onclick="navigateTo('kyc-tasks')">Open KYC Tasks</button>
         </div>
         <div>
           ${pending.map(c => `
             <div class="client-row" onclick="openClientDetail('${c.id}')">
               <div class="client-avatar" style="background:${clientGradient(c.type)}">${c.name[0]}</div>
               <div class="client-info">
-                <div class="client-name">${c.name}</div>
-                <div class="client-type">${c.type} · Risk: <span class="risk-${c.risk.toLowerCase()}">${c.risk}</span> · RM: ${c.rm}</div>
+                <div class="client-name">${escapeHtml(c.name)}</div>
+                <div class="client-type">${escapeHtml(c.type)} · Risk: <span class="risk-${c.risk.toLowerCase()}">${escapeHtml(c.risk)}</span> · RM: ${escapeHtml(c.rm)}</div>
               </div>
               <div class="client-meta">
-                <span class="status-badge status-${c.status}">${statusLabel(c.status)}</span>
+                <span class="status-badge status-under-review">Under Review by Compliance</span>
                 <div class="client-date">${c.created}</div>
               </div>
             </div>
           `).join('')}
-          ${pending.length === 0 ? `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No pending cases.</p>` : ''}
+          ${pending.length === 0 ? `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No KYC questionnaires are awaiting review.</p>` : ''}
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="assetmax-export">
         <div class="card-header">
           <div>
-            <div class="card-title">Assetmax Export</div>
-            <div class="card-subtitle">Contract documents and KYC/Mandate Risk data export</div>
+            <div class="card-title">Assetmax Export (${readyForExport.length})</div>
+            <div class="card-subtitle">One .zip per mandate: KYC sheet, Mandatsrisiko sheet, and every document</div>
           </div>
         </div>
-        <div class="card-body">
-          <div class="info-box success">
-            <p>Only approved cases are available for export. All exports are logged in the audit trail.</p>
-          </div>
-          ${readyForExport.length === 0 ? `<p style="font-size:13px;color:var(--text-muted);">No approved cases ready for export yet.</p>` : ''}
-          ${readyForExport.map(c => `
-            <div style="padding:14px 0;border-bottom:1px solid var(--border-subtle);">
-              <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${c.name}
-                <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:6px;">${c.type} · Approved ${c.created}</span>
-              </div>
-
-              <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">Contract Documents</div>
-              <div style="background:var(--bg-secondary);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:10px;">
-                ${c.documents.filter(d => d.signedVersion || d.status === 'approved').map(d => `
-                  <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-subtle);">
-                    <div style="display:flex;align-items:center;gap:7px;font-size:12px;">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
-                      ${d.name}
-                    </div>
-                    ${d.filePath ? `<button class="btn-secondary btn-xs" onclick="downloadDoc('${c.id}','${d.id}')">↓</button>` : `<span style="font-size:11px;color:var(--text-muted);">No file yet</span>`}
-                  </div>
-                `).join('')}
-                <div style="margin-top:8px;">
-                  <button class="btn-primary btn-sm" style="width:100%;" onclick="downloadFullPackage('${c.id}')">
-                    Download Full Contract Package
-                  </button>
-                </div>
-              </div>
-
-              <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">Data Export</div>
-              <div style="background:var(--bg-secondary);border-radius:var(--radius-md);padding:10px 12px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border-subtle);">
-                  <div style="display:flex;align-items:center;gap:7px;font-size:12px;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-                    KYC Data
-                  </div>
-                  <button class="btn-secondary btn-sm" onclick="downloadKycPdf('${c.id}')">
-                    Download PDF
-                  </button>
-                </div>
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;">
-                  <div style="display:flex;align-items:center;gap:7px;font-size:12px;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-                    Mandate Risk Profile
-                  </div>
-                  <button class="btn-secondary btn-sm" onclick="exportToAssetmax('${c.id}')">
-                    Export .xlsx
-                  </button>
-                </div>
-              </div>
-            </div>
-          `).join('')}
+        <div>
+          ${readyForExport.length === 0
+            ? `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No mandates are ready yet. A mandate appears here once its KYC and Mandate Risk are approved and every required document is in.</p>`
+            : readyForExport.map(c => exportRowHTML(c)).join('')}
         </div>
       </div>
     </div>
   `;
+}
+
+// The completed KYC as a spreadsheet, built from the answers as they stand.
+// Only available once the questionnaire has been handed to Compliance — the
+// server refuses a draft, and says so.
+async function downloadKycExcel(clientId) {
+  try {
+    const res = await fetch(`${API_BASE}/clients/${clientId}/kyc-export`, { credentials: 'include' });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Export failed');
+    const blob = await res.blob();
+    const served = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = served || `${clientId}_KYC.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('success', 'KYC exported.');
+  } catch (err) {
+    showToast('error', err.message || 'Could not export the KYC.');
+  }
+}
+
+// Everything the external system needs for one mandate, in one file: the KYC
+// sheet, the Mandatsrisiko sheet and every uploaded document. Fetched as a blob
+// so the Authorization header travels with the request.
+async function downloadMandateExport(clientId) {
+  try {
+    showToast('info', 'Building the export…');
+        const res = await fetch(`${API_BASE}/clients/${clientId}/export`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Export failed');
+    const blob = await res.blob();
+    const served = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = served || `${clientId}_Export.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('success', 'Export downloaded — KYC and Mandatsrisiko sheets plus all documents.');
+  } catch (err) {
+    showToast('error', err.message || 'Could not build the export.');
+  }
 }
 
 // Downloads a real PDF summary of the client's KYC record — the .xlsx export
@@ -1167,9 +1463,8 @@ function renderComplianceDashboard() {
 // working option in the meantime (see kycPdfExport.service.js).
 async function downloadKycPdf(clientId) {
   try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/kyc/export/pdf/${clientId}`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        const response = await fetch(`${API_BASE}/kyc/export/pdf/${clientId}`, {
+      credentials: 'include',
     });
     if (!response.ok) throw new Error((await response.json().catch(() => ({})))?.error || 'Export failed');
     const blob = await response.blob();
@@ -1203,7 +1498,16 @@ async function renderKycTasksPage() {
   content.innerHTML = `<div class="page-header"><h1>KYC Tasks</h1></div><div class="cb-loading">Loading KYC tasks…</div>`;
   if (hasAuthToken()) {
     try {
-      const tasks = await apiFetch('GET', '/kyc-tasks');
+      ensureMandateRiskSchema(() => {
+        if (State.currentPage === 'kyc-tasks') renderKycTasksPage();
+      });
+      const [tasks] = await Promise.all([
+        apiFetch('GET', '/kyc-tasks'),
+        refreshClients(),
+        // Each task now lists its own outstanding fields inline, so the
+        // corrections behind them have to be loaded here too.
+        refreshCorrectionsBadge(),
+      ]);
       State.kycTasks = tasks.map(t => ({ ...t, id: t._id }));
     } catch (err) {
       content.innerHTML = `<div class="page-header"><h1>KYC Tasks</h1></div><p style="color:var(--accent-red);padding:16px;">Failed to load KYC tasks: ${err.message}</p>`;
@@ -1212,44 +1516,303 @@ async function renderKycTasksPage() {
   }
   updateKycTasksBadge();
 
-  const pending   = State.kycTasks.filter(kycTaskStillNeedsAttention);
-  const completed = State.kycTasks.filter(t => !kycTaskStillNeedsAttention(t));
+  // The Mandate Risk tab is grouped exactly like the KYC one — outstanding,
+  // with Compliance, done — rather than one undifferentiated list.
+  const riskStatus = (t) => t.mandateRiskStatus || 'draft';
+  const riskPending = State.kycTasks.filter(t => ['draft', 'saved'].includes(riskStatus(t)));
+  const riskUnderReview = State.kycTasks.filter(t => riskStatus(t) === 'under_review');
+  const riskApproved = State.kycTasks.filter(t => riskStatus(t) === 'approved');
 
-  const taskRow = (t, isPending) => `
-    <div class="client-row" style="cursor:default;">
-      <div class="client-avatar" style="background:${clientGradient('Individual')}">${(t.clientName||'?')[0]}</div>
-      <div class="client-info">
-        <div class="client-name">${t.clientName}</div>
-        <div class="client-type">${t.clientEmail} · Kundenberater: ${t.rmName || '—'} · Assigned ${new Date(t.createdAt).toLocaleString()}</div>
+  const pending = State.kycTasks.filter(t => kycTaskWorkflowStatus(t) === 'pending');
+  const underReview = State.kycTasks.filter(t => kycTaskWorkflowStatus(t) === 'under_review');
+  const approved = State.kycTasks.filter(t => kycTaskWorkflowStatus(t) === 'approved');
+
+  // Each task is a dropdown: the header carries the client and its status,
+  // and expanding it lists exactly which fields are still outstanding — with
+  // a button that opens the form on that field. The old separate Corrections
+  // list for these is no longer needed, because the gaps live on the task
+  // they belong to.
+  const taskRow = (t, workflowStatus) => {
+    const openItems = (State.kycCorrections || []).filter(c =>
+      c.clientId === t.clientId && c.autoGenerated && c.status !== 'corrected');
+    // Status only. Opening the questionnaire — or the Compliance review of it —
+    // is what clicking the row does, so no button repeats it.
+    // data-task-status marks the questionnaire's own status, as opposed to the
+    // per-field badges inside the dropdown — both are .status-badge, so the
+    // whole-task one needs to stay addressable on its own.
+    const action = workflowStatus === 'pending'
+      ? `<span class="status-badge ${KYC_CORRECTION_STATUS_META.pending.badge}" data-task-status>${KYC_CORRECTION_STATUS_META.pending.label}</span>`
+      : workflowStatus === 'under_review'
+        ? `<span class="status-badge status-under-review" data-task-status>Under Review by Compliance</span>`
+        : `<span class="status-badge status-approved" data-task-status>Approved by Compliance${(t.approvedAt || t.completedAt) ? ` · ${new Date(t.approvedAt || t.completedAt).toLocaleDateString()}` : ''}</span>`;
+    const openRow = workflowStatus === 'under_review' && isCompliance(State.currentRole)
+      ? `reviewKycTask('${t.id}')`
+      : `openKycTask('${t.id}')`;
+
+    // The name opens the questionnaire; the chevron expands the field list.
+    // Both have to be reachable — every task now lists its fields, so the row
+    // is always a dropdown, and without this there is no way in at all.
+    const header = `
+      <div class="client-avatar" style="background:${clientGradient('Individual')}">${escapeHtml((t.clientName || '?')[0])}</div>
+      <div class="client-info" style="flex:1;cursor:pointer;" title="Open the questionnaire"
+           onclick="event.preventDefault();event.stopPropagation();${openRow}">
+        <div class="client-name">${escapeHtml(t.clientName || '')}</div>
+        <div class="client-type">${escapeHtml(t.clientEmail || '')} · Kundenberater: ${escapeHtml(t.rmName || '—')}${openItems.length ? ` · ${openItems.length} field${openItems.length === 1 ? '' : 's'} outstanding` : ''}</div>
       </div>
-      <div class="client-meta" style="display:flex;align-items:center;gap:10px;">
-        ${isPending
-          ? `<button class="btn-primary btn-sm" onclick="openKycTask('${t.id}')">Fill KYC Form</button>`
-          : `<span class="status-badge status-approved">Completed ${t.completedAt ? new Date(t.completedAt).toLocaleDateString() : ''}</span>`}
-      </div>
-    </div>
-  `;
+      <div class="client-meta" style="display:flex;align-items:center;gap:10px;">${action}</div>`;
+
+    // Every questionnaire expands to the same thing the Mandate Risk tab shows:
+    // one line per field, with where that individual field currently stands.
+    // A field with an open correction reads from the correction; everything
+    // else follows the questionnaire's own state.
+    const correctionByKey = new Map(openItems.map(c => [c.fieldKey, c]));
+    // A field Compliance has already confirmed shows as confirmed here too,
+    // not as still under review — same as the mandate-risk list.
+    const confirmedByKey = new Map((State.kycCorrections || [])
+      .filter(c => c.clientId === t.clientId && c.autoGenerated && c.status === 'corrected' && c.everFilled)
+      .map(c => [c.fieldKey, c]));
+    const fieldRows = (t.sections || []).flatMap(sec => (sec.fields || []).map(f => {
+      const correction = correctionByKey.get(f.key || f.id);
+      const filled = String(f.value ?? '').trim();
+      // Same rule the forms use: only a mandatory blank is still owed. An
+      // optional one is "Optional" while it can still be filled in, and
+      // "Not provided" once the questionnaire has been handed over.
+      const submitted = workflowStatus !== 'pending';
+      const meta = correction
+        ? KYC_CORRECTION_STATUS_META[correction.status] || KYC_CORRECTION_STATUS_META.pending
+        : filled && confirmedByKey.has(f.key || f.id) ? KYC_CORRECTION_STATUS_META.corrected
+        : !filled
+          ? (f.required !== false ? KYC_CORRECTION_STATUS_META.pending
+            : { label: submitted ? 'Not provided' : 'Optional', badge: 'status-neutral' })
+        : workflowStatus === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
+        : workflowStatus === 'under_review' ? KYC_CORRECTION_STATUS_META.resubmitted
+        : KYC_CORRECTION_STATUS_META.saved;
+      return `
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border-subtle);">
+          <div style="flex:1;font-size:12.5px;">
+            ${escapeHtml(f.label || f.key)}
+            <span style="color:var(--text-muted);margin-left:6px;">${filled ? escapeHtml(filled) : '—'}</span>
+            <span style="color:var(--accent-orange);font-size:11px;margin-left:6px;">${escapeHtml(sec.title || '')}</span>
+            ${correction?.status === 'needs_correction' && correction.rejectionReason
+              ? `<div style="font-size:11px;color:var(--accent-gold);">Compliance: ${escapeHtml(correction.rejectionReason)}</div>` : ''}
+          </div>
+          <span class="status-badge ${meta.badge}">${escapeHtml(meta.label)}</span>
+          ${workflowStatus === 'approved' || (!filled && f.required === false) ? '' : `<button class="btn-primary btn-xs" onclick="openKycTaskAtField('${t.id}','${escapeHtml(f.key || f.id)}')">Fill in</button>`}
+        </div>`;
+    }));
+
+    if (!fieldRows.length) {
+      return `<div class="client-row" onclick="${openRow}">${header}</div>`;
+    }
+    return `
+      <details class="client-row doc-collapsible" style="display:block;padding:0;">
+        <summary style="display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;list-style:none;">
+          ${header}
+          <span class="doc-chevron" style="color:var(--text-muted);font-size:12px;margin-left:4px;">▾</span>
+        </summary>
+        <div style="padding:0 20px 14px 76px;">
+          ${fieldRows.join('')}
+        </div>
+      </details>`;
+  };
 
   content.innerHTML = `
     <div class="page-header">
-      <h1>KYC Tasks</h1>
+      <h1>KYC &amp; Mandate Risk Tasks</h1>
       <p>Questionnaires created from Contract Building — the Kundenberater, Compliance, and the client (if they have a portal account) can all complete the same one.</p>
     </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tasktab-btn-kyc" onclick="switchTasksTab('kyc')">KYC (${pending.length + underReview.length})</button>
+      <button class="tab-btn" id="tasktab-btn-risk" onclick="switchTasksTab('risk')">Mandate Risk (${State.kycTasks.filter(t => (t.mandateRiskStatus || 'draft') !== 'approved').length})</button>
+    </div>
+
+    <div id="tasktab-kyc" class="tab-content active">
 
     <div class="card" style="margin-bottom:20px;">
       <div class="card-header"><div class="card-title">To Complete (${pending.length})</div></div>
       <div>
-        ${pending.map(t => taskRow(t, true)).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">Nothing outstanding.</p>`}
+        ${pending.map(t => taskRow(t, 'pending')).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">Nothing outstanding.</p>`}
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header"><div class="card-title">Under Review by Compliance (${underReview.length})</div></div>
+      <div>
+        ${underReview.map(t => taskRow(t, 'under_review')).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No questionnaires are awaiting Compliance review.</p>`}
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header"><div class="card-title">Completed</div></div>
+      <div class="card-header"><div class="card-title">Approved by Compliance (${approved.length})</div></div>
       <div>
-        ${completed.map(t => taskRow(t, false)).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No completed questionnaires yet.</p>`}
+        ${approved.map(t => taskRow(t, 'approved')).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No KYC questionnaires have been approved yet.</p>`}
       </div>
     </div>
+    </div>
+
+    <div id="tasktab-risk" class="tab-content">
+      ${[
+        { title: 'To Complete', empty: 'Nothing outstanding.',
+          rows: riskPending },
+        { title: 'Under Review by Compliance', empty: 'No questionnaires are awaiting Compliance review.',
+          rows: riskUnderReview },
+        { title: 'Approved by Compliance', empty: 'No mandate-risk questionnaires have been approved yet.',
+          rows: riskApproved },
+      ].map(group => `
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header"><div class="card-title">${group.title} (${group.rows.length})</div></div>
+          <div>
+            ${group.rows.map(t => mandateRiskRow(t)).join('')
+              || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">${group.empty}</p>`}
+          </div>
+        </div>
+      `).join('')}
+    </div>
   `;
+
+  // Restore whichever tab is current. This runs on every render, not just the
+  // first: refreshKycTasks() redraws this page when data arrives, and without
+  // this the view would jump back to KYC underneath the reader.
+  switchTasksTab(State.tasksTab || 'kyc');
+}
+
+// Opens the Tasks page on a named tab. Used by the schema screens, so "open the
+// tasks for this questionnaire" lands on the right one.
+function openTasksTab(name) {
+  State.tasksTab = name;
+  if (State.currentPage === 'kyc-tasks') switchTasksTab(name);
+  else navigateTo('kyc-tasks');
+}
+
+function switchTasksTab(name) {
+  State.tasksTab = name;
+  ['kyc', 'risk'].forEach((n) => {
+    document.getElementById(`tasktab-btn-${n}`)?.classList.toggle('active', n === name);
+    document.getElementById(`tasktab-${n}`)?.classList.toggle('active', n === name);
+  });
+}
+
+// One mandate-risk questionnaire per mandate, shown beside the KYC it belongs
+// to so both live under a single Tasks entry in the sidebar.
+function mandateRiskRow(t) {
+  const status = t.mandateRiskStatus || 'draft';
+  const meta = status === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
+    : status === 'under_review' ? KYC_CORRECTION_STATUS_META.resubmitted
+    : status === 'saved' ? { label: 'Saved', badge: 'status-neutral' }
+    : KYC_CORRECTION_STATUS_META.pending;
+
+  const answers = t.mandateRiskAnswers || {};
+  const reviews = t.mandateRiskReviews || {};
+  const fields = State.mandateRiskSchema || [];
+  const missingFields = t.mandateRiskMissingFields || [];
+  // Compliance reviews a submitted questionnaire here, question by question,
+  // exactly as it reviews a KYC. Everything else just reads its state.
+  const reviewing = status === 'under_review' && isCompliance(State.currentRole);
+  const flaggedCount = Object.values(reviews).filter(r => r && r.status === 'flagged').length;
+
+  const header = `
+    <div class="client-avatar" style="background:${clientGradient('Corporate')}">${escapeHtml((t.clientName || '?')[0])}</div>
+    <div class="client-info" style="flex:1;cursor:pointer;" title="Open the questionnaire"
+         onclick="event.preventDefault();event.stopPropagation();openMandateRisk('${escapeHtml(t.clientId)}')">
+      <div class="client-name">${escapeHtml(t.clientName || '')}</div>
+      <div class="client-type">${escapeHtml(t.clientId || '')} · Kundenberater: ${escapeHtml(t.rmName || '—')}${missingFields.length ? ` · ${missingFields.length} question${missingFields.length === 1 ? '' : 's'} outstanding` : ''}${flaggedCount ? ` · ${flaggedCount} sent back` : ''}</div>
+    </div>
+    <div class="client-meta" style="display:flex;align-items:center;gap:10px;">
+      <span class="status-badge ${meta.badge}">${escapeHtml(meta.label)}</span>
+      ${reviewing ? `<button class="btn-success btn-sm" onclick="event.stopPropagation();approveAllMandateRisk('${escapeHtml(t.clientId)}')">Approve all</button>` : ''}
+    </div>`;
+
+  // Under review, every question is listed with its answer so it can be judged.
+  // Otherwise only what is still outstanding is worth showing.
+  const rows = reviewing && fields.length
+    ? fields.map(f => {
+        const value = String(answers[f.key] ?? '').trim();
+        const decision = reviews[f.key] || null;
+        // Nothing to judge on a question that was left blank — it is part of
+        // the submitted record as "not provided", the same way the KYC review
+        // reads. Only an answer gets a decision.
+        const badge = decision?.status === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
+          : decision?.status === 'flagged' ? KYC_CORRECTION_STATUS_META.needs_correction
+          : value ? KYC_CORRECTION_STATUS_META.resubmitted
+          : { label: 'Not provided', badge: 'status-neutral' };
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border-subtle);">
+            <div style="flex:1;font-size:12.5px;">
+              ${escapeHtml(f.label)}
+              <span style="color:var(--text-muted);margin-left:6px;">${value ? escapeHtml(value) : '—'}</span>
+              <span style="color:var(--accent-orange);font-size:11px;margin-left:6px;">${escapeHtml(f.page || '')}</span>
+              ${decision?.status === 'flagged' && decision.reason
+                ? `<div style="font-size:11px;color:var(--accent-gold);">Compliance: ${escapeHtml(decision.reason)}</div>` : ''}
+            </div>
+            <span class="status-badge ${badge.badge}">${escapeHtml(badge.label)}</span>
+            ${decision?.status === 'approved' || !value ? '' : `
+              <button class="btn-success btn-xs" title="Confirm this answer" onclick="reviewMandateRiskField('${escapeHtml(t.clientId)}','${escapeHtml(f.key)}','approve')">✓</button>
+              <button class="btn-danger btn-xs" title="Send this question back" onclick="reviewMandateRiskField('${escapeHtml(t.clientId)}','${escapeHtml(f.key)}','flag')">⚑</button>`}
+          </div>`;
+      })
+    : missingFields.map(f => `
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border-subtle);">
+          <div style="flex:1;font-size:12.5px;">
+            ${escapeHtml(f.label)}
+            <span class="status-badge ${KYC_CORRECTION_STATUS_META.pending.badge}" style="margin-left:6px;">${KYC_CORRECTION_STATUS_META.pending.label}</span>
+            <span style="color:var(--accent-orange);font-size:11px;margin-left:6px;">${escapeHtml(f.page)}</span>
+          </div>
+          <button class="btn-primary btn-xs" onclick="openMandateRisk('${escapeHtml(t.clientId)}')">Fill in</button>
+        </div>`);
+
+  if (!rows.length) {
+    return `<div class="client-row" style="cursor:default;">${header}</div>`;
+  }
+  return `
+    <details class="client-row doc-collapsible" style="display:block;padding:0;">
+      <summary style="display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;list-style:none;">
+        ${header}
+        <span class="doc-chevron" style="color:var(--text-muted);font-size:12px;margin-left:4px;">▾</span>
+      </summary>
+      <div style="padding:0 20px 14px 76px;">${rows.join('')}</div>
+    </details>`;
+}
+
+// Compliance's decision on one question — the mandate-risk twin of confirming
+// or flagging a single KYC field.
+async function reviewMandateRiskField(clientId, fieldKey, action) {
+  let reason;
+  if (action === 'flag') {
+    reason = prompt('What is wrong with this answer? (shown to whoever has to correct it)');
+    if (reason === null || !reason.trim()) return;
+  }
+  try {
+    await apiFetch('POST', `/clients/${clientId}/mandate-risk/review`, { fieldKey, action, reason });
+    showToast(action === 'approve' ? 'success' : 'warning',
+      action === 'approve' ? 'Answer confirmed.' : 'Question sent back for correction.');
+    await Promise.all([refreshClients(), refreshKycTasks()]);
+    if (State.currentPage === 'mandate-risk') renderMandateRisk();
+    else renderKycTasksPage();
+  } catch (err) {
+    showToast('error', err.message || 'Could not record that decision.');
+  }
+}
+
+// Everything is right — sign the questionnaire off in one action rather than
+// ticking all 32 questions individually.
+async function approveAllMandateRisk(clientId) {
+  const client = resolveKycClient(clientId);
+  if (!confirm(`Approve the whole mandate-risk questionnaire for ${decodeEntities(client?.name || clientId)}?`)) return;
+  try {
+    await apiFetch('PUT', `/clients/${clientId}/mandate-risk`, { approve: true });
+    showToast('success', 'Mandate-risk questionnaire approved by Compliance.');
+    await Promise.all([refreshClients(), refreshKycTasks()]);
+    if (State.currentPage === 'mandate-risk') renderMandateRisk();
+    else renderKycTasksPage();
+  } catch (err) {
+    showToast('error', err.message || 'Could not approve the questionnaire.');
+  }
+}
+
+function openKycTaskAtField(taskId, fieldKey) {
+  State._activeCorrectionFieldKey = fieldKey;
+  openKycTask(taskId);
 }
 
 function openKycTask(taskId) {
@@ -1257,6 +1820,250 @@ function openKycTask(taskId) {
   if (!task) return;
   State._activeKycTask = task;
   navigateTo('kyc-fill');
+}
+
+// "Edit KYC" from the Client Detail page — the KYC Details tab there is now
+// a read-only snapshot, so editing always happens on the real KYC Tasks form.
+function editClientKycFromDetail(clientId) {
+  const task = (State.kycTasks || []).find(t => t.clientId === clientId);
+  if (task) {
+    State._activeKycTask = task;
+    navigateTo('kyc-fill');
+  } else {
+    navigateTo('kyc-tasks');
+  }
+}
+
+function reviewKycTask(taskId) {
+  const task = State.kycTasks.find(t => t.id === taskId);
+  const client = task && clientForKycTask(task);
+  if (!client) {
+    showToast('error', 'The client linked to this KYC task is unavailable.');
+    return;
+  }
+  State.selectedClientId = client.id || client.clientId;
+  navigateTo('kyc-review');
+}
+
+function kycSchemaFor(client) {
+  const schema = Array.isArray(client?.kycSchema) && client.kycSchema.length
+    ? client.kycSchema
+    : (REQUIRED_KYC_FIELDS[client?.type] || []).map(([key, label, page, required = true]) => ({
+        key,
+        label,
+        page,
+        ...(BUNDLED_KYC_FIELD_INPUT_META[key] || {}),
+        required,
+      }));
+
+  return schema.map((field) => ({
+    ...field,
+    type: ['text', 'email', 'date', 'number', 'select', 'textarea', 'yesno'].includes(field.type)
+      ? field.type
+      : 'text',
+    required: field.required !== false,
+    options: Array.isArray(field.options) ? [...field.options] : [],
+  }));
+}
+
+function kycSectionsForClient(client) {
+  const sections = [];
+  const byPage = new Map();
+  const values = client.kyc || {};
+  kycSchemaFor(client).forEach((field) => {
+    if (!byPage.has(field.page)) {
+      const section = { title: field.page, fields: [] };
+      byPage.set(field.page, section);
+      sections.push(section);
+    }
+    byPage.get(field.page).fields.push({
+      id: field.key,
+      key: field.key,
+      label: field.label,
+      type: field.type || 'text',
+      required: field.required !== false,
+      options: field.options || [],
+      value: values[field.key] ?? '',
+    });
+  });
+  return sections;
+}
+
+// Single source of truth for how each raw KycCorrection.status reads in the
+// UI — reused by the field-level badges below and the Compliance corrections
+// list so the two views can never drift into different wording for the same
+// status.
+const KYC_CORRECTION_STATUS_META = {
+  pending:          { label: 'Please Fill In',            badge: 'status-pending' },
+  needs_correction: { label: 'Please Fill In',            badge: 'status-needs-correction' },
+  saved:            { label: 'Saved',                     badge: 'status-in-progress' },
+  resubmitted:      { label: 'Under Review by Compliance', badge: 'status-under-review' },
+  corrected:        { label: 'Approved by Compliance',     badge: 'status-approved' },
+};
+
+// One renderer for every editable KYC field. KYC Tasks and the correction
+// editor both receive this exact metadata from client.kycSchema, so input
+// type, dropdown options and requiredness cannot drift between the two views.
+//
+// correctionStatus is the raw KycCorrection.status for this field (or null
+// if there's no open correction) and drives both the badge and the glow:
+//   'pending' / 'needs_correction' — empty, hard gold glow, still needs RM input
+//   'saved'                        — RM saved a value but hasn't pressed Submit KYC yet: soft highlight
+//   'resubmitted'                  — submitted, awaiting Compliance review: badge only, no glow
+//   null/undefined                 — no open correction for this field
+function kycEditableFieldHTML(field, { page = field.page || '', value = '', correctionStatus = null, correctionReason = '', disabled = false, marginBottom = '14px', clientId = '', canFlag = false, submitted = false } = {}) {
+  const key = String(field.key || field.id || '');
+  const label = String(field.label || key);
+  const type = ['text', 'email', 'date', 'number', 'select', 'textarea', 'yesno'].includes(field.type)
+    ? field.type
+    : 'text';
+  const options = Array.isArray(field.options) ? field.options.map(String) : [];
+  const required = field.required !== false;
+  const stringValue = String(value ?? '');
+  const id = `clientkyc_${key}`;
+  const disabledAttr = disabled ? ' disabled' : '';
+  // Gold means "this is stopping the questionnaire being submitted". An
+  // optional question left blank is a legitimate answer, not an omission, so
+  // it stays plain — only a mandatory blank, or a field Compliance flagged,
+  // is highlighted.
+  const needsGold = (required && !stringValue.trim())
+    || correctionStatus === 'pending'
+    || correctionStatus === 'needs_correction';
+  const statusClass = needsGold ? 'kyc-field-missing'
+    : correctionStatus === 'saved' ? 'kyc-field-saved'
+    : '';
+  // Every control is eligible: an already-saved field must turn gold as soon
+  // as it is edited or cleared, and only a successful save may clear it again.
+  const glowEligibleAttr = ' data-kyc-glow-eligible="true"';
+  const sharedStyle = 'width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);';
+  const fieldMetadata = `data-kyc-key="${escapeHtml(key)}" data-kyc-label="${escapeHtml(label)}" data-kyc-type="${escapeHtml(type)}" data-kyc-required="${required ? 'true' : 'false'}" data-kyc-options="${escapeHtml(JSON.stringify(options))}" data-page="${escapeHtml(page)}"`;
+  const metadata = `data-kyc-control ${fieldMetadata} data-kyc-saved-value="${escapeHtml(stringValue.trim())}" data-kyc-correction-status="${escapeHtml(correctionStatus || '')}"`;
+  const nameAttr = `name="${escapeHtml(key)}"`;
+  const requiredMetadata = required ? ' aria-required="true"' : '';
+
+  let control;
+  if (type === 'select') {
+    control = `<select id="${escapeHtml(id)}" ${nameAttr} ${fieldMetadata}${requiredMetadata}${disabledAttr}${glowEligibleAttr} class="${statusClass}" style="${sharedStyle}">
+      <option value="">&mdash; select &mdash;</option>
+      ${options.map(option => `<option value="${escapeHtml(option)}" ${stringValue === option ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
+    </select>`;
+  } else if (type === 'textarea') {
+    control = `<textarea id="${escapeHtml(id)}" ${nameAttr} ${fieldMetadata}${requiredMetadata}${disabledAttr}${glowEligibleAttr} rows="3" placeholder="${escapeHtml(label)}" class="${statusClass}" style="${sharedStyle}resize:vertical;">${escapeHtml(stringValue)}</textarea>`;
+  } else if (type === 'yesno') {
+    const normalized = stringValue.trim().toLowerCase();
+    control = `<div id="${escapeHtml(id)}" role="radiogroup" aria-label="${escapeHtml(label)}"${glowEligibleAttr} class="${statusClass}" style="display:flex;gap:16px;margin-top:4px;">
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" ${nameAttr} value="Yes" ${normalized === 'yes' ? 'checked' : ''}${disabledAttr}> Yes</label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" ${nameAttr} value="No" ${normalized === 'no' ? 'checked' : ''}${disabledAttr}> No</label>
+    </div>`;
+  } else {
+    control = `<input id="${escapeHtml(id)}" ${nameAttr} ${fieldMetadata}${requiredMetadata}${disabledAttr}${glowEligibleAttr} type="${escapeHtml(type)}" placeholder="${escapeHtml(label)}" value="${escapeHtml(stringValue)}" class="${statusClass}" style="${sharedStyle}">`;
+  }
+
+  // A field can be filled or empty without ever having a tracked
+  // KycCorrection record (e.g. it was never flagged, or was resolved before
+  // one was ever created) — the badge must never be omitted just because no
+  // correction row happens to exist. Empty follows the same rule as the gold
+  // glow above (`needsGold`); a filled field with nothing actively tracked
+  // gets a plain neutral "Saved" tag, distinct from the blue one, which is
+  // reserved for a field genuinely mid-workflow (saved but not yet
+  // submitted) — otherwise every field on the form reads as blue and the
+  // handful that actually need attention stop standing out.
+  const statusMeta = KYC_CORRECTION_STATUS_META[correctionStatus]
+    || (needsGold ? KYC_CORRECTION_STATUS_META.pending
+      : stringValue.trim() ? { label: 'Saved', badge: 'status-neutral' }
+      // Blank and not required: nothing was saved and nothing is owed, so
+      // neither "Saved" nor "Please Fill In" is true. Once the questionnaire
+      // has been handed over, that blank is a finished answer.
+      : { label: submitted ? 'Not provided' : 'Optional', badge: 'status-neutral' });
+  const statusLabel = statusMeta
+    ? ` <span class="status-badge ${statusMeta.badge}" style="margin-left:4px;">${escapeHtml(statusMeta.label)}</span>`
+    : '';
+  const reasonHtml = correctionStatus === 'needs_correction' && correctionReason
+    ? `<div style="font-size:11px;color:var(--accent-gold);margin:2px 0 4px;">Compliance: ${escapeHtml(correctionReason)}</div>`
+    : '';
+
+  // Compliance can flag a currently-filled field as wrong right here, on the
+  // same questionnaire RM/client fill it out on — flagging isn't limited to
+  // whichever specific sub-page a reviewer happens to land on.
+  const flagButtonHtml = canFlag && stringValue.trim()
+    ? `<button type="button" class="kyc-flag-btn" title="Flag as incorrect" data-client-id="${escapeHtml(clientId)}" data-field-key="${escapeHtml(key)}" data-field-label="${escapeHtml(label)}" onclick="flagKycFieldPrompt(this.dataset.clientId,this.dataset.fieldKey,this.dataset.fieldLabel)">⚑</button>`
+    : '';
+
+  return `
+    <div class="form-group" ${metadata} style="margin-bottom:${escapeHtml(marginBottom)};">
+      <label for="${escapeHtml(id)}" style="font-size:12px;font-weight:600;">${escapeHtml(label)}${required ? ' <span style="color:var(--accent-red);">*</span>' : ''}${statusLabel}</label>
+      ${reasonHtml}
+      ${flagButtonHtml ? `<div style="display:flex;align-items:center;gap:2px;"><div style="flex:1;">${control}</div>${flagButtonHtml}</div>` : control}
+    </div>
+  `;
+}
+
+function collectKycControlValues(root = document, page = null) {
+  const fieldGroups = Array.from(root.querySelectorAll('[data-kyc-control][data-page]'))
+    .filter(group => page === null || group.dataset.page === page);
+  const values = {};
+  fieldGroups.forEach(group => {
+    const key = group.dataset.kycKey;
+    if (!key) return;
+    const controls = Array.from(group.querySelectorAll('input, select, textarea'));
+    const selected = controls.find(control => control.name === key && (control.type !== 'radio' || control.checked));
+    values[key] = String(selected?.value ?? '').trim();
+  });
+  return values;
+}
+
+function kycSubmissionState(client, root) {
+  const values = collectKycControlValues(root);
+  const missing = [];
+  const unsaved = [];
+
+  kycSchemaFor(client).forEach(field => {
+    const value = String(values[field.key] ?? '').trim();
+    const savedValue = String(client.kyc?.[field.key] ?? '').trim();
+    // Only a mandatory blank blocks submission. Every answer still has to be
+    // saved before it can be submitted, optional ones included — that check is
+    // about unsaved edits, not about whether an answer is owed.
+    if (!value) { if (field.required !== false) missing.push(field); }
+    else if (value !== savedValue) unsaved.push(field);
+  });
+
+  return { values, missing, unsaved, ready: missing.length === 0 && unsaved.length === 0 };
+}
+
+function syncKycSubmissionGate(client, formEl) {
+  const state = kycSubmissionState(client, formEl);
+  const blockedKeys = new Set([...state.missing, ...state.unsaved].map(field => field.key));
+
+  formEl.querySelectorAll('[data-kyc-control]').forEach(group => {
+    const glowEl = group.querySelector('[data-kyc-glow-eligible]');
+    if (!glowEl) return;
+    const rejected = group.dataset.kycCorrectionStatus === 'pending'
+      || group.dataset.kycCorrectionStatus === 'needs_correction';
+    glowEl.classList.toggle('kyc-field-missing', rejected || blockedKeys.has(group.dataset.kycKey));
+  });
+
+  const submitBtn = formEl.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = !state.ready;
+    submitBtn.setAttribute('aria-disabled', state.ready ? 'false' : 'true');
+    submitBtn.title = state.ready
+      ? 'Submit this saved KYC for Compliance review'
+      : 'Complete and save every gold field before submitting';
+  }
+
+  const hint = formEl.querySelector('#kyc-submit-hint');
+  if (hint) {
+    hint.className = `kyc-submit-hint ${state.ready ? 'ready' : 'blocked'}`;
+    if (state.missing.length) {
+      hint.textContent = `${state.missing.length} field${state.missing.length === 1 ? ' is' : 's are'} empty. Save a non-empty value in every gold field before submitting.`;
+    } else if (state.unsaved.length) {
+      hint.textContent = `${state.unsaved.length} field${state.unsaved.length === 1 ? ' has' : 's have'} unsaved changes. Save Progress before submitting.`;
+    } else {
+      hint.textContent = 'All fields are complete and saved. Ready to submit for Compliance review.';
+    }
+  }
+  formEl.dataset.kycReady = state.ready ? 'true' : 'false';
+  return state;
 }
 
 // The ONE real KYC form — used for a client's first submission (via KYC
@@ -1275,32 +2082,28 @@ function renderKycFill() {
   }
 
   const isRM = State.currentRole === 'rm';
-  const fillerLabel = isRM ? `Filling on behalf of: <strong>${task.clientName}</strong>` : `Please complete all required fields below.`;
+  const fillerLabel = isRM ? `Filling on behalf of: <strong>${escapeHtml(task.clientName)}</strong>` : `Please complete all required fields below.`;
 
-  // Prefer the client's real obligatory-field list (works for every client
-  // type, and already matches client.kyc's own keys) over the task's
-  // KYC_TEMPLATE snapshot, which only ever modelled Individual clients.
+  // The task and profile both use the schema that arrived with the linked
+  // Client. The API no longer returns unlinked tasks or persists a separate
+  // browser-supplied template snapshot.
   const client = task.clientId ? resolveKycClient(task.clientId) : null;
-  const useRequiredFields = client && REQUIRED_KYC_FIELDS[client.type];
+  if (!client) {
+    content.innerHTML = `<div class="page-header"><h1>KYC Form</h1><p>This KYC task is no longer linked to an available client.</p></div>`;
+    return;
+  }
 
-  const openByKey = client ? new Map(
+  const correctionByKey = client ? new Map(
     (State.kycCorrections || [])
-      .filter(c => c.clientId === client.id && c.autoGenerated && (c.status === 'pending' || c.status === 'needs_correction'))
+      .filter(c => c.clientId === client.id && c.autoGenerated && c.status !== 'corrected')
       .map(c => [c.fieldKey, c])
   ) : new Map();
-
-  let sections;
-  if (useRequiredFields) {
-    const kyc = client.kyc || {};
-    const pageIndex = new Map();
-    sections = [];
-    REQUIRED_KYC_FIELDS[client.type].forEach(([key, label, page]) => {
-      if (!pageIndex.has(page)) { pageIndex.set(page, sections.length); sections.push({ title: page, fields: [] }); }
-      sections[pageIndex.get(page)].fields.push({ id: key, label, type: 'text', required: true, value: kyc[key] || '', flagged: openByKey.has(key) });
-    });
-  } else {
-    sections = task.sections;
-  }
+  const sections = kycSectionsForClient(client);
+  sections.forEach((section) => section.fields.forEach((field) => {
+    const correction = correctionByKey.get(field.id);
+    field.correctionStatus = correction ? correction.status : null;
+    field.correctionReason = correction?.rejectionReason || '';
+  }));
 
   content.innerHTML = `
     <div class="page-header">
@@ -1309,43 +2112,29 @@ function renderKycFill() {
     </div>
 
     <div class="info-box" style="margin-bottom:20px;">
-      <p>Your information is processed strictly for compliance purposes and kept confidential. You can submit what you know now and come back to fill in the rest later. Fields glowing gold were flagged by Compliance and need to be corrected.</p>
+      <p>Your information is processed strictly for compliance purposes and kept confidential. Complete and save every field before submitting. Gold fields still need to be filled in. After submission, the KYC remains under review until Compliance approves it.</p>
     </div>
 
     <form id="kyc-fill-form">
       ${sections.map(sec => `
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card" data-kyc-page="${escapeHtml(sec.title)}" style="margin-bottom:16px;">
           <div class="card-header" style="padding:12px 16px;">
-            <div style="font-size:14px;font-weight:700;">${sec.title}</div>
+            <div style="font-size:14px;font-weight:700;">${escapeHtml(sec.title)}</div>
           </div>
           <div class="card-body">
-            ${sec.fields.map(f => `
-              <div class="form-group" style="margin-bottom:14px;">
-                <label for="clientkyc_${f.id}" style="font-size:12px;font-weight:600;">${f.label}${f.required?' <span style="color:var(--accent-red);">*</span>':''}${f.flagged?' <span style="color:var(--accent-gold);font-weight:600;">— needs correction</span>':''}</label>
-                ${f.type === 'select'
-                  ? `<select id="clientkyc_${f.id}" name="${f.id}" class="${f.flagged?'kyc-field-missing':''}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
-                      <option value="">— select —</option>
-                      ${(f.options||[]).map(o=>`<option value="${o}" ${f.value===o?'selected':''}>${o}</option>`).join('')}
-                    </select>`
-                  : f.type === 'textarea'
-                  ? `<textarea id="clientkyc_${f.id}" name="${f.id}" rows="3" placeholder="${f.label}" class="${f.flagged?'kyc-field-missing':''}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);resize:vertical;">${f.value||''}</textarea>`
-                  : f.type === 'yesno'
-                  ? `<div style="display:flex;gap:16px;margin-top:4px;">
-                      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="${f.id}" value="yes" ${f.value==='yes'?'checked':''}> Yes</label>
-                      <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="${f.id}" value="no" ${f.value==='no'?'checked':''}> No</label>
-                    </div>`
-                  : `<input id="clientkyc_${f.id}" type="${f.type}" name="${f.id}" placeholder="${f.label}" value="${String(f.value||'').replace(/"/g,'&quot;')}" class="${f.flagged?'kyc-field-missing':''}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">`
-                }
-              </div>
-            `).join('')}
+            ${sec.fields.map(f => kycEditableFieldHTML(
+              { ...f, key: f.key || f.id },
+              { page: sec.title, value: f.value, correctionStatus: f.correctionStatus, correctionReason: f.correctionReason, clientId: client.id, canFlag: isCompliance(State.currentRole) }
+            )).join('')}
           </div>
         </div>
       `).join('')}
 
+      <div id="kyc-submit-hint" class="kyc-submit-hint blocked" role="status" aria-live="polite"></div>
       <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:8px;margin-bottom:32px;">
         <button type="button" class="btn-secondary" onclick="navigateTo('dashboard')">Cancel</button>
         <button type="button" class="btn-secondary" id="kyc-save-btn">Save Progress</button>
-        <button type="submit" class="btn-primary">Submit KYC Form</button>
+        <button type="submit" class="btn-primary" id="kyc-submit-btn">Submit KYC Form</button>
       </div>
     </form>
   `;
@@ -1359,57 +2148,99 @@ function renderKycFill() {
 
   const formEl = document.getElementById('kyc-fill-form');
 
-  // Persists whatever's currently filled in, whether complete or not — the
-  // same save either way, "Submit" just also leaves the page afterward.
-  async function saveKycAnswers(navigateAway) {
-    const answers = Object.fromEntries(new FormData(formEl).entries());
+  // Save persists whatever's currently filled in but never advances an open
+  // correction past 'saved' — it must not resolve, approve, or submit it to
+  // Compliance. Submit KYC is the only action that hands corrected fields
+  // back to Compliance for review.
+  async function saveProgress() {
+    const answers = collectKycControlValues(formEl);
+    if (task.id) {
+      await apiFetch('POST', `/kyc-tasks/${task.id}/save`, { answers, completedBy: State.currentRole });
+    } else {
+      // No task record to hang this off (e.g. reached straight from a
+      // correction with none found) — save straight against the client.
+      await apiFetch('POST', '/corrections/kyc/save-section', { clientId: client.id, values: answers });
+    }
+    // Re-render needs both the fresh correction statuses (pending→saved) and
+    // the fresh Client.kyc values, or the just-typed value would flash back
+    // to blank even though it's already been persisted.
+    if (State.currentRole === 'client') {
+      const updated = await apiFetch('GET', '/clients/me').catch(() => null);
+      if (updated) State.myClientProfile = { ...updated, id: updated.clientId };
+      await refreshCorrectionsBadge();
+    } else {
+      await Promise.all([refreshCorrectionsBadge(), refreshClients()]);
+    }
+    showToast('success', 'Progress saved. Empty fields remain gold until they have a saved value.');
+    renderKycFill();
+  }
+
+  async function submitKyc() {
+    const gate = kycSubmissionState(client, formEl);
+    if (!gate.ready) {
+      throw new Error(gate.missing.length
+        ? 'Every KYC field must contain a saved, non-empty value before submission.'
+        : 'Save all KYC changes before submission.');
+    }
+    const answers = gate.values;
     if (task.id) {
       await apiFetch('POST', `/kyc-tasks/${task.id}/complete`, { answers, completedBy: State.currentRole });
     } else {
-      // No task record to hang this off (e.g. reached straight from a
-      // correction with none found) — submit straight against the client.
       await apiFetch('POST', '/corrections/kyc/resubmit-section', { clientId: client.id, values: answers });
     }
-    await refreshCorrectionsBadge();
-    if (navigateAway) {
-      State._activeKycTask = null;
-      showToast('success', `KYC form for ${task.clientName} submitted successfully.`);
-      setTimeout(() => navigateTo('dashboard'), 1200);
+    if (State.currentRole === 'client') {
+      const updated = await apiFetch('GET', '/clients/me').catch(() => null);
+      if (updated) State.myClientProfile = { ...updated, id: updated.clientId };
+      await Promise.all([refreshCorrectionsBadge(), refreshKycTasks()]);
     } else {
-      showToast('success', 'Progress saved. Come back any time to finish the rest.');
+      await Promise.all([refreshCorrectionsBadge(), refreshClients(), refreshKycTasks()]);
     }
+    State._activeKycTask = null;
+    showToast('success', `KYC form for ${task.clientName} submitted. It is now under review by Compliance.`);
+    setTimeout(() => navigateTo(State.currentRole === 'client' ? 'dashboard' : 'kyc-tasks'), 1200);
   }
 
   document.getElementById('kyc-save-btn').addEventListener('click', async function() {
     const saveBtn = this;
     saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
     try {
-      await saveKycAnswers(false);
+      await saveProgress();
     } catch (err) {
       showToast('error', err.message || 'Failed to save progress.');
-    } finally {
       saveBtn.disabled = false; saveBtn.textContent = 'Save Progress';
     }
   });
 
   formEl.addEventListener('submit', async function(e) {
     e.preventDefault();
+    const gate = syncKycSubmissionGate(client, formEl);
+    if (!gate.ready) {
+      const firstBlocked = formEl.querySelector('.kyc-field-missing');
+      firstBlocked?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      showToast('warning', gate.missing.length
+        ? 'Complete and save every gold field before submitting.'
+        : 'Save your changes before submitting.');
+      return;
+    }
     const submitBtn = e.target.querySelector('button[type="submit"]');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
     try {
-      await saveKycAnswers(true);
+      await submitKyc();
     } catch (err) {
       showToast('error', err.message || 'Failed to submit KYC form.');
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit KYC Form'; }
     }
   });
+  formEl.addEventListener('input', () => syncKycSubmissionGate(client, formEl));
+  formEl.addEventListener('change', () => syncKycSubmissionGate(client, formEl));
+  syncKycSubmissionGate(client, formEl);
 }
 
 /* --- RM Dashboard --- */
 function renderRMDashboard() {
   const content = document.getElementById('page-content');
   const myClients = State.clients.filter(c => c.rm === currentRmName());
-  const myKycTasks = State.kycTasks.filter(t => t.status === 'pending');
+  const myKycTasks = State.kycTasks.filter(kycTaskStillNeedsAttention);
   let firstName = 'there';
   try { firstName = (JSON.parse(localStorage.getItem('user') || 'null')?.name || '').split(' ')[0] || 'there'; } catch (_) {}
 
@@ -1437,8 +2268,8 @@ function renderRMDashboard() {
         ${myKycTasks.map(t => `
           <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border-subtle);">
             <div>
-              <div style="font-size:13px;font-weight:600;">${t.clientName}</div>
-              <div style="font-size:11.5px;color:var(--text-muted);">${t.clientEmail} · Assigned ${t.createdAt}</div>
+              <div style="font-size:13px;font-weight:600;">${escapeHtml(t.clientName)}</div>
+              <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(t.clientEmail)} · Assigned ${t.createdAt}</div>
             </div>
             <button class="btn-primary btn-sm" onclick="openKycTask('${t.id}')">Fill KYC Form</button>
           </div>
@@ -1456,8 +2287,8 @@ function renderRMDashboard() {
           <div class="client-row" onclick="openClientDetail('${c.id}')">
             <div class="client-avatar" style="background:${clientGradient(c.type)}">${c.name[0]}</div>
             <div class="client-info">
-              <div class="client-name">${c.name}</div>
-              <div class="client-type">${c.type} · ${c.country}</div>
+              <div class="client-name">${escapeHtml(c.name)}</div>
+              <div class="client-type">${escapeHtml(c.type)} · ${escapeHtml(c.country)}</div>
               <div style="margin-top:6px;">
                 <div class="progress-bar-wrap" style="width:120px;">
                   <div class="progress-bar" style="width:${c.progress}%;background:${progressColor(c.progress)};"></div>
@@ -1465,7 +2296,7 @@ function renderRMDashboard() {
               </div>
             </div>
             <div class="client-meta">
-              <span class="status-badge status-${c.status}">${statusLabel(c.status)}</span>
+              <span class="status-badge status-${escapeHtml(c.status)}">${statusLabel(c.status)}</span>
               <div class="client-date">${c.created}</div>
             </div>
           </div>
@@ -1497,7 +2328,9 @@ function renderClientDashboard() {
   const docs     = client.documents    || [];
   const audit    = client.auditTrail   || [];
 
-  const pendingKycTask = State.kycTasks.find(t => t.status === 'pending' && t.clientEmail === (client.email || '').toLowerCase());
+  const pendingKycTask = State.kycTasks.find(t =>
+    kycTaskStillNeedsAttention(t) && t.clientEmail === (client.email || '').toLowerCase()
+  );
 
   const steps = [
     { label: 'KYC Form',           status: progress >= 20 ? 'done' : progress > 0 ? 'active' : '' },
@@ -1510,7 +2343,7 @@ function renderClientDashboard() {
   content.innerHTML = `
     <div class="page-header">
       <h1>Application Status</h1>
-      <p>Track your onboarding progress for <strong>${client.name}</strong> · Category: <strong>${State.clientType}</strong></p>
+      <p>Track your onboarding progress for <strong>${escapeHtml(client.name)}</strong> · Category: <strong>${State.clientType}</strong></p>
     </div>
 
     ${pendingKycTask ? `
@@ -1545,9 +2378,9 @@ function renderClientDashboard() {
         </div>
         <div class="step-tracker">
           ${steps.map((s,i) => `
-            <div class="step-item ${s.status}">
+            <div class="step-item ${escapeHtml(s.status)}">
               <div class="step-dot">${s.status === 'done' ? '✓' : i+1}</div>
-              <div class="step-label">${s.label}</div>
+              <div class="step-label">${escapeHtml(s.label)}</div>
             </div>
           `).join('')}
         </div>
@@ -1561,7 +2394,7 @@ function renderClientDashboard() {
       </div>
     </div>
 
-    ${REQUIRED_KYC_FIELDS[client.type] ? `
+    ${kycSchemaFor(client).length ? `
       <div style="margin-top:20px;">
         ${clientKycEditableFormHTML(client)}
       </div>
@@ -1578,8 +2411,8 @@ function renderClientDashboard() {
             ? `<p style="font-size:13px;color:var(--text-muted);">No documents uploaded yet.</p>`
             : docs.map(d => `
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border-subtle);">
-                  <span style="font-size:13px;">${d.name}</span>
-                  <span class="status-badge status-${d.status}">${statusLabel(d.status)}</span>
+                  <span style="font-size:13px;">${escapeHtml(d.name)}</span>
+                  <span class="status-badge status-${escapeHtml(d.status)}">${statusLabel(d.status)}</span>
                 </div>
               `).join('')
           }
@@ -1637,11 +2470,20 @@ function normalizeClientRecord(c) {
 
 async function refreshClients() {
   if (!hasAuthToken()) return;
+  // The staff list endpoint 403s for a client account, which owns exactly one
+  // case. Route that role to its own record instead so shared callers work
+  // for every role without each one having to branch.
+  if (State.currentRole === 'client') return refreshMyClientProfile();
   try {
     const clients = await apiFetch('GET', '/clients');
     if (Array.isArray(clients) && clients.length > 0) {
       State.clients = clients.map(normalizeClientRecord);
     }
+    // The Contract Tasks count is derived from the mandates themselves now, so
+    // it has to be recomputed whenever the list is refreshed — not only when
+    // the corrections are.
+    updateContractTasksBadge();
+    if (State.currentRole === 'rm') updateMyClientsBadge();
   } catch (_) { /* keep whatever was cached */ }
 }
 
@@ -1732,28 +2574,31 @@ function renderClientRows(clients) {
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="client-avatar" style="width:32px;height:32px;font-size:12px;background:${clientGradient(c.type)}">${c.name[0]}</div>
           <div>
-            <div style="font-weight:500;">${c.name}</div>
-            <div class="td-secondary">${c.country}</div>
+            <div style="font-weight:500;">${escapeHtml(c.name)}</div>
+            <div class="td-secondary">${escapeHtml(c.country)}</div>
           </div>
         </div>
       </td>
-      <td>${c.type}</td>
-      <td><span class="risk-${c.risk.toLowerCase()}" style="font-weight:600;">${c.risk}</span></td>
-      <td><span class="status-badge status-${c.status}">${statusLabel(c.status)}</span></td>
+      <td>${escapeHtml(c.type)}</td>
+      <td><span class="risk-${c.risk.toLowerCase()}" style="font-weight:600;">${escapeHtml(c.risk)}</span></td>
+      <td><span class="status-badge status-${escapeHtml(c.status)}">${statusLabel(c.status)}</span></td>
       <td>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="progress-bar-wrap" style="width:80px;"><div class="progress-bar" style="width:${c.progress}%;background:${progressColor(c.progress)};"></div></div>
           <span style="font-size:12px;color:var(--text-muted);">${c.progress}%</span>
         </div>
       </td>
-      <td class="td-secondary">${c.rm}</td>
+      <td class="td-secondary">${escapeHtml(c.rm)}</td>
       <td class="td-secondary">${c.created}</td>
       <td onclick="event.stopPropagation()">
         <div class="actions-row">
-          <button class="btn-secondary btn-xs" onclick="openClientDetail('${c.id}')">View</button>
-          ${isCompliance(State.currentRole) && (c.status === 'under-review' || c.status === 'pending') ? `
-            <button class="btn-success btn-xs" onclick="event.stopPropagation();approveClient('${c.id}')">Approve</button>
-            <button class="btn-danger btn-xs" onclick="event.stopPropagation();rejectClient('${c.id}')">Reject</button>
+          ${isCompliance(State.currentRole)
+            && (c.status === 'under-review' || c.status === 'pending')
+            && clientKycWorkflowStatus(c) === 'approved' ? `
+            ${allClientDocumentsSubmitted(c)
+              ? `<button class="btn-success btn-xs" onclick="event.stopPropagation();approveClient('${c.id}')">Approve</button>`
+              : `<button class="btn-success btn-xs" disabled title="Every requested document must be submitted first" style="opacity:.5;cursor:not-allowed;">Approve</button>`}
+            <button class="btn-secondary btn-xs" onclick="event.stopPropagation();rejectClient('${c.id}')">Reject</button>
           ` : ''}
         </div>
       </td>
@@ -1777,13 +2622,43 @@ function filterClients() {
   document.getElementById('clients-tbody').innerHTML = renderClientRows(clients);
 }
 
-function approveClient(id) {
+async function approveClient(id) {
   const c = State.clients.find(c => c.id === id);
   if (!c) return;
-  c.status = 'approved'; c.progress = 100;
-  c.auditTrail.push({ action: 'Case approved by compliance officer', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'approved' });
-  showToast('success', `${c.name} has been approved.`);
-  renderClients();
+  try {
+    if (clientKycWorkflowStatus(c) !== 'approved') {
+      throw new Error('Approve this KYC in the Compliance review first. A draft or under-review KYC cannot complete the case.');
+    }
+    const updated = await ApiClients.update(c.id, { status: 'approved', progress: 100 });
+    Object.assign(c, normalizeClientRecord(updated));
+    showToast('success', `${c.name} has been approved.`);
+    if (State.currentPage === 'client-detail') renderClientDetail();
+    else renderClients();
+  } catch (err) {
+    showToast('error', err.message || 'Could not approve this case.');
+  }
+}
+
+// KYC approval is deliberately separate from the overall case decision. This
+// action remains available in the KYC tab even if the broader client case has
+// already moved to another status, and the server performs the final
+// completeness/correction checks before recording Compliance sign-off.
+async function approveKycFromReview(clientId) {
+  const client = State.clients.find(c => c.id === clientId || c.clientId === clientId);
+  if (!client) return;
+  try {
+    await apiFetch('POST', `/kyc-tasks/client/${encodeURIComponent(client.id || client.clientId)}/verify`, {});
+    await Promise.all([refreshClients(), refreshKycTasks(), refreshCorrectionsBadge()]);
+    showToast('success', `KYC for ${client.name} approved by Compliance.`);
+    if (State.currentPage === 'client-detail') {
+      renderClientDetail();
+      switchTab('kyc');
+    } else if (State.currentPage === 'kyc-review') {
+      renderKycReview();
+    }
+  } catch (err) {
+    showToast('error', err.message || 'KYC could not be approved. Review every field and resolve all corrections first.');
+  }
 }
 
 function rejectClient(id) {
@@ -1810,6 +2685,15 @@ function renderClientDetail() {
   if (!client) return;
   const content = document.getElementById('page-content');
   document.getElementById('topbar-title').textContent = client.name;
+  // The Mandate Risk tab needs the question list; fetch it if this is the
+  // first screen that has asked for it, then redraw once it lands.
+  ensureMandateRiskSchema(() => {
+    if (State.currentPage === 'client-detail') {
+      const active = document.querySelector('.tab-content.active')?.id?.replace('tab-', '') || 'overview';
+      renderClientDetail();
+      switchTab(active);
+    }
+  });
 
   content.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
@@ -1818,26 +2702,30 @@ function renderClientDetail() {
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <div class="client-avatar" style="width:48px;height:48px;font-size:18px;background:${clientGradient(client.type)}">${client.name[0]}</div>
           <div>
-            <h1 style="font-size:20px;font-weight:700;">${client.name}</h1>
-            <div style="color:var(--text-secondary);font-size:13px;">${client.type} · ${client.country} · Case ${client.id}</div>
+            <h1 style="font-size:20px;font-weight:700;">${escapeHtml(client.name)}</h1>
+            <div style="color:var(--text-secondary);font-size:13px;">${escapeHtml(client.type)} · ${escapeHtml(client.country)} · Case ${client.id}</div>
           </div>
-          <span class="status-badge status-${client.status}" style="font-size:13px;padding:6px 14px;">${statusLabel(client.status)}</span>
-          <span style="font-weight:600;font-size:13px;" class="risk-${client.risk.toLowerCase()}">Risk: ${client.risk}</span>
+          <span class="status-badge status-${escapeHtml(client.status)}" style="font-size:13px;padding:6px 14px;">${statusLabel(client.status)}</span>
+          <span style="font-weight:600;font-size:13px;" class="risk-${client.risk.toLowerCase()}">Risk: ${escapeHtml(client.risk)}</span>
         </div>
       </div>
       <div class="actions-row">
-        ${isCompliance(State.currentRole) && (client.status === 'under-review' || client.status === 'pending') ? `
-          <button class="btn-success btn-sm" onclick="approveClientFromDetail('${client.id}')">✓ Approve</button>
-          <button class="btn-danger btn-sm" onclick="rejectClientFromDetail('${client.id}')">✗ Reject</button>
-          <button class="btn-warning btn-sm" onclick="requestInfo('${client.id}')">Request Info</button>
+        ${isCompliance(State.currentRole)
+          && (client.status === 'under-review' || client.status === 'pending')
+          && clientKycWorkflowStatus(client) === 'approved' ? `
+          ${allClientDocumentsSubmitted(client)
+            ? `<button class="btn-success btn-sm" onclick="approveClientFromDetail('${client.id}')">✓ Approve</button>`
+            : `<button class="btn-success btn-sm" disabled title="Every requested document must be submitted first" style="opacity:.5;cursor:not-allowed;">✓ Approve</button>`}
+          <button class="btn-secondary btn-sm" onclick="rejectClientFromDetail('${client.id}')">Reject</button>
         ` : ''}
-        ${State.currentRole === 'rm' ? `<button class="btn-secondary btn-sm" onclick="switchTab('kyc')">Edit KYC</button>` : ''}
+        ${State.currentRole === 'rm' ? `<button class="btn-secondary btn-sm" onclick="editClientKycFromDetail('${escapeHtml(client.id)}')">Edit KYC</button>` : ''}
       </div>
     </div>
 
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
       <button class="tab-btn" onclick="switchTab('kyc')">KYC Details</button>
+      <button class="tab-btn" onclick="switchTab('risk')">Mandate Risk</button>
       <button class="tab-btn" onclick="switchTab('docs')">Documents (${client.documents.length})</button>
       <button class="tab-btn" onclick="switchTab('audit-trail')">Audit Trail</button>
     </div>
@@ -1847,6 +2735,9 @@ function renderClientDetail() {
     </div>
     <div id="tab-kyc" class="tab-content">
       ${renderClientKycTab(client)}
+    </div>
+    <div id="tab-risk" class="tab-content">
+      ${renderClientMandateRiskTab(client)}
     </div>
     <div id="tab-docs" class="tab-content">
       ${renderClientDocsTab(client)}
@@ -1859,7 +2750,7 @@ function renderClientDetail() {
 
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
-    const tabs = ['overview','kyc','docs','audit-trail'];
+    const tabs = ['overview','kyc','risk','docs','audit-trail'];
     b.classList.toggle('active', tabs.indexOf(name) === i);
   });
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -1876,10 +2767,10 @@ function renderClientOverviewTab(client) {
           ${infoRow('Client Type', client.type)}
           ${infoRow('Country', client.country)}
           ${infoRow('Industry', client.industry)}
-          ${infoRow('Risk Level', `<span class="risk-${client.risk.toLowerCase()}" style="font-weight:700;">${client.risk}</span>`)}
+          ${infoRow('Risk Level', `<span class="risk-${client.risk.toLowerCase()}" style="font-weight:700;">${escapeHtml(client.risk)}</span>`)}
           ${infoRow('Relationship Manager', client.rm)}
           ${infoRow('Date Created', client.created)}
-          ${infoRow('Status', `<span class="status-badge status-${client.status}">${statusLabel(client.status)}</span>`)}
+          ${infoRow('Status', `<span class="status-badge status-${escapeHtml(client.status)}">${statusLabel(client.status)}</span>`)}
         </div>
       </div>
       <div class="card">
@@ -1888,6 +2779,9 @@ function renderClientOverviewTab(client) {
           <div style="text-align:center;margin-bottom:20px;">
             <div style="font-size:48px;font-weight:800;color:${client.progress===100 ? 'var(--accent-green)' : 'var(--accent-purple-light)'};">${client.progress}%</div>
             <div style="color:var(--text-muted);">Overall Completion</div>
+            ${client.documentProgress && client.documentProgress.total
+              ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${client.documentProgress.completed} of ${client.documentProgress.total} documents complete</div>`
+              : ''}
           </div>
           <div class="progress-bar-wrap" style="height:10px;margin-bottom:20px;">
             <div class="progress-bar" style="width:${client.progress}%;background:${progressColor(client.progress)};"></div>
@@ -1908,95 +2802,119 @@ function renderClientOverviewTab(client) {
   `;
 }
 
-function renderClientKycTab(client) {
-  // Always a plain read-only view of the single shared KYC record. First-time
-  // completion happens through KYC Tasks ("Fill KYC Form"); once submitted,
-  // any later fix happens through KYC Corrections. Neither editing flow lives
-  // on this tab — it only ever displays what's already been submitted.
-  if (!REQUIRED_KYC_FIELDS[client.type]) {
-    return `<div class="card"><div class="card-body"><p class="text-muted">KYC details not available.</p></div></div>`;
-  }
-  return clientKycReadOnlyHTML(client);
+// One signed-document row. Read-only: downloads only, no approve/flag here —
+// document decisions live in Contract Tasks.
+function documentRowHTML(d, client) {
+  return `
+    <div class="doc-item" style="${d.missingNote ? 'border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.03);' : ''}">
+      <div class="doc-icon" style="background:${docIconColor(d.type)}22;color:${docIconColor(d.type)}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+      </div>
+      <div class="doc-info">
+        <div class="doc-name">${escapeHtml(d.name)}</div>
+        <div class="doc-meta">
+          ${escapeHtml(d.type)}
+          &nbsp;·&nbsp;<span style="color:var(--accent-green);font-weight:500;">✓ Signed version received</span>
+          ${d.date && d.date !== '-' ? ` · Uploaded ${escapeHtml(d.date)}` : ''} ${d.size && d.size !== '-' ? `· ${escapeHtml(d.size)}` : ''}
+        </div>
+        ${d.missingNote ? `<div style="font-size:11.5px;color:var(--status-info-requested);margin-top:5px;">⚠&nbsp;${escapeHtml(d.missingNote)}</div>` : ''}
+      </div>
+      <div class="doc-actions">
+        <span class="status-badge status-${escapeHtml(d.status)}">${statusLabel(d.status)}</span>
+        <button class="btn-secondary btn-xs" onclick="downloadDoc('${escapeHtml(client.id)}','${escapeHtml(d.docId || d.id)}')">${downloadIcon()} Download</button>
+      </div>
+    </div>
+  `;
 }
 
-// Plain read-only display of every obligatory KYC field for this client type,
-// grouped by page, whether filled or still blank — no inputs, no editing.
-function clientKycReadOnlyHTML(client) {
-  if (!client.kyc) client.kyc = {};
-  const fields = REQUIRED_KYC_FIELDS[client.type] || [];
-  const k = client.kyc;
+function renderClientKycTab(client) {
+  // Shared with the client's own portal (clientKycEditableFormHTML) so RM,
+  // Compliance and the client see the exact same correction state — pending/
+  // saved/resubmitted/awaiting-review badges and the gold glow on whatever
+  // still needs RM input, never a separately-maintained read-only mirror.
+  if (!kycSchemaFor(client).length) {
+    return `<div class="card"><div class="card-body"><p class="text-muted">KYC details not available.</p></div></div>`;
+  }
+  return clientKycEditableFormHTML(client, false, { allowReview: false });
+}
 
-  const pages = [];
-  const pageIndex = new Map();
-  fields.forEach(([key, label, page]) => {
-    if (!pageIndex.has(page)) { pageIndex.set(page, pages.length); pages.push({ page, fields: [] }); }
-    pages[pageIndex.get(page)].fields.push([key, label]);
+// The mandate-risk result as a record: every question, its answer, and where
+// Compliance landed on it. Strictly read-only — answering happens in the
+// questionnaire, deciding happens in KYC & Mandate Risk Tasks, and a third
+// place to act on the same thing would only let the two disagree.
+// The mandate-risk question list is global and rarely changes, so it is
+// fetched once and reused. Any screen that renders those questions calls this;
+// the first call re-renders when the answer arrives.
+async function ensureMandateRiskSchema(onLoad) {
+  if (State.mandateRiskSchema && State.mandateRiskSchema.length) return State.mandateRiskSchema;
+  try {
+    const data = await apiFetch('GET', '/mandate-risk-schema');
+    State.mandateRiskSchema = data.fields || [];
+    if (typeof onLoad === 'function') onLoad();
+  } catch (_) {
+    State.mandateRiskSchema = State.mandateRiskSchema || [];
+  }
+  return State.mandateRiskSchema;
+}
+
+function renderClientMandateRiskTab(client) {
+  const risk = client.mandateRisk || {};
+  const answers = risk.answers || {};
+  const reviews = risk.reviews || {};
+  const prefilled = new Set(risk.prefilledKeys || []);
+  const fields = State.mandateRiskSchema || [];
+  const status = risk.status || 'draft';
+  const meta = status === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
+    : status === 'under_review' ? KYC_CORRECTION_STATUS_META.resubmitted
+    : status === 'saved' ? { label: 'Saved', badge: 'status-neutral' }
+    : KYC_CORRECTION_STATUS_META.pending;
+
+  if (!fields.length) {
+    return `<div class="card"><div class="card-body"><p class="text-muted">Mandate-risk questions are still loading. Open KYC &amp; Mandate Risk Tasks once, then come back.</p></div></div>`;
+  }
+
+  const sections = [];
+  const byPage = new Map();
+  fields.forEach(f => {
+    if (!byPage.has(f.page)) { byPage.set(f.page, { page: f.page, fields: [] }); sections.push(byPage.get(f.page)); }
+    byPage.get(f.page).fields.push(f);
   });
 
-  const openCount = (State.kycCorrections || []).filter(c =>
-    c.clientId === client.id && c.autoGenerated && (c.status === 'pending' || c.status === 'needs_correction')
-  ).length;
-
-  const verifyBanner = client.kycAwaitingVerification ? `
-    <div class="kyc-verify-banner">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-      <span>${isCompliance(State.currentRole)
-        ? `This KYC was submitted by ${client.kycSubmittedBy === 'rm' ? 'the RM' : 'the client'} and is awaiting your verification.`
-        : `Submitted — awaiting Compliance verification.`}</span>
-    </div>
-  ` : (openCount > 0 ? `
-    <div class="kyc-verify-banner">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-      <span>${openCount} field${openCount === 1 ? '' : 's'} need${openCount === 1 ? 's' : ''} correction.
-        <a href="#" onclick="navigateTo('kyc-corrections');return false;" style="color:inherit;font-weight:600;">Resolve in KYC Corrections →</a>
-      </span>
-    </div>
-  ` : (!client.kycSubmittedBy ? `
-    <div class="kyc-verify-banner">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-      <span>No KYC submitted yet.
-        <a href="#" onclick="navigateTo('kyc-tasks');return false;" style="color:inherit;font-weight:600;">Complete via KYC Tasks →</a>
-      </span>
-    </div>
-  ` : ''));
-
-  // Compliance can only flag a field once the RM has actually submitted this
-  // client's KYC for review — there's nothing to flag before that.
-  const canFlag = isCompliance(State.currentRole) && !!client.kycSubmittedBy;
-
   return `
-    ${verifyBanner}
-    ${pages.map(({ page, fields: pageFields }) => `
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-header"><div class="card-title">${page}</div></div>
-        <div class="card-body">
-          <div class="grid-2">
-            ${pageFields.map(([key, label]) => {
-              const val = k[key];
-              if (!canFlag || !String(val || '').trim()) return infoRow(label, val);
-              return `<div style="padding:8px 0;border-bottom:1px solid var(--border-subtle);grid-column:span 1;">
-                <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">${label}</div>
-                <div style="display:flex;align-items:center;gap:4px;">
-                  <div style="font-size:13.5px;color:var(--text-primary);flex:1;">${String(val).trim()}</div>
-                  <button type="button" class="kyc-flag-btn" title="Flag as incorrect" onclick="flagKycFieldPrompt('${client.id}','${key}','${label.replace(/'/g,"\\'")}')">⚑</button>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Fragebogen zum Mandatsrisiko</div>
+          <div class="card-subtitle">Risk rating: <strong class="risk-${escapeHtml(String(client.risk || '').toLowerCase())}">${escapeHtml(client.risk || '—')}</strong>${risk.submittedBy ? ` · submitted by ${escapeHtml(risk.submittedBy)}` : ''}${risk.approvedBy ? ` · approved by ${escapeHtml(risk.approvedBy)}` : ''}</div>
+        </div>
+        <span class="status-badge ${meta.badge}">${escapeHtml(meta.label)}</span>
+      </div>
+    </div>
+    ${sections.map(sec => `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-header" style="padding:12px 16px;"><div class="card-title">${escapeHtml(sec.page)}</div></div>
+        <div class="card-body" style="padding:0 16px 14px;">
+          ${sec.fields.map(f => {
+            const value = String(answers[f.key] ?? '').trim();
+            const decision = reviews[f.key] || null;
+            const badge = decision?.status === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
+              : decision?.status === 'flagged' ? KYC_CORRECTION_STATUS_META.needs_correction
+              : value ? { label: 'Saved', badge: 'status-neutral' }
+              : KYC_CORRECTION_STATUS_META.pending;
+            return `
+              <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-subtle);">
+                <div style="flex:1;font-size:13px;">
+                  <div>${escapeHtml(f.label)}${f.affectsRisk ? ` <span style="color:var(--accent-orange);font-size:11px;">(*r)</span>` : ''}</div>
+                  <div style="color:var(--text-secondary);margin-top:2px;">${value ? escapeHtml(value) : '—'}</div>
+                  ${prefilled.has(f.key) && value ? `<div style="font-size:11px;color:var(--text-muted);">Pre-filled from KYC / contract</div>` : ''}
+                  ${decision?.status === 'flagged' && decision.reason ? `<div style="font-size:11px;color:var(--accent-gold);">Compliance: ${escapeHtml(decision.reason)}</div>` : ''}
                 </div>
+                <span class="status-badge ${badge.badge}">${escapeHtml(badge.label)}</span>
               </div>`;
-            }).join('')}
-          </div>
+          }).join('')}
         </div>
       </div>
     `).join('')}
-    ${(k.pep || k.sanctions || k.adverse) ? `
-      <div class="card">
-        <div class="card-body">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-            ${screeningBadge('PEP Status', k.pep)}
-            ${screeningBadge('Sanctions', k.sanctions)}
-            ${screeningBadge('Adverse Media', k.adverse)}
-          </div>
-        </div>
-      </div>
-    ` : ''}
   `;
 }
 
@@ -2011,104 +2929,31 @@ function screeningBadge(label, val) {
 }
 
 function renderClientDocsTab(client) {
-  const canUpload = State.currentRole === 'rm' || State.currentRole === 'client';
-  const canReview = isCompliance(State.currentRole);
-  const isClient = State.currentRole === 'client';
-  const blankDocs = client.documents.filter(d => d.templateAvailable || d.signedVersion === false || d.uploadedBy === 'Compliance');
-  const signedDocs = client.documents.filter(d => d.signedVersion || d.uploadedBy === 'Client' || d.uploadedBy === 'RM');
-
-  const section = (title, docs) => `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="card-header">
-        <div class="card-title">${title}</div>
-      </div>
-      <div class="card-body" style="padding-top:4px;">
-        ${docs.length === 0 ? `<div style="font-size:13px;color:var(--text-muted);">No documents in this section.</div>` : docs.map(d => `
-          <div class="doc-item" style="${d.missingNote ? 'border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.03);' : ''}">
-            <div class="doc-icon" style="background:${docIconColor(d.type)}22;color:${docIconColor(d.type)}">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
-            </div>
-            <div class="doc-info">
-              <div class="doc-name">${d.name}</div>
-              <div class="doc-meta">
-                ${d.type}
-                ${d.templateAvailable ? `&nbsp;·&nbsp;<span style="color:var(--accent-indigo);font-weight:500;">Template available</span>` : ''}
-                ${d.signedVersion ? `&nbsp;·&nbsp;<span style="color:var(--accent-green);font-weight:500;">✓ Signed version received</span>` : ''}
-                ${d.date !== '-' ? ` · Uploaded ${d.date}` : ''} ${d.size !== '-' ? `· ${d.size}` : ''}
-              </div>
-              ${d.missingNote ? `<div style="font-size:11.5px;color:var(--status-info-requested);margin-top:5px;">⚠&nbsp;${d.missingNote}</div>` : ''}
-            </div>
-            <div class="doc-actions">
-              <span class="status-badge status-${d.status}">${statusLabel(d.status)}</span>
-              ${d.templateAvailable && canUpload ? `<button class="btn-secondary btn-xs" onclick="downloadTemplate('${d.id}')">${downloadIcon()} Template</button>` : ''}
-              ${d.filePath ? `<button class="btn-icon" title="Download" onclick="downloadDoc('${client.id}','${d.id}')">${downloadIcon()}</button>` : ''}
-              ${canReview && d.status === 'pending' ? `
-                <button class="btn-success btn-xs" onclick="approveDoc('${client.id}','${d.id}')">Approve</button>
-                <button class="btn-danger btn-xs" onclick="requestDocInfo('${client.id}','${d.id}')">Request Info</button>
-              ` : ''}
-              ${canUpload && (d.status === 'draft' || d.status === 'info-requested') ? `
-                <button class="btn-primary btn-xs" onclick="triggerFileInput()">Upload Signed</button>
-              ` : ''}
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
+  // Compliance can upload a signed package on the client's behalf same as an
+  // RM can — the backend already accepts and labels it (uploadedBy:
+  // 'Compliance'); the widget was just never shown to that role, so nothing
+  // ever ran the signature/checkbox check on a Compliance-uploaded file.
+  // Work-in-progress sits in its own group: a saved version is a document
+  // Only genuinely signed documents belong here. A contract slot always
+  // carries a file (the blank template), so `filePath` alone would list an
+  // unsigned contract as "signed" — signedVersion is the real signal, and it
+  // is only set once someone uploads a completed version over it.
+  const signedDocs = client.documents.filter(d => d.signedVersion && d.filePath);
 
   return `
     <div class="card">
       <div class="card-header">
         <div>
-          <div class="card-title">Document Package</div>
-          <div class="card-subtitle">Documents are separated into Blank Documents and Signed Documents for review clarity</div>
+          <div class="card-title">Signed Documents</div>
+          <div class="card-subtitle">Completed documents received for this client. Blank templates and uploads live in Contract Tasks.</div>
         </div>
       </div>
-      ${isClient ? `
-        <div style="padding:0 22px 16px;">
-          <div class="info-box">
-            <p>📋 <strong>How it works:</strong> (1) Download the blank template &rarr; (2) Print &amp; sign by hand &rarr; (3) Scan to PDF &rarr; (4) Upload here. Electronic signatures are <strong>not</strong> accepted.</p>
-          </div>
-        </div>
-      ` : ''}
       <div class="card-body" style="padding-top:4px;">
-        ${section('Blank Documents', blankDocs)}
-        ${section('Signed Documents', signedDocs)}
+        ${signedDocs.length
+          ? signedDocs.map(d => documentRowHTML(d, client)).join('')
+          : `<div style="font-size:13px;color:var(--text-muted);">Nothing signed yet.</div>`}
       </div>
     </div>
-
-    ${canUpload ? `
-      <div class="card">
-        <div class="card-header"><div class="card-title">Upload Signed Document</div></div>
-        <div class="card-body">
-          <div class="form-group" style="margin-bottom:14px;max-width:360px;">
-            <label for="upload-doc-type">Document Type</label>
-            <select id="upload-doc-type" onchange="cbToggleContractTemplateSelect()">
-              <option value="Uploaded Document">Other Signed Document</option>
-              <option value="ID Document">ID Document (Passport / Ausweis)</option>
-              <option value="Signed Contract">Signed Contract Package</option>
-            </select>
-          </div>
-          <div class="form-group" id="upload-contract-template-wrap" style="margin-bottom:14px;max-width:360px;display:none;">
-            <label for="upload-contract-template">Contract Template Used</label>
-            <select id="upload-contract-template">
-              ${Object.entries(CONTRACT_VALIDATION_MAPS).map(([id, m]) => `<option value="${id}">${m.label}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group" id="upload-id-expiry-wrap" style="margin-bottom:14px;max-width:360px;display:none;">
-            <label for="upload-id-expiry">Document Expiry Date <span style="color:var(--accent-red)">*</span></label>
-            <input type="date" id="upload-id-expiry">
-            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">A passport or ID that's already expired will be flagged for correction automatically.</div>
-          </div>
-          <div class="upload-zone" id="upload-zone" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)" onclick="triggerFileInput()">
-            <div style="font-size:36px;margin-bottom:12px;">🗂️</div>
-            <div class="upload-zone-text">Drag &amp; drop signed PDF here or click to browse</div>
-            <div class="upload-zone-sub">Upload the scanned, physically-signed version · PDF only · max 20MB</div>
-          </div>
-          <input type="file" id="file-input" style="display:none;" onchange="handleFileSelect(event)" multiple accept=".pdf,.jpg,.jpeg,.png" />
-        </div>
-      </div>
-    ` : ''}
   `;
 }
 
@@ -2141,8 +2986,8 @@ function uploadToAssetmax(docId) {
   showToast('success', 'Document forwarded to Assetmax successfully.');
 }
 
-function approveClientFromDetail(id) {
-  approveClient(id);
+async function approveClientFromDetail(id) {
+  await approveClient(id);
   openClientDetail(id);
 }
 
@@ -2151,11 +2996,14 @@ function rejectClientFromDetail(id) {
   openClientDetail(id);
 }
 
-function requestInfo(id) {
-  const c = State.clients.find(c => c.id === id);
-  if (!c) return;
-  c.auditTrail.push({ action: 'Additional information requested by compliance', user: 'Compliance Officer', time: new Date().toLocaleString(), type: 'requested' });
-  showToast('info', `Information request sent to ${c.rm}.`);
+// A case can only be approved once every document the contract asked for has
+// actually been provided. Requirement slots created at contract time carry no
+// file until someone uploads against them, so an outstanding slot is exactly
+// "still waiting on this document".
+function allClientDocumentsSubmitted(client) {
+  const docs = client?.documents || [];
+  if (!docs.length) return true;
+  return docs.every(d => d.type === 'Template' || Boolean(d.filePath));
 }
 
 async function approveDoc(clientId, docId) {
@@ -2195,11 +3043,16 @@ async function exportConfirmedKyc(client) {
 }
 
 // Downloads the accumulated NaturalPersonKYC.xlsx — every client confirmed so far.
+//
+// DEPRECATED: no longer offered anywhere in the UI. The export only ever mapped
+// first name, last name and occupation to Question Idents, so it produced a
+// file that looked complete but carried almost none of the questionnaire. The
+// function and its endpoint are kept so the accumulated records stay reachable
+// and the mapping can be finished later; nothing calls this today.
 async function kycExportAll() {
   try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/kyc/export/natural-person`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        const response = await fetch(`${API_BASE}/kyc/export/natural-person`, {
+      credentials: 'include',
     });
     if (!response.ok) throw new Error('Export failed');
     const blob = await response.blob();
@@ -2214,29 +3067,12 @@ async function kycExportAll() {
   }
 }
 
-async function requestDocInfo(clientId, docId) {
-  const c = State.clients.find(c => c.id === clientId);
-  const d = c && c.documents.find(d => d.id === docId);
-  if (!d) return;
-  try {
-    await apiFetch('POST', `/clients/${clientId}/documents/${docId}/request-info`);
-    d.status = 'info-requested';
-    showToast('info', `Information requested for ${d.name}.`);
-    refreshNotifications();
-    renderClientDetail();
-    switchTab('docs');
-  } catch (err) {
-    showToast('error', err.message || 'Failed to request info.');
-  }
-}
-
 // The whole completed contract package as one zip, once every document has
 // a real file on record — not just the individually corrected pages.
 async function downloadFullPackage(clientId) {
   try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/clients/${clientId}/documents/package`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        const response = await fetch(`${API_BASE}/clients/${clientId}/documents/package`, {
+      credentials: 'include',
     });
     if (!response.ok) throw new Error((await response.json().catch(() => ({})))?.error || 'Package download failed');
     const blob = await response.blob();
@@ -2256,9 +3092,8 @@ async function downloadFullPackage(clientId) {
 // the actual generated/uploaded bytes, not a stub.
 async function downloadDoc(clientId, docId) {
   try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/clients/${clientId}/documents/${docId}/download`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        const response = await fetch(`${API_BASE}/clients/${clientId}/documents/${docId}/download`, {
+      credentials: 'include',
     });
     if (!response.ok) throw new Error((await response.json().catch(() => ({})))?.error || 'Download failed');
     const blob = await response.blob();
@@ -2277,6 +3112,48 @@ async function downloadDoc(clientId, docId) {
 }
 
 function showUploadModal(docId) {
+  triggerFileInputFor(docId);
+}
+
+// Finds which CONTRACT_TEMPLATE_LABELS entry a Contract Package document's
+// name belongs to — buildDocEntries names it "<template label> — Contract
+// Package" on the backend, so the label is always a substring.
+function inferContractTemplateId(docName) {
+  const name = docName || '';
+  const entry = Object.entries(CONTRACT_TEMPLATE_LABELS).find(([, label]) => {
+    if (name.includes(label)) return true;
+    // buildDocEntries names the doc "<template name> — Contract Package" on
+    // the backend, using the TEMPLATES catalog's name — a separate string
+    // from this label, which additionally carries a "(EN)"/"(DE)" suffix the
+    // doc name never has. Strip it before comparing.
+    const core = label.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    return core.length > 0 && name.includes(core);
+  });
+  return entry ? entry[0] : null;
+}
+
+// The generic Upload Signed Document widget defaults its Document Type to
+// "Other Signed Document", which silently skips the automatic signature/
+// checkbox check entirely. Uploading against a specific document row already
+// tells us what that document is — pre-select the matching type (and, for a
+// Contract Package, the matching template) so the check actually runs
+// instead of depending on the uploader remembering to switch the dropdown.
+function triggerFileInputFor(docId) {
+  const client = getActiveClientForUpload();
+  const doc = docId ? client?.documents.find(d => d.id === docId || d.docId === docId) : null;
+  const typeSelect = document.getElementById('upload-doc-type');
+  if (doc && typeSelect) {
+    if (doc.type === 'Template') {
+      typeSelect.value = 'Signed Contract';
+      cbToggleContractTemplateSelect();
+      const templateSelect = document.getElementById('upload-contract-template');
+      const inferredId = inferContractTemplateId(doc.name);
+      if (templateSelect && inferredId) templateSelect.value = inferredId;
+    } else if (doc.type === 'ID Document') {
+      typeSelect.value = 'ID Document';
+      cbToggleContractTemplateSelect();
+    }
+  }
   triggerFileInput();
 }
 
@@ -2290,48 +3167,6 @@ function handleFileSelect(event) {
   files.forEach(f => simulateUpload(f));
 }
 
-// Automatic check for ID/passport uploads: a genuine signed scan should have a
-// stamp/signature (with a date beside it) in the bottom-right corner. We sample
-// that region's actual pixels and look for a meaningful amount of non-background
-// ink — if there isn't any, the document gets auto-flagged into Document
-// Corrections instead of relying on someone remembering to check by eye.
-// Only works for image uploads (jpg/png) — client-side PDF rendering isn't
-// available, so PDFs are conservatively treated as "unable to verify".
-function detectSignatureStamp(file) {
-  return new Promise((resolve) => {
-    if (!/^image\//.test(file.type)) { resolve(false); return; }
-    const reader = new FileReader();
-    reader.onerror = () => resolve(false);
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onerror = () => resolve(false);
-      img.onload = () => {
-        try {
-          const w = img.naturalWidth, h = img.naturalHeight;
-          const canvas = document.createElement('canvas');
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          // Bottom-right corner: last 28% of width, last 22% of height
-          const rx = Math.floor(w * 0.72), ry = Math.floor(h * 0.78);
-          const rw = w - rx, rh = h - ry;
-          if (rw <= 0 || rh <= 0) { resolve(false); return; }
-          const data = ctx.getImageData(rx, ry, rw, rh).data;
-          let inkPixels = 0;
-          const totalPixels = rw * rh;
-          for (let i = 0; i < data.length; i += 4) {
-            const brightness = (data[i] + data[i+1] + data[i+2]) / 3;
-            if (brightness < 190) inkPixels++; // darker than plain paper background
-          }
-          resolve((inkPixels / totalPixels) > 0.015); // >1.5% ink in the corner = stamp/signature present
-        } catch (_) { resolve(false); } // e.g. tainted canvas
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
 function cbToggleContractTemplateSelect() {
   const docType = document.getElementById('upload-doc-type')?.value;
   const wrap = document.getElementById('upload-contract-template-wrap');
@@ -2340,151 +3175,24 @@ function cbToggleContractTemplateSelect() {
   if (expiryWrap) expiryWrap.style.display = docType === 'ID Document' ? 'block' : 'none';
 }
 
-function contractCheckFailureReason(result, templateId) {
-  if (result.reason === 'page not found in upload') return 'expected page not found in the uploaded PDF — please re-upload the complete package.';
-  const region = CONTRACT_VALIDATION_MAPS[templateId]?.regions.find(r => r.id === result.id);
-  if (region?.rule === 'at-most-one') return 'more than one option is ticked — only one should be selected.';
-  return 'no option appears to be ticked.';
-}
-
-async function flagDocumentCorrection(clientId, docId, docName, issue, page) {
-  try {
-    await apiFetch('POST', '/corrections/documents', { clientId, docId, docName, issue, page });
-  } catch (err) {
-    console.warn('Failed to record document correction:', err.message);
-  }
-}
-
-// Every re-upload of the same document slot re-runs validation from
-// scratch, so whatever was open against the PREVIOUS version of the file is
-// stale the moment a new one lands — close it out here before any fresh
-// issues from this upload get flagged, so the correction list always
-// reflects only the current file's real problems, not an ever-growing pile.
-async function resolvePriorDocumentCorrections(clientId, docId) {
-  try {
-    const all = await apiFetch('GET', '/corrections/documents');
-    const stale = all.filter(c => c.clientId === clientId && c.docId === docId && (c.status === 'pending' || c.status === 'resubmitted'));
-    for (const item of stale) {
-      await apiFetch('POST', `/corrections/documents/${item._id}/status`, { status: 'corrected' });
-    }
-  } catch (err) {
-    console.warn('Failed to auto-resolve prior document corrections:', err.message);
-  }
-}
-
-/* ============================================================
-   SIGNED CONTRACT VALIDATION — checks a client's uploaded, physically-signed
-   contract scan for required initials/checkboxes/signatures, the same way
-   detectSignatureStamp() checks ID documents: real pixel-ink analysis, not a
-   stub. Box coordinates were extracted once (via PyMuPDF, offline) from an
-   actual generated+rendered contract for each template, as fractions of page
-   width/height so they hold regardless of render DPI. This only covers the
-   pages/sections that were mapped — extend CONTRACT_VALIDATION_MAPS with the
-   same coordinate-extraction approach to cover more templates/regions.
-   ============================================================ */
-const CONTRACT_VALIDATION_MAPS = {
-  'en-disc-all-in': {
-    label: 'Discretionary All-In (EN)',
-    regions: [
-      { id: 'investment_strategy', label: 'Investment Strategy selection', page: 18, rule: 'at-least-one', boxes: [
-        {x0:0.1237,y0:0.1541,x1:0.1311,y1:0.1593}, {x0:0.1237,y0:0.1709,x1:0.1311,y1:0.1761},
-      ]},
-      { id: 'risk_capacity', label: 'Risk Capacity assessment', page: 14, rule: 'at-most-one', boxes: [
-        {x0:0.1479,y0:0.1597,x1:0.1539,y1:0.1661}, {x0:0.1493,y0:0.1829,x1:0.1553,y1:0.1893},
-        {x0:0.1495,y0:0.2058,x1:0.1555,y1:0.2122}, {x0:0.1497,y0:0.2291,x1:0.1557,y1:0.2355},
-        {x0:0.1497,y0:0.2523,x1:0.1558,y1:0.2587},
-      ]},
-      { id: 'risk_tolerance', label: 'Risk Tolerance assessment', page: 14, rule: 'at-most-one', boxes: [
-        {x0:0.5435,y0:0.1597,x1:0.5495,y1:0.1661}, {x0:0.5449,y0:0.1829,x1:0.5509,y1:0.1893},
-        {x0:0.5451,y0:0.2058,x1:0.5511,y1:0.2122}, {x0:0.5453,y0:0.2291,x1:0.5513,y1:0.2355},
-        {x0:0.5453,y0:0.2523,x1:0.5514,y1:0.2587},
-      ]},
-      { id: 'suitable_mandate', label: 'Suitable Mandate selection', page: 14, rule: 'at-most-one', boxes: [
-        {x0:0.1673,y0:0.3287,x1:0.1733,y1:0.3351}, {x0:0.1672,y0:0.3659,x1:0.1731,y1:0.3723},
-        {x0:0.1672,y0:0.4209,x1:0.1731,y1:0.4273}, {x0:0.1672,y0:0.4707,x1:0.1731,y1:0.4771},
-        {x0:0.1672,y0:0.5375,x1:0.1731,y1:0.5439},
-      ]},
-    ],
-  },
-  'en-advisory': {
-    label: 'Advisory Contract (EN)',
-    regions: [
-      { id: 'initials_p4', label: 'Client initials (p.4 — third-party compensation waiver)', page: 4, rule: 'ink-present', boxes: [
-        {x0:0.7382,y0:0.1683,x1:0.9282,y1:0.1922},
-      ]},
-    ],
-  },
+// Just the id -> label list, for the "Contract Template Used" dropdown and
+// for guessing which template a client's existing Template document belongs
+// to. The actual checkbox/region geometry lives server-side now
+// (backend/config/contractValidationMaps.js) — the signature/checkbox check
+// itself runs there too, in a real headless browser via Playwright
+// (backend/services/pdfChecker.service.js), so it fires reliably for every
+// upload regardless of who uploads or which browser they're using, instead
+// of depending on the uploader's own browser to run it.
+const CONTRACT_TEMPLATE_LABELS = {
+  'en-disc-all-in': 'Discretionary All-In (EN)',
+  'en-advisory': 'Advisory Contract (EN)',
 };
 
-// Renders one PDF page to a canvas and returns its 2D context + dimensions.
-async function renderPdfPageToCanvas(pdfDoc, pageNum) {
-  const page = await pdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 2 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  return { ctx, width: canvas.width, height: canvas.height };
-}
-
-// Same ink-density heuristic as detectSignatureStamp, applied to an arbitrary
-// normalized region of an already-rendered page.
-function regionHasInk(ctx, width, height, box, threshold) {
-  const x0 = Math.max(0, Math.floor(box.x0 * width));
-  const y0 = Math.max(0, Math.floor(box.y0 * height));
-  const x1 = Math.min(width, Math.ceil(box.x1 * width));
-  const y1 = Math.min(height, Math.ceil(box.y1 * height));
-  const w = x1 - x0, h = y1 - y0;
-  if (w <= 0 || h <= 0) return false;
-  let data;
-  try { data = ctx.getImageData(x0, y0, w, h).data; } catch (_) { return false; }
-  let ink = 0;
-  const total = w * h;
-  for (let i = 0; i < data.length; i += 4) {
-    const brightness = (data[i] + data[i+1] + data[i+2]) / 3;
-    if (brightness < 190) ink++;
-  }
-  return (ink / total) > (threshold ?? 0.15); // boxes are shrunk to each checkbox's interior (border excluded), so an empty box reads near-0% and a real tick reads near-100%
-}
-
-// Validates an uploaded signed contract PDF against the template's mapped
-// regions. Returns { supported, results: [{id, label, ok}] }.
-async function validateSignedContractPdf(file, templateId) {
-  const map = CONTRACT_VALIDATION_MAPS[templateId];
-  if (!map) return { supported: false, results: [] };
-  if (file.type !== 'application/pdf' || !window.pdfjsLib) return { supported: false, results: [] };
-
-  const buf = await file.arrayBuffer();
-  const pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
-
-  const pageCache = {};
-  const getPage = async (n) => {
-    if (n > pdfDoc.numPages) return null;
-    if (!pageCache[n]) pageCache[n] = await renderPdfPageToCanvas(pdfDoc, n);
-    return pageCache[n];
-  };
-
-  const results = [];
-  for (const region of map.regions) {
-    const rendered = await getPage(region.page);
-    if (!rendered) { results.push({ id: region.id, label: region.label, ok: false, reason: 'page not found in upload', page: region.page }); continue; }
-    const ticked = region.boxes.map(b => regionHasInk(rendered.ctx, rendered.width, rendered.height, b));
-    const tickedCount = ticked.filter(Boolean).length;
-    let ok;
-    if (region.rule === 'at-least-one') ok = tickedCount >= 1;
-    else if (region.rule === 'at-most-one') ok = tickedCount <= 1;
-    else ok = tickedCount >= 1; // 'ink-present' — single box, same test
-    results.push({ id: region.id, label: region.label, ok, tickedCount, page: region.page });
-  }
-  return { supported: true, results };
-}
-
 // Uploads a document for real (persisted server-side — see clients.controller
-// uploadDocument) and runs the same client-side signature/checkbox detection
-// as before to flag any correction needed. A "Signed Contract" upload targets
-// the client's existing Contract Package document slot so it replaces/
-// versions that one rather than creating an unrelated new document; other
+// uploadDocument), which also runs the signature/checkbox check server-side
+// and reports back whether anything needs correction. A "Signed Contract"
+// upload targets the client's existing Contract Package document slot so it
+// replaces/versions that one rather than creating an unrelated new document; other
 // upload types create a fresh document entry.
 async function simulateUpload(file) {
   const client = getActiveClientForUpload();
@@ -2493,75 +3201,66 @@ async function simulateUpload(file) {
     return;
   }
   State.selectedClientId = client.id;
-  const docType = document.getElementById('upload-doc-type')?.value || 'Uploaded Document';
-
-  let missingNote = '';
-  let templateId = null;
-  const pendingCorrections = []; // [{ docId, docName, issue, page }] — docId filled in once we know it
-
-  if (docType === 'ID Document') {
-    const expiryStr = document.getElementById('upload-id-expiry')?.value || '';
-    const issues = [];
-
-    const hasStamp = await detectSignatureStamp(file);
-    if (!hasStamp) issues.push('Automatic check found no signature/stamp with date in the bottom-right corner — please re-upload a clearer scan.');
-
-    if (!expiryStr) {
-      issues.push('No expiry date was entered for this ID/passport.');
-    } else if (new Date(expiryStr) < new Date(new Date().toDateString())) {
-      issues.push(`This document expired on ${expiryStr} — an expired passport or ID cannot be accepted.`);
-    }
-
-    if (issues.length) {
-      missingNote = issues.join(' ');
-      pendingCorrections.push({ docName: file.name, issue: missingNote });
-    }
-  }
+  // The dedicated "Upload Signed Documents" page has no Document Type
+  // dropdown at all — every upload there is, by that page's own stated
+  // purpose, the signed contract package. Only the generic Documents-tab
+  // widget (which does have the dropdown) needs the selector's value.
+  const docTypeSelect = document.getElementById('upload-doc-type');
+  const docType = docTypeSelect ? (docTypeSelect.value || 'Uploaded Document') : 'Signed Contract';
 
   let targetDocId = '';
+  let templateId = null;
   if (docType === 'Signed Contract') {
-    templateId = document.getElementById('upload-contract-template')?.value;
-    const templateDoc = client.documents.find(d => d.type === 'Template');
-    if (templateDoc) targetDocId = templateDoc.docId;
-
-    const { supported, results } = await validateSignedContractPdf(file, templateId);
-    if (!supported) {
-      missingNote = 'Automatic verification isn\'t available for this template/file type yet — please review manually.';
-      pendingCorrections.push({ docName: file.name, issue: missingNote });
-    } else {
-      const failed = results.filter(r => !r.ok);
-      if (failed.length) {
-        missingNote = 'Automatic check found issues: ' + failed.map(r => r.label).join('; ') + '.';
-        for (const r of failed) {
-          pendingCorrections.push({
-            docName: file.name,
-            issue: `${r.label}: ${contractCheckFailureReason(r, templateId)}`,
-            page: r.page ? `Page ${r.page}` : undefined,
-          });
-        }
-      }
+    // A client can (rarely, e.g. old test data or a template switch) have
+    // more than one Template-type document. Picking just any one of them is
+    // how a real upload used to end up checked against the wrong contract's
+    // checkbox regions — resolve the actual Template doc explicitly instead:
+    // if a template was picked in the dropdown, match the doc whose name
+    // belongs to that template; otherwise fall back to whichever Template
+    // doc is still outstanding (unsigned), preferring the most recent one.
+    const templateDocs = client.documents.filter(d => d.type === 'Template');
+    const explicitTemplateId = document.getElementById('upload-contract-template')?.value || '';
+    let templateDoc = null;
+    if (explicitTemplateId) {
+      const label = CONTRACT_TEMPLATE_LABELS[explicitTemplateId];
+      templateDoc = templateDocs.find(d => label && inferContractTemplateId(d.name) === explicitTemplateId);
     }
+    if (!templateDoc) {
+      const outstanding = templateDocs.filter(d => !d.signedVersion);
+      templateDoc = (outstanding.length ? outstanding : templateDocs).slice(-1)[0] || null;
+    }
+    if (templateDoc) targetDocId = templateDoc.docId;
+    // No template dropdown on the dedicated Upload Signed Documents page —
+    // infer which contract this client actually has from its Template doc's
+    // name (buildDocEntries always names it "<template label> — Contract
+    // Package" on the backend).
+    templateId = explicitTemplateId || inferContractTemplateId(templateDoc?.name);
   }
+  const expiryDate = docType === 'ID Document' ? (document.getElementById('upload-id-expiry')?.value || '') : '';
 
-  // Real persistence — the file actually lands on disk and the document
-  // entry it belongs to gets its filePath (and version history) updated.
+  // Real persistence — the file actually lands on disk, the document entry
+  // it belongs to gets its filePath (and version history) updated, and the
+  // signature/checkbox check runs server-side (Playwright, see
+  // clients.controller uploadDocument) so it fires the same way regardless
+  // of who's uploading or which browser they're using.
   const formData = new FormData();
   formData.append('file', file);
   formData.append('name', file.name);
   formData.append('type', docType);
   if (targetDocId) formData.append('docId', targetDocId);
+  if (templateId) formData.append('templateId', templateId);
+  if (expiryDate) formData.append('expiryDate', expiryDate);
 
-  let uploadedDocId = targetDocId;
+  let missingNote = '';
   try {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}/clients/${client.id}/documents/upload`, {
+        const res = await fetch(`${API_BASE}/clients/${client.id}/documents/upload`, {
       method: 'POST',
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      credentials: 'include',
       body: formData,
     });
     const result = await res.json();
     if (!res.ok) throw new Error(result?.error || 'Upload failed');
-    uploadedDocId = result.docId;
+    missingNote = result.missingNote || '';
     // The backend response carries the full, authoritative client record —
     // adopt it wholesale so State stays in sync with what was actually saved.
     Object.assign(client, normalizeClientRecord(result.client));
@@ -2570,12 +3269,6 @@ async function simulateUpload(file) {
     return;
   }
 
-  if (docType === 'Signed Contract' && targetDocId) {
-    await resolvePriorDocumentCorrections(client.id, uploadedDocId);
-  }
-  for (const c of pendingCorrections) {
-    await flagDocumentCorrection(client.id, uploadedDocId, c.docName, c.issue, c.page);
-  }
   if (missingNote) {
     showToast('warning', `${file.name} uploaded, but flagged for correction: ${missingNote}`);
   }
@@ -2686,19 +3379,19 @@ function renderDocRows(docs, role) {
       <td>
         <div style="display:flex;align-items:center;gap:8px;">
           <div style="color:${docIconColor(d.type)}">${fileIcon()}</div>
-          <span style="font-weight:500;">${d.name}</span>
+          <span style="font-weight:500;">${escapeHtml(d.name)}</span>
         </div>
       </td>
-      <td><button style="background:none;border:none;color:var(--accent-purple-light);cursor:pointer;font-size:13px;" onclick="openClientDetail('${d.clientId}')">${d.clientName}</button></td>
-      <td class="td-secondary">${d.type}</td>
-      <td><span class="status-badge status-${d.status}">${statusLabel(d.status)}</span></td>
+      <td><button style="background:none;border:none;color:var(--accent-purple-light);cursor:pointer;font-size:13px;" onclick="openClientDetail('${escapeHtml(d.clientId)}')">${escapeHtml(d.clientName)}</button></td>
+      <td class="td-secondary">${escapeHtml(d.type)}</td>
+      <td><span class="status-badge status-${escapeHtml(d.status)}">${statusLabel(d.status)}</span></td>
       <td class="td-secondary">${d.uploadedBy}</td>
       <td class="td-secondary">${d.date}</td>
       <td class="td-secondary">${d.size}</td>
       <td>
         <div class="actions-row">
           ${d.date !== '-' ? `<button class="btn-icon" title="Download">${downloadIcon()}</button>` : ''}
-          ${isCompliance(role) && d.status === 'pending' ? `<button class="btn-success btn-xs" onclick="approveDoc('${d.clientId}','${d.id}')">Approve</button>` : ''}
+          ${isCompliance(role) && d.status === 'pending' ? `<button class="btn-success btn-xs" onclick="approveDoc('${escapeHtml(d.clientId)}','${d.id}')">Approve</button>` : ''}
         </div>
       </td>
     </tr>
@@ -2738,7 +3431,7 @@ function renderAuditPage() {
                 ${auditEmoji(a.type)}
               </div>
               <div style="flex:1;min-width:0;">
-                <div style="font-size:13px;color:var(--text-primary);line-height:1.4;">${a.action}${!isClient && a.clientName ? `<span style="color:var(--accent-purple-light);margin-left:6px;font-size:12px;">→ ${a.clientName}</span>` : ''}</div>
+                <div style="font-size:13px;color:var(--text-primary);line-height:1.4;">${a.action}${!isClient && a.clientName ? `<span style="color:var(--accent-purple-light);margin-left:6px;font-size:12px;">→ ${escapeHtml(a.clientName)}</span>` : ''}</div>
                 <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${a.user} · ${a.time}</div>
               </div>
             </div>
@@ -2875,7 +3568,7 @@ function kycRemoveField(secId, fieldId) {
 }
 
 function kycSaveTemplate() {
-  showToast('success', 'KYC template saved successfully.');
+  showToast('info', 'KYC schemas are managed by the backend and are read-only on this screen.');
 }
 
 function kycViewTemplatePreview() {
@@ -2895,19 +3588,19 @@ function kycViewTemplatePreview() {
       <div style="padding:24px;">
         ${KYC_TEMPLATE.sections.map(sec => `
           <div style="margin-bottom:28px;">
-            <div style="font-size:14px;font-weight:700;color:var(--accent-purple);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid rgba(139,92,246,0.2);">${sec.title}</div>
+            <div style="font-size:14px;font-weight:700;color:var(--accent-purple);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid rgba(139,92,246,0.2);">${escapeHtml(sec.title)}</div>
             ${sec.fields.length === 0
               ? `<p style="font-size:12px;color:var(--text-muted);font-style:italic;">No fields in this section.</p>`
               : sec.fields.map(f => `
                   <div style="margin-bottom:14px;">
-                    <label style="display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;">${f.label}${f.required?' <span style="color:var(--accent-red);">*</span>':''}</label>
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;">${escapeHtml(f.label)}${f.required?' <span style="color:var(--accent-red);">*</span>':''}</label>
                     ${f.type === 'select'
                       ? `<select disabled style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);">${(f.options||[]).map(o=>`<option>${o}</option>`).join('')}<option value="">— select —</option></select>`
                       : f.type === 'textarea'
-                      ? `<textarea disabled rows="3" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);resize:none;" placeholder="${f.label}"></textarea>`
+                      ? `<textarea disabled rows="3" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);resize:none;" placeholder="${escapeHtml(f.label)}"></textarea>`
                       : f.type === 'yesno'
                       ? `<div style="display:flex;gap:12px;"><label style="font-size:13px;display:flex;align-items:center;gap:5px;"><input type="radio" disabled> Yes</label><label style="font-size:13px;display:flex;align-items:center;gap:5px;"><input type="radio" disabled> No</label></div>`
-                      : `<input disabled type="${f.type}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);" placeholder="${f.label}">`
+                      : `<input disabled type="${escapeHtml(f.type)}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);" placeholder="${escapeHtml(f.label)}">`
                     }
                   </div>
                 `).join('')
@@ -2922,8 +3615,7 @@ function kycViewTemplatePreview() {
 }
 
 function kycDownloadTemplate() {
-  showToast('info', 'KYC template PDF generation started — download will begin shortly.');
-  setTimeout(() => showToast('success', 'KYC_Questionnaire_Template.pdf downloaded.'), 1800);
+  showToast('info', 'Template download is not available from the read-only schema view.');
 }
 
 /* ============================================================
@@ -2974,6 +3666,7 @@ const CB = {
 // catalog in the database (loaded via loadDocumentRequirements below) — this
 // hardcoded object is only the fallback used if that fetch fails. Varies by
 // the client's legal form; RMs can also add their own custom entries on top.
+const ALWAYS_REQUIRED_DOCUMENTS = ['Power of Attorney (EAM)'];
 let DOCUMENT_CHECKLIST_OPTIONS = {
   individual: [
     'Copy of Official Identification Document (Passport / ID / Driving Licence)',
@@ -3096,7 +3789,7 @@ async function renderContractBuilding() {
   CB.investmentComments = '';
   CB.managementFee = ''; CB.performanceFee = ''; CB.performanceFeeFrequency = 'semiannual'; CB.vorabPct = '';
   CB.clientType = 'individual'; CB.formularBookmark = false;
-  CB.createClientAccount = true; CB.requiredDocuments = [];
+  CB.createClientAccount = true; CB.requiredDocuments = [...ALWAYS_REQUIRED_DOCUMENTS];
   await cbRenderStep();
 }
 
@@ -3161,11 +3854,11 @@ async function cbStep1() {
                     <path d="M10 13l1.5 1.5L15 11"/>
                   </svg>
                 </div>
-                <div class="cb-template-name">${t.name}</div>
-                <div class="cb-template-type">${t.type}</div>
+                <div class="cb-template-name">${escapeHtml(t.name)}</div>
+                <div class="cb-template-type">${escapeHtml(t.type)}</div>
               </button>
               <div style="display:flex;gap:6px;margin-top:4px;">
-                <a class="cb-dl-btn" style="flex:1;" href="http://localhost:5000/api/contracts/download/${t.id}"
+                <a class="cb-dl-btn" style="flex:1;" href="${API_BASE}/contracts/download/${t.id}"
                    download title="Download original template"
                    onclick="event.stopPropagation()">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -3184,7 +3877,7 @@ async function cbStep1() {
           <select id="cb-rm-select" onchange="cbSetRM(this.value)" ${State.currentRole === 'rm' ? 'disabled' : ''}
                   style="width:100%;max-width:380px;padding:8px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);font-size:13px;${State.currentRole === 'rm' ? 'opacity:0.7;cursor:not-allowed;' : ''}">
             <option value="">— Select RM —</option>
-            ${KUNDENBERATER.map(rm => `<option value="${rm.name}" ${CB.kundenberater===rm.name?'selected':''}>${rm.name}</option>`).join('')}
+            ${KUNDENBERATER.map(rm => `<option value="${escapeHtml(rm.name)}" ${CB.kundenberater===rm.name?'selected':''}>${escapeHtml(rm.name)}</option>`).join('')}
           </select>
           ${State.currentRole === 'rm' ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">Locked to your own Kundenberater code.</div>` : ''}
           ${CB.kundenberaterEmail ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">${CB.kundenberaterEmail}</div>` : ''}
@@ -3340,7 +4033,7 @@ async function cbStep2() {
         <div class="form-group" style="margin-bottom:0;">
           <label for="cb_client_type">Client Legal Form</label>
           <select id="cb_client_type" onchange="cbSetClientType(this.value)">
-            ${CLIENT_LEGAL_FORMS.map(f => `<option value="${f.value}" ${CB.clientType===f.value?'selected':''}>${f.label}</option>`).join('')}
+            ${CLIENT_LEGAL_FORMS.map(f => `<option value="${escapeHtml(f.value)}" ${CB.clientType===f.value?'selected':''}>${escapeHtml(f.label)}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -3412,7 +4105,7 @@ async function cbStep2() {
       <div class="cb-section-label" style="margin-bottom:8px;">Client Portal Account</div>
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
         <input type="checkbox" id="cb-create-account-toggle" ${CB.createClientAccount?'checked':''}
-               onchange="CB.createClientAccount=this.checked">
+               onchange="cbSetCreateAccount(this.checked)">
         Create a portal login for this client once approved
       </label>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px;margin-left:26px;">
@@ -3608,12 +4301,26 @@ async function cbStep2() {
   }
 }
 
+// Turning the portal account on or off changes whether the email is required,
+// so the field has to be redrawn — otherwise the asterisk and the browser's own
+// `required` attribute keep saying whatever they said when the step was opened.
+// Whatever has already been typed is carried across the redraw.
+async function cbSetCreateAccount(checked) {
+  CB.createClientAccount = checked;
+  const entered = cbCollectAllValues();
+  await cbStep2();
+  Object.entries(entered).forEach(([key, value]) => {
+    const el = document.getElementById(`cb_${key}`);
+    if (el && value && !el.value) el.value = value;
+  });
+}
+
 function cbFieldHTML(f) {
   if (f.type === 'checkbox') {
     return `
       <label class="cb-checkbox-label">
         <input type="checkbox" id="cb_${f.key}" name="${f.key}">
-        <span>${f.label}</span>
+        <span>${escapeHtml(f.label)}</span>
       </label>
     `;
   }
@@ -3624,7 +4331,7 @@ function cbFieldHTML(f) {
   const required = f.key === 'client_email' ? (f.required && CB.createClientAccount) : f.required;
   return `
     <div class="form-group" style="margin-bottom:0;">
-      <label for="cb_${f.key}">${f.label}${required?' <span style="color:var(--accent-red)">*</span>':''}</label>
+      <label for="cb_${f.key}">${escapeHtml(f.label)}${required?' <span style="color:var(--accent-red)">*</span>':''}</label>
       <input type="${f.type||'text'}" id="cb_${f.key}" name="${f.key}"
              placeholder="${f.type==='date'?'YYYY-MM-DD':f.label}"
              ${required?'required':''}${extraAttrs} />
@@ -3660,16 +4367,21 @@ function cbSetRM(name) {
 // so it can be refreshed in place without losing whatever the RM has already
 // typed elsewhere on Step 2.
 function cbRequiredDocsChecklistHTML() {
-  const options = DOCUMENT_CHECKLIST_OPTIONS[CB.clientType] || [];
+  const options = cbChecklistOptions();
   return `
     <div style="display:flex;flex-direction:column;gap:8px;">
-      ${options.map(label => `
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;">
-          <input type="checkbox" ${CB.requiredDocuments.includes(label)?'checked':''} onchange="cbToggleRequiredDoc('${label.replace(/'/g,"\\'")}', this.checked)">
-          ${label}
+      ${options.map(label => {
+        // Always-required documents (the EAM power of attorney) are ticked and
+        // locked: they authorise the manager to act, so a contract is never
+        // sent without them.
+        const alwaysOn = ALWAYS_REQUIRED_DOCUMENTS.includes(label);
+        return `
+        <label style="display:flex;align-items:center;gap:10px;cursor:${alwaysOn ? 'default' : 'pointer'};font-size:13px;">
+          <input type="checkbox" ${alwaysOn || CB.requiredDocuments.includes(label) ? 'checked' : ''} ${alwaysOn ? 'disabled' : ''} onchange="cbToggleRequiredDoc('${label.replace(/'/g,"\\'")}', this.checked)">
+          ${label}${alwaysOn ? ' <span style="font-size:11px;color:var(--text-muted);">(always required)</span>' : ''}
         </label>
-      `).join('')}
-      ${CB.requiredDocuments.filter(d => !options.includes(d)).map(label => `
+      `;}).join('')}
+      ${CB.requiredDocuments.filter(d => !options.includes(d) && !ALWAYS_REQUIRED_DOCUMENTS.includes(d)).map(label => `
         <label style="display:flex;align-items:center;gap:10px;font-size:13px;">
           <input type="checkbox" checked onchange="cbToggleRequiredDoc('${label.replace(/'/g,"\\'")}', this.checked)">
           ${label} <span style="font-size:11px;color:var(--text-muted);">(custom)</span>
@@ -3679,13 +4391,32 @@ function cbRequiredDocsChecklistHTML() {
   `;
 }
 
+// The catalog for the selected legal form, with the always-required documents
+// guaranteed present even if the seeded catalog predates them.
+function cbChecklistOptions() {
+  const options = DOCUMENT_CHECKLIST_OPTIONS[CB.clientType] || [];
+  const missing = ALWAYS_REQUIRED_DOCUMENTS.filter(d => !options.includes(d));
+  return [...options, ...missing];
+}
+
+// Keeps the always-required documents in CB.requiredDocuments regardless of
+// how the RM got here (legal-form switch, step navigation, custom additions).
+function cbEnsureAlwaysRequiredDocs() {
+  ALWAYS_REQUIRED_DOCUMENTS.forEach(d => {
+    if (!CB.requiredDocuments.includes(d)) CB.requiredDocuments.push(d);
+  });
+}
+
 function cbRefreshRequiredDocsChecklist() {
+  cbEnsureAlwaysRequiredDocs();
   const el = document.getElementById('cb-required-docs-checklist');
   if (el) el.innerHTML = cbRequiredDocsChecklistHTML();
 }
 
 function cbToggleRequiredDoc(label, checked) {
-  const options = DOCUMENT_CHECKLIST_OPTIONS[CB.clientType] || [];
+  // An always-required document cannot be unticked.
+  if (ALWAYS_REQUIRED_DOCUMENTS.includes(label)) { cbEnsureAlwaysRequiredDocs(); return; }
+  const options = cbChecklistOptions();
   if (checked) {
     if (!CB.requiredDocuments.includes(label)) CB.requiredDocuments.push(label);
   } else {
@@ -3783,9 +4514,8 @@ function cbSetClientType(val) {
 
 async function cbDownloadAppendix() {
   try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/contracts/appendix/download/${CB.clientType}/${CB.lang}`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        const response = await fetch(`${API_BASE}/contracts/appendix/download/${CB.clientType}/${CB.lang}`, {
+      credentials: 'include',
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({ error: 'Download failed' }));
@@ -3857,8 +4587,14 @@ function cbUpdateCcyTotal() {
 // null (after showing a toast) if invalid. Shared by the direct-invite and
 // submit-for-review paths.
 function cbValidateBeforeSubmit() {
+  // The email is only needed when a portal account is being created — that is
+  // the only thing it is used for at this stage. Preparing a contract without
+  // one is a normal case, and requiring an address there forces people to
+  // invent one.
+  const emailNeeded = CB.createClientAccount !== false;
   const missingRequired = CB.fields
     .filter(f => f.required && f.type !== 'checkbox')
+    .filter(f => !(f.key === 'client_email' && !emailNeeded))
     .filter(f => { const el = document.getElementById(`cb_${f.key}`); return !el?.value?.trim(); })
     .map(f => f.label);
 
@@ -3879,10 +4615,14 @@ function cbValidateBeforeSubmit() {
 
   const fieldValues = cbCollectAllValues();
   const clientName  = [fieldValues['client_first_name'], fieldValues['client_last_name']].filter(Boolean).join(' ');
-  const clientEmail = fieldValues['client_email'];
+  const clientEmail = fieldValues['client_email'] || '';
 
-  if (!clientEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-    showToast('warning', 'Please enter a valid client email address.');
+  // An address that was given still has to be a real one, whether or not an
+  // account is being created — a typo here would send the invitation nowhere.
+  if ((emailNeeded || clientEmail.trim()) && !clientEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+    showToast('warning', emailNeeded
+      ? 'Please enter a valid client email address — it is needed to create the portal account.'
+      : 'That email address does not look valid. Correct it, or leave it empty.');
     return null;
   }
 
@@ -3894,10 +4634,9 @@ function cbValidateBeforeSubmit() {
 // (RM), the client, and Compliance can all see and complete the same task.
 async function cbCreateKycTask(rmName, clientName, clientEmail, clientId) {
   try {
-    await apiFetch('POST', '/kyc-tasks', {
-      rmName, clientName, clientEmail, clientId,
-      sections: KYC_TEMPLATE.sections,
-    });
+    // The backend resolves identity and the canonical field schema from this
+    // clientId. No browser-owned template snapshot is stored on the task.
+    await apiFetch('POST', '/kyc-tasks', { rmName, clientId });
   } catch (err) {
     showToast('error', `Failed to create KYC task: ${err.message}`);
   }
@@ -4045,13 +4784,10 @@ async function cbDownloadFilled() {
   if (!valid) return;
   const { fieldValues } = valid;
   try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:5000/api/contracts/generate/${CB.selectedId}`, {
+        const response = await fetch(`${API_BASE}/contracts/generate/${CB.selectedId}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fieldValues, fieldDefs: CB.fields }),
     });
     if (!response.ok) {
@@ -4259,7 +4995,7 @@ function createCase() {
 /* ============================================================
    PAGE: KYC FORM — TEMPLATE BUILDER
    ============================================================ */
-function renderKycForm() {
+function renderKycFormLegacy() {
   const content = document.getElementById('page-content');
   const TYPE_LABELS = { text:'Text', email:'Email', date:'Date', number:'Number', select:'Dropdown', textarea:'Long Text', yesno:'Yes / No' };
 
@@ -4273,7 +5009,6 @@ function renderKycForm() {
       <div style="display:flex;gap:8px;">
         <button class="btn-secondary btn-sm" onclick="kycViewTemplatePreview()">View Template</button>
         <button class="btn-secondary btn-sm" onclick="kycDownloadTemplate()">Download</button>
-        ${isCompliance(State.currentRole) ? `<button class="btn-secondary btn-sm" onclick="kycExportAll()">Export Completed KYCs</button>` : ''}
         <button class="btn-secondary btn-sm" onclick="kycAddSection()">+ Add Section</button>
         <button class="btn-primary btn-sm" onclick="kycSaveTemplate()">Save Template</button>
       </div>
@@ -4303,7 +5038,7 @@ function renderKycForm() {
                 <tbody>
                   ${sec.fields.map(f => `
                     <tr style="border-bottom:1px solid var(--border-subtle);">
-                      <td style="padding:9px 0;font-size:13px;">${f.label}${f.options?`<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">(${f.options.join(', ')})</span>`:''}</td>
+                      <td style="padding:9px 0;font-size:13px;">${escapeHtml(f.label)}${f.options?`<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">(${f.options.join(', ')})</span>`:''}</td>
                       <td style="padding:9px 6px;"><span style="font-size:11px;padding:2px 7px;border-radius:10px;background:var(--bg-secondary);color:var(--text-secondary);">${TYPE_LABELS[f.type]||f.type}</span></td>
                       <td style="padding:9px 6px;text-align:center;font-size:12px;">${f.required?'<span style="color:var(--accent-red);">✓</span>':'<span style="color:var(--text-muted);">—</span>'}</td>
                       <td style="padding:9px 0;text-align:right;">
@@ -4359,6 +5094,88 @@ function renderKycForm() {
     <div style="margin-top:8px;">
       <button class="btn-secondary" onclick="kycAddSection()">+ Add Section</button>
     </div>
+  `;
+}
+
+// Read-only inspection of the schema actually returned by the API. The old
+// in-browser template builder never persisted anything, while task/profile
+// forms are server-defined, so presenting it as an editor was misleading.
+// Keep the route/function intact for existing navigation and expose the real
+// schema without claiming that local changes configure future questionnaires.
+function renderKycForm() {
+  const content = document.getElementById('page-content');
+  const selectedClient = State.clients.find(client =>
+    client.id === State.selectedClientId || client.clientId === State.selectedClientId
+  );
+  const sourceClient = [selectedClient, ...State.clients]
+    .filter(Boolean)
+    .find(client => Array.isArray(client.kycSchema) && client.kycSchema.length);
+  const usingBundledFallback = !sourceClient;
+  const schemaClient = sourceClient || { type: 'Individual', kyc: {} };
+  const fields = kycSchemaFor(schemaClient);
+  const sections = [];
+  const byPage = new Map();
+
+  fields.forEach((field) => {
+    if (!byPage.has(field.page)) {
+      const section = { page: field.page, fields: [] };
+      byPage.set(field.page, section);
+      sections.push(section);
+    }
+    byPage.get(field.page).fields.push(field);
+  });
+
+  const typeLabels = {
+    text: 'Text', email: 'Email', date: 'Date', number: 'Number',
+    select: 'Dropdown', textarea: 'Long text', yesno: 'Yes / No',
+  };
+  const sourceDescription = usingBundledFallback
+    ? 'No client schema is currently loaded. This is the bundled Individual fallback for reference only.'
+    : `Live API schema for ${escapeHtml(sourceClient.name)} (${escapeHtml(sourceClient.clientId || sourceClient.id)} · ${escapeHtml(sourceClient.type)}).`;
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>Canonical KYC Schema</h1>
+      <p>The KYC Tasks form, client KYC Details, and correction editor all render this same field definition.</p>
+    </div>
+    <div class="info-box" data-kyc-schema-source="${usingBundledFallback ? 'bundled-individual-fallback' : 'client-api'}" style="margin-bottom:20px;">
+      <p><strong>Read-only.</strong> The schema is managed by the backend; this screen does not edit or save questionnaire fields. ${sourceDescription}</p>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:13px;color:var(--text-muted);">${sections.length} section${sections.length === 1 ? '' : 's'} · ${fields.length} fields total</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-primary btn-sm" onclick="openTasksTab('kyc')">Open KYC Tasks</button>
+      </div>
+    </div>
+    ${sections.map(section => `
+      <div class="card" data-kyc-schema-page="${escapeHtml(section.page)}" style="margin-bottom:12px;">
+        <div class="card-header" style="padding:12px 16px;">
+          <div class="card-title">${escapeHtml(section.page)}</div>
+        </div>
+        <div class="card-body" style="padding:0 16px 14px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);border-bottom:1px solid var(--border-default);">
+                <th style="padding:8px 0;text-align:left;">Field</th>
+                <th style="padding:8px 6px;text-align:left;">Control</th>
+                <th style="padding:8px 6px;text-align:left;">Options</th>
+                <th style="padding:8px 0;text-align:center;">Required</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${section.fields.map(field => `
+                <tr data-kyc-schema-field data-kyc-key="${escapeHtml(field.key)}" data-kyc-label="${escapeHtml(field.label)}" data-kyc-type="${escapeHtml(field.type)}" data-kyc-required="${field.required ? 'true' : 'false'}" data-kyc-options="${escapeHtml(JSON.stringify(field.options || []))}" style="border-bottom:1px solid var(--border-subtle);">
+                  <td style="padding:9px 0;font-size:13px;">${escapeHtml(field.label)} <span style="font-size:10px;color:var(--text-muted);">${escapeHtml(field.key)}</span></td>
+                  <td style="padding:9px 6px;font-size:12px;">${escapeHtml(typeLabels[field.type] || field.type)}</td>
+                  <td style="padding:9px 6px;font-size:11px;color:var(--text-muted);">${field.options.length ? field.options.map(escapeHtml).join(', ') : '—'}</td>
+                  <td style="padding:9px 0;text-align:center;font-size:12px;">${field.required ? '<span style="color:var(--accent-red);">Yes</span>' : '<span style="color:var(--text-muted);">No</span>'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `).join('')}
   `;
 }
 
@@ -4934,14 +5751,22 @@ function _kycFormStubEnd_placeholder() {
 // and correction records; this one only needs to render/group the same way.
 const REQUIRED_KYC_FIELDS = {
   Individual: [
-    ['firstName','First Name','Page 1 — Personal Details'], ['lastName','Last Name','Page 1 — Personal Details'],
-    ['dob','Date of Birth','Page 1 — Personal Details'], ['nationality','Nationality','Page 1 — Personal Details'],
-    ['residency','Residency','Page 1 — Personal Details'],
-    ['taxResidency','Tax Residency','Page 2 — Tax & Identification'], ['taxId','Tax ID / SSN','Page 2 — Tax & Identification'],
-    ['passportNumber','Passport Number','Page 2 — Tax & Identification'], ['passportExpiry','Passport Expiry','Page 2 — Tax & Identification'],
-    ['address','Address','Page 2 — Tax & Identification'],
-    ['employmentStatus','Employment Status','Page 3 — Financial Profile'], ['occupation','Occupation','Page 3 — Financial Profile'],
-    ['annualIncome','Annual Income','Page 3 — Financial Profile'], ['sourceOfWealth','Source of Wealth','Page 3 — Financial Profile'],
+    ['title','Title','1. Personal Information',false], ['firstName','First Name(s)','1. Personal Information'],
+    ['lastName','Last Name','1. Personal Information'], ['dob','Date of Birth','1. Personal Information'],
+    ['nationality','Nationality','1. Personal Information'], ['residency','Country of Residence','1. Personal Information'],
+    ['placeOfBirth','Place of Birth','1. Personal Information',false],
+    ['passportNumber','Passport Number','2. Identity Documents'], ['passportExpiry','Passport Expiry','2. Identity Documents'],
+    ['passportCountry','Issuing Country','2. Identity Documents',false],
+    ['address','Address Line 1','3. Residential Address'], ['addressLine2','Address Line 2','3. Residential Address',false],
+    ['city','City','3. Residential Address'], ['postalCode','Postal Code','3. Residential Address'],
+    ['addressCountry','Country','3. Residential Address'],
+    ['taxResidency','Tax Residency Country','4. Tax Information'], ['taxId','Tax Identification Number (TIN)','4. Tax Information'],
+    ['employmentStatus','Employment Status','5. Employment & Financial Profile'], ['occupation','Occupation / Job Title','5. Employment & Financial Profile',false],
+    ['employer','Employer / Company','5. Employment & Financial Profile',false], ['annualIncome','Annual Income Range','5. Employment & Financial Profile'],
+    ['sourceOfWealth','Source of Wealth (description)','6. Source of Wealth & Assets'], ['netAssets','Estimated Net Assets','6. Source of Wealth & Assets'],
+    ['pep','Politically Exposed Person (PEP)?','7. PEP & Regulatory Declarations'],
+    ['sanctions','Subject to any sanctions?','7. PEP & Regulatory Declarations'],
+    ['adverse','Adverse media or legal proceedings?','7. PEP & Regulatory Declarations'],
   ],
   Corporate: [
     ['legalName','Legal Name','Page 1 — Entity Details'], ['tradingName','Trading Name','Page 1 — Entity Details'],
@@ -4981,6 +5806,29 @@ const REQUIRED_KYC_FIELDS = {
   ],
 };
 
+// Emergency rendering metadata for environments where an older API response
+// does not yet expose client.kycSchema. Normal task/profile/correction views
+// use the server-supplied schema; this keeps the bundled fallback faithful to
+// the same canonical control types instead of silently turning everything into
+// text inputs.
+const BUNDLED_KYC_FIELD_INPUT_META = {
+  dob: { type: 'date' },
+  passportExpiry: { type: 'date' },
+  registrationDate: { type: 'date' },
+  trustDeedDate: { type: 'date' },
+  address: { type: 'textarea' },
+  addressLine2: { type: 'textarea' },
+  sourceOfWealth: { type: 'textarea' },
+  beneficiaries: { type: 'textarea' },
+  title: { type: 'select', options: ['Mr', 'Mrs', 'Ms', 'Dr', 'Prof'] },
+  employmentStatus: { type: 'select', options: ['Employed', 'Self-Employed / Director', 'Retired', 'Student', 'Other'] },
+  annualIncome: { type: 'select', options: ['< CHF 100K', 'CHF 100K – 500K', 'CHF 500K – 1M', '> CHF 1M'] },
+  netAssets: { type: 'select', options: ['< CHF 500K', 'CHF 500K – 2M', 'CHF 2M – 10M', '> CHF 10M'] },
+  pep: { type: 'select', options: ['No', 'Yes'] },
+  sanctions: { type: 'select', options: ['No', 'Yes'] },
+  adverse: { type: 'select', options: ['No', 'Yes'] },
+};
+
 async function renderKycCorrections() {
   const content = document.getElementById('page-content');
   content.innerHTML = `<div class="page-header"><h1>Corrections</h1></div><div class="cb-loading">Loading corrections…</div>`;
@@ -4989,6 +5837,16 @@ async function renderKycCorrections() {
       const [kyc, docs] = await Promise.all([
         apiFetch('GET', '/corrections/kyc'),
         apiFetch('GET', '/corrections/documents'),
+        // A mandate's whole-KYC approval status (used to decide whether it
+        // still belongs in this list) lives on the client record, not the
+        // correction rows — refresh it too or a just-approved mandate keeps
+        // showing here until some other page happens to refresh it. A client
+        // account cannot call the staff list endpoint, so it refreshes its
+        // own case instead.
+        State.currentRole === 'client' ? refreshMyClientProfile() : refreshClients(),
+        // The Mandate Risk tab is derived from the task list, so it has to be
+        // loaded here too rather than only on the Tasks screen.
+        refreshKycTasks(),
       ]);
       State.kycCorrections = kyc.map(c => ({ ...c, id: c._id }));
       State.documentCorrections = docs.map(c => ({ ...c, id: c._id }));
@@ -5017,35 +5875,51 @@ function renderKycCorrectionsList() {
 
   const kycItems = State.kycCorrections.filter(scopeToOwn).map(item => ({
     ...item,
-    clientName: State.clients.find(c => c.id === item.clientId)?.name || 'Unknown',
+    clientName: resolveKycClient(item.clientId)?.name || 'Unknown',
   }));
   const docItems = State.documentCorrections.filter(scopeToOwn).map(item => ({
     ...item,
-    clientName: State.clients.find(c => c.id === item.clientId)?.name || 'Unknown',
+    clientName: resolveKycClient(item.clientId)?.name || 'Unknown',
+    // Only a correction tied to one specific PDF page (the auto-checker's
+    // format is always exactly "Page N") can be fixed by splicing in just
+    // that page — anything else needs the full document re-uploaded.
+    pageNum: /^Page (\d+)$/.exec(item.page || '')?.[1] || null,
   }));
 
-  const kycStatusMeta = {
-    pending:          { label: 'Pending',          badge: 'status-pending' },
-    needs_correction: { label: 'Needs Correction',  badge: 'status-needs-correction' },
-    resubmitted:      { label: 'Resubmitted',       badge: 'status-under-review' },
-    corrected:        { label: 'Corrected',         badge: 'status-approved' },
-  };
+  const kycStatusMeta = KYC_CORRECTION_STATUS_META;
+  // Mandate-risk questionnaires are not DocumentCorrection rows — an
+  // unanswered mandatory question is the outstanding item itself, so they are
+  // derived from the task list rather than from a corrections collection.
+  const mandateRiskItems = (State.kycTasks || []).filter(t =>
+    (t.mandateRiskMissing || 0) > 0 && (t.mandateRiskStatus || 'draft') !== 'approved');
 
   content.innerHTML = `
     <div class="page-header">
       <h1>Corrections</h1>
-      <p>KYC and document items flagged for follow-up${State.currentRole==='rm' ? ' on your clients' : ''}. Click an item to go straight to that field, fill it in, and resubmit its section.</p>
+      <p>Items flagged for follow-up${State.currentRole==='rm' ? ' on your clients' : ''}. Download the affected page, complete it, and upload the corrected version.</p>
     </div>
 
     <div class="tabs">
-      <button class="tab-btn active" id="corrtab-btn-kyc" onclick="switchCorrectionsTab('kyc')">KYC Corrections (${kycItems.filter(c=>c.status!=='corrected').length})</button>
-      <button class="tab-btn" id="corrtab-btn-docs" onclick="switchCorrectionsTab('docs')">Document Corrections (${docItems.filter(c=>c.status==='pending').length})</button>
+      <button class="tab-btn active" id="corrtab-btn-kyc" onclick="switchCorrectionsTab('kyc')">KYC Uploads (${kycItems.filter(c=>c.status!=='corrected').length})</button>
+      <button class="tab-btn" id="corrtab-btn-docs" onclick="switchCorrectionsTab('docs')">Document Uploads (${docItems.filter(c=>c.status==='pending').length})</button>
+      <button class="tab-btn" id="corrtab-btn-risk" onclick="switchCorrectionsTab('risk')">Mandate Risk (${mandateRiskItems.reduce((n, t) => n + (t.mandateRiskMissing || 0), 0)})</button>
     </div>
 
     <div id="corrtab-kyc" class="tab-content active">
-      ${kycItems.length === 0 ? `
-        <div class="card"><div class="card-body"><p style="text-align:center;color:var(--text-muted);padding:20px;">No KYC corrections.</p></div></div>
-      ` : kycGroupsByMandate(kycItems).map(([clientId, items]) => {
+      ${(() => {
+        // A mandate only drops off this list once the whole KYC has been
+        // approved (the explicit "Approve KYC" sign-off) — every individual
+        // field correction being resolved is not the same thing: Compliance
+        // still needs to review the questionnaire as a whole and approve it,
+        // so it must keep showing here as a reminder until that happens.
+        const openMandates = kycGroupsByMandate(kycItems).filter(([clientId]) => {
+          const client = resolveKycClient(clientId);
+          return clientKycWorkflowStatus(client) !== 'approved';
+        });
+        if (!openMandates.length) {
+          return `<div class="card"><div class="card-body"><p style="text-align:center;color:var(--text-muted);padding:20px;">No KYC uploads.</p></div></div>`;
+        }
+        return openMandates.map(([clientId, items]) => {
         const openCount = items.filter(c=>c.status!=='corrected').length;
         const correctedCount = items.filter(c=>c.status==='corrected').length;
         return `
@@ -5063,23 +5937,28 @@ function renderKycCorrectionsList() {
                     <th>KYC Issue</th>
                     <th>Page Ref.</th>
                     <th>Status</th>
-                    <th>Action</th>
+                    <th style="text-align:right;">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${items.map(c => `
                     <tr style="${c.status!=='corrected'?'background:rgba(249,115,22,0.04);':''}cursor:pointer;" onclick="openKycCorrectionDetail('${c.id}')">
-                      <td style="color:${c.status!=='corrected'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
-                      <td><span style="color:var(--accent-orange);font-size:12px;">${c.page}</span></td>
+                      <td style="color:${c.status!=='corrected'?'var(--text-primary)':'var(--text-secondary)'};">
+                        ${escapeHtml(c.issue)}
+                        ${c.status==='needs_correction' && c.rejectionReason ? `<div style="font-size:11px;color:var(--accent-gold);margin-top:2px;">Compliance: ${escapeHtml(c.rejectionReason)}</div>` : ''}
+                      </td>
+                      <td><span style="color:var(--accent-orange);font-size:12px;">${escapeHtml(c.page)}</span></td>
                       <td>
                         <span class="status-badge ${kycStatusMeta[c.status]?.badge || 'status-pending'}">
                           ${kycStatusMeta[c.status]?.label || c.status}
                         </span>
                       </td>
-                      <td onclick="event.stopPropagation()">
+                      <td onclick="event.stopPropagation()" style="text-align:right;white-space:nowrap;">
                         ${c.status==='resubmitted' && isCompliance(State.currentRole) ? `
-                          <button class="btn-success btn-xs" onclick="updateKycCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>
-                          <button class="btn-secondary btn-xs" onclick="updateKycCorrectionStatus('${c.id}','needs_correction')">Reject</button>
+                          <button class="btn-success btn-xs" onclick="updateKycCorrectionStatus('${c.id}','corrected')">Confirm</button>
+                          <button class="btn-secondary btn-xs" onclick="denyKycCorrection('${c.id}')">Deny</button>
+                        ` : c.status!=='corrected' ? `
+                          <button class="btn-primary btn-xs" onclick="openKycCorrectionDetail('${c.id}')">Open field</button>
                         ` : ''}
                       </td>
                     </tr>
@@ -5089,70 +5968,1326 @@ function renderKycCorrectionsList() {
             </div>
           </div>
         `;
-      }).join('')}
+        }).join('');
+      })()}
     </div>
 
     <div id="corrtab-docs" class="tab-content">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Document Correction Items</div>
+          <div class="card-title">Document Uploads</div>
           <div class="card-subtitle">${docItems.filter(c=>c.status==='pending').length} pending · ${docItems.filter(c=>c.status==='corrected').length} corrected</div>
         </div>
+        <div class="card-body">
+          ${docItems.length === 0 ? `<p style="text-align:center;color:var(--text-muted);padding:20px;">No document uploads.</p>` : docItems.map(c => documentCorrectionItemHTML(c)).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div id="corrtab-risk" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Mandate Risk</div>
+            <div class="card-subtitle">Questionnaires with mandatory questions still unanswered.</div>
+          </div>
+        </div>
         <div class="card-body" style="padding:0;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Client</th>
-                <th>Document</th>
-                <th>Issue</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${docItems.length === 0 ? `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">No document corrections.</td></tr>` : docItems.map(c => `
-                <tr style="${c.status==='pending'?'background:rgba(249,115,22,0.04);':''}">
-                  <td>${c.clientName}</td>
-                  <td style="font-weight:600;">${c.docName}</td>
-                  <td style="color:${c.status==='pending'?'var(--text-primary)':'var(--text-secondary)'};">${c.issue}</td>
-                  <td>
-                    <span class="status-badge ${c.status==='pending'?'status-pending':c.status==='corrected'?'status-approved':'status-under-review'}">
-                      ${c.status==='pending'?'Pending':c.status==='corrected'?'Corrected':'Resubmitted'}
-                    </span>
-                  </td>
-                  <td>
-                    ${c.status==='pending' && State.currentRole==='rm' ? `<button class="btn-secondary btn-xs" onclick="updateDocumentCorrectionStatus('${c.id}','resubmitted')">Mark Resubmitted</button>` : ''}
-                    ${c.status==='resubmitted' && isCompliance(State.currentRole) ? `<button class="btn-success btn-xs" onclick="updateDocumentCorrectionStatus('${c.id}','corrected')">Mark Corrected</button>` : ''}
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+          ${mandateRiskItems.length === 0
+            ? `<p style="text-align:center;color:var(--text-muted);padding:20px;">Nothing outstanding.</p>`
+            : `<table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Risk Question</th>
+                    <th>Section</th>
+                    <th>Status</th>
+                    <th style="text-align:right;">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${mandateRiskItems.flatMap(t => {
+                    const status = t.mandateRiskStatus || 'draft';
+                    const meta = status === 'under_review' ? KYC_CORRECTION_STATUS_META.resubmitted
+                      : status === 'saved' ? { label: 'Saved', badge: 'status-neutral' }
+                      : KYC_CORRECTION_STATUS_META.pending;
+                    // One row per unanswered question, exactly like a KYC gap.
+                    return (t.mandateRiskMissingFields || []).map(f => `
+                      <tr style="background:rgba(249,115,22,0.04);">
+                        <td>
+                          Missing: ${escapeHtml(f.label)}
+                          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${escapeHtml(t.clientName || '')} · ${escapeHtml(t.clientId || '')}</div>
+                        </td>
+                        <td><span style="color:var(--accent-orange);font-size:12px;">${escapeHtml(f.page)}</span></td>
+                        <td><span class="status-badge ${meta.badge}">${escapeHtml(meta.label)}</span></td>
+                        <td style="text-align:right;white-space:nowrap;">
+                          <button class="btn-primary btn-xs" onclick="openMandateRisk('${escapeHtml(t.clientId)}')">Open question</button>
+                        </td>
+                      </tr>`);
+                  }).join('')}
+                </tbody>
+              </table>`}
         </div>
       </div>
     </div>
   `;
 }
 
+// One focused correction item: says exactly which contract, which document
+// type, which page, and what is missing — with the download/upload pair that
+// resolves it — instead of dumping the whole contract at the reviewer.
+function documentCorrectionItemHTML(c) {
+  const canAct = State.currentRole === 'rm' || isCompliance(State.currentRole) || State.currentRole === 'client';
+  const pageLabel = c.pageFrom
+    ? (c.pageTo && c.pageTo !== c.pageFrom ? `Seite ${c.pageFrom}–${c.pageTo}` : `Seite ${c.pageFrom}`)
+    : null;
+  // "Vertrag → Seite 7 → Auftragsvertrag → Unterschrift des Kunden fehlt"
+  const trail = ['Vertrag', pageLabel, c.documentType || c.docName]
+    .filter(Boolean)
+    .map(part => `<span>${escapeHtml(part)}</span>`)
+    .join('<span style="color:var(--text-muted);margin:0 6px;">→</span>');
+  const statusBadge = c.status === 'pending'
+    ? '<span class="status-badge status-pending">Pending Correction</span>'
+    : c.status === 'corrected'
+      ? '<span class="status-badge status-approved">Corrected</span>'
+      : '<span class="status-badge status-under-review">Awaiting Compliance Review</span>';
+
+  // An item with no page range concerns the whole document; it is fixed by
+  // downloading and re-uploading the document itself, so it is just as
+  // actionable as a page-scoped one.
+  const canFix = c.status !== 'corrected' && canAct;
+  return `
+    <div class="doc-item" style="align-items:flex-start;${c.status === 'pending' ? 'border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.03);' : ''}">
+      <div class="doc-info" style="flex:1;">
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;font-size:13px;font-weight:600;margin-bottom:4px;">${trail}</div>
+        <div style="font-size:12.5px;color:var(--text-primary);margin-bottom:3px;">${escapeHtml(c.issue || '')}</div>
+        ${c.remedy ? `<div style="font-size:11.5px;color:var(--text-secondary);margin-bottom:4px;">${escapeHtml(c.remedy)}</div>` : ''}
+        <div style="font-size:11px;color:var(--text-muted);">
+          ${escapeHtml(c.clientName || '')} · ${escapeHtml(c.clientId || '')}${c.contractType ? ` · ${escapeHtml(c.contractType)}` : ''}
+        </div>
+      </div>
+      <div class="doc-actions" style="flex-direction:column;align-items:flex-end;gap:6px;">
+        ${statusBadge}
+        ${canFix ? `
+          <div style="display:flex;gap:6px;">
+            <button class="btn-secondary btn-xs" onclick="downloadCorrectionPages('${escapeHtml(c.id)}')">${downloadIcon()} ${escapeHtml(pageLabel || 'Document')}</button>
+            <button class="btn-secondary btn-xs" onclick="navigateTo('contract-prep')">Fix in Contract Tasks</button>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// Drag-and-drop lives in Contract Tasks (see contractPrepCardHTML): each
+// outstanding correction gets its own dropzone there, so a dropped file can
+// only ever land on the correction it was dropped onto. Corrections itself is
+// the read-only list of what is wrong.
+function correctionDragOver(event, correctionId) {
+  event.preventDefault();
+  document.getElementById(`corrzone-${correctionId}`)?.classList.add('drag-over');
+}
+function correctionDragLeave(event, correctionId) {
+  event.preventDefault();
+  document.getElementById(`corrzone-${correctionId}`)?.classList.remove('drag-over');
+}
+function correctionDrop(event, correctionId) {
+  event.preventDefault();
+  document.getElementById(`corrzone-${correctionId}`)?.classList.remove('drag-over');
+  const file = event.dataTransfer?.files?.[0];
+  if (file) uploadCorrectedPages(correctionId, file);
+}
+
+// Downloads just this correction's page range. Uses a blob rather than a
+// plain link so the Authorization header still travels with the request.
+async function downloadCorrectionPages(correctionId) {
+  try {
+        const res = await fetch(`${API_BASE}/corrections/documents/${correctionId}/download`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Download failed');
+    const blob = await res.blob();
+    // A whole-document correction can be any file type the client uploaded, so
+    // keep the server's own filename/extension rather than assuming PDF.
+    const served = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = served || `correction-${correctionId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('success', 'Downloaded the page that needs correcting.');
+  } catch (err) {
+    showToast('error', err.message || 'Failed to download the correction page.');
+  }
+}
+
+function promptUploadCorrectedPages(correctionId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.onchange = () => {
+    const file = input.files[0];
+    if (file) uploadCorrectedPages(correctionId, file);
+  };
+  input.click();
+}
+
+async function uploadCorrectedPages(correctionId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+        const res = await fetch(`${API_BASE}/corrections/documents/${correctionId}/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result?.error || 'Upload failed');
+    if (result.validationPassed) {
+      showToast('success', 'Corrected page merged into the contract and verified.');
+    } else {
+      showToast('warning', `Page merged, but still not complete: ${result.detail || 'validation failed'}`);
+    }
+    // Re-render wherever the fix was actually performed.
+    if (State.currentPage === 'contract-prep') await renderContractPreparation();
+    else await renderKycCorrections();
+  } catch (err) {
+    showToast('error', err.message || 'Failed to upload the corrected page.');
+  }
+}
+
+/* ============================================================
+   PAGE: CONTRACT PREPARATION (draft contracts)
+   Blank → saved version → final. Document work only: no accept,
+   approve or request-info actions live here.
+   ============================================================ */
+// Re-reads the signed-in client's own case. Staff use refreshClients(); a
+// client account has no access to that list endpoint and owns exactly one
+// case, so it refreshes through /clients/me instead.
+async function refreshMyClientProfile() {
+  try {
+    const me = await apiFetch('GET', '/clients/me');
+    if (me) {
+      State.myClientProfile = { ...me, id: me.clientId };
+      if (me.type) State.clientType = me.type;
+      // Same reason as refreshClients(): the Contract Tasks count comes from
+      // the mandate itself, so it moves when the mandate does.
+      updateContractTasksBadge();
+    }
+  } catch (err) {
+    console.warn('Could not refresh client profile:', err.message);
+  }
+  return State.myClientProfile;
+}
+
+async function renderContractPreparation() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="page-header"><h1>Contract Tasks</h1></div><div class="cb-loading">Loading contracts…</div>`;
+
+  // A client account has exactly one case and cannot call the staff list
+  // endpoint (it 403s), so resolve its own profile instead of refreshing the
+  // whole client list. Everything below is then identical for every role.
+  const isClientRole = State.currentRole === 'client';
+  await Promise.all([
+    isClientRole ? refreshMyClientProfile() : refreshClients(),
+    // Contract Tasks now hosts the fix-this-page dropzones, so it needs the
+    // open document corrections, not just the contract state.
+    refreshCorrectionsBadge(),
+  ]);
+  const scoped = isClientRole
+    ? (State.myClientProfile ? [State.myClientProfile] : [])
+    : State.clients.filter(c => State.currentRole !== 'rm' || c.rm === currentRmName());
+  if (!scoped.length) {
+    content.innerHTML = `
+      <div class="page-header"><h1>Contract Tasks</h1></div>
+      <div class="card"><div class="card-body"><p style="text-align:center;color:var(--text-muted);padding:20px;">No contracts to prepare yet.</p></div></div>`;
+    return;
+  }
+
+  const states = await Promise.all(scoped.map(async (c) => {
+    try { return await apiFetch('GET', `/clients/${c.id}/contract-preparation`); }
+    catch (_) { return null; }
+  }));
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>Contract Tasks</h1>
+      <p>Download each document, review it, and upload the completed version back onto the same field.</p>
+    </div>
+    ${states.filter(Boolean).map(s => contractPrepCardHTML(s)).join('')}
+  `;
+}
+
+// Findings from the automatic signature/checkbox checks are switched off on
+// this page for now: every document is simply downloaded, reviewed by hand, and
+// uploaded again. The detection, the correction records and the per-page
+// download/merge all still work — flip this back to true and the flagged items,
+// their warnings and their per-page fields reappear exactly as before.
+const SHOW_DOCUMENT_CORRECTIONS = false;
+
+// A flag raised by a person is not one of those findings: Compliance wrote a
+// reason and is asking for the document again, so it always shows.
+const isManualFlag = (c) => c.ruleKind === 'manual';
+
+// One card per client, split by document. Every document reads the same way:
+// a Blank version to download and an Uploaded version to send back. The
+// intermediate saved/final/signed distinction is deliberately not surfaced as
+// separate rows — it is one document moving through states, and Corrections is
+// where the detail of what still needs signing lives.
+function contractPrepCardHTML(s) {
+  // resolveKycClient already handles both stores (staff list + the client's
+  // own profile), so this works for every role.
+  const client = resolveKycClient(s.clientId);
+  const docs = client?.documents || [];
+  const isContractDoc = (d) => ['Template', 'Draft Contract', 'Final Contract', 'Signed Contract'].includes(d.type);
+  // Everything else on this card comes from what the Vertrag actually asked
+  // for (the required-documents checklist chosen at contract creation) plus
+  // anything since uploaded against it. Nothing is invented: a category with
+  // no documents simply isn't shown.
+  // The mandate-risk questionnaire is a document of the mandate, but it has
+  // its own dedicated section below — listing it here as well would show the
+  // same thing twice.
+  // Other Documents is for the supporting paperwork the Vertrag asked for.
+  // A contract never belongs here — neither by document type nor by being one
+  // of the known contract packages under another slot's name. Its corrections
+  // are not lost: anything with no row of its own is listed under Contract
+  // (see the grouping below).
+  const supporting = docs.filter(d => !isContractDoc(d)
+    // The KYC and mandate-risk sheets are output of their questionnaires, not
+    // contract paperwork. They are reviewed in KYC & Mandate Risk Tasks and
+    // read in All Cases; showing them here would invite a second, competing
+    // place to act on them.
+    && !['Fragebogen zum Mandatsrisiko', 'KYC Questionnaire'].includes(d.name)
+    && !inferContractTemplateId(d.name));
+  // A checklist entry with no file is a requirement that hasn't been met yet,
+  // not a document the client has provided.
+
+  // The contract's uploaded state, newest wins: a signed upload supersedes a
+  // plain saved one, and a submitted final supersedes both.
+  const uploaded = s.final
+    ? { ...s.final, stage: 'Final contract submitted' }
+    : s.signed && s.signed.received
+      ? { docId: s.signed.docId, date: s.signed.date, uploadedBy: s.signed.uploadedBy, stage: 'Signed version received' }
+      : s.draft
+        ? { ...s.draft, stage: 'Saved version uploaded' }
+        : null;
+
+  // A correction belongs to the document it was raised against, so it is shown
+  // inside that document's row. Only issues on the contract file itself belong
+  // under Contract — an ID/passport problem reported there would read as if the
+  // contract were at fault.
+  const openCorrections = openCorrectionsFor(s.clientId)
+    .filter(c => SHOW_DOCUMENT_CORRECTIONS || isManualFlag(c));
+  const supportingDocIds = new Set(supporting.map(d => String(d.docId || d.id)));
+  const correctionsByDoc = new Map();
+  const contractCorrections = [];
+  for (const c of openCorrections) {
+    // Anything that cannot be placed on a row of its own stays with the
+    // contract rather than disappearing — an issue nobody can see is an issue
+    // nobody fixes.
+    if (!c.docId || !supportingDocIds.has(String(c.docId))) { contractCorrections.push(c); continue; }
+    if (!correctionsByDoc.has(String(c.docId))) correctionsByDoc.set(String(c.docId), []);
+    correctionsByDoc.get(String(c.docId)).push(c);
+  }
+  const correctionsFor = (docId) => (correctionsByDoc.get(String(docId)) || []).map(correctionFixHTML).join('');
+
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${escapeHtml(s.clientName)} — ${escapeHtml(s.clientId)}</div>
+          <div class="card-subtitle">${escapeHtml(s.contractType || 'Contract')}</div>
+        </div>
+        ${(() => {
+          if (SHOW_DOCUMENT_CORRECTIONS && s.openIssues > 0) {
+            return `<span class="status-badge status-pending">${s.openIssues} item${s.openIssues === 1 ? '' : 's'} to correct</span>`;
+          }
+          // The mandate's completion, stated as the documents it is actually
+          // made of — the same figure the dashboards show, so the two can
+          // never disagree about what "complete" means.
+          const p = s.documentProgress;
+          if (!p || !p.total) return uploaded ? `<span class="status-badge status-approved">Complete</span>` : '';
+          return `
+            <div style="text-align:right;min-width:150px;">
+              <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:4px;">
+                <span style="font-size:12px;color:var(--text-secondary);">${p.completed} of ${p.total} documents</span>
+                <span class="status-badge ${p.percent === 100 ? 'status-approved' : 'status-pending'}">${p.percent}%</span>
+              </div>
+              <div class="progress-bar-wrap" style="width:150px;">
+                <div class="progress-bar" style="width:${p.percent}%;background:${progressColor(p.percent)};"></div>
+              </div>
+            </div>`;
+        })()}
+      </div>
+      <div class="card-body" style="padding-top:4px;">
+
+        ${contractPrepGroup('Contract', `
+          ${contractPrepRow({
+            title: 'Blank version',
+            state: s.blank && s.blank.hasFile ? 'ready' : 'missing',
+            stateLabel: s.blank && s.blank.hasFile ? 'Ready to download' : 'Not generated yet',
+            meta: s.blank ? escapeHtml(s.blank.name) : 'Not generated yet',
+            actions: s.blank && s.blank.hasFile
+              ? `<button class="btn-secondary btn-xs" onclick="downloadDoc('${escapeHtml(s.clientId)}','${escapeHtml(s.blank.docId)}')">${downloadIcon()} Download Blank</button>`
+              : '',
+          })}
+          ${contractPrepRow({
+            title: 'Uploaded version',
+            state: !uploaded ? 'missing'
+              : (s.signed && s.signed.received && s.signedStatus === 'approved') || s.final ? 'approved'
+              : s.signedStatus === 'info-requested' ? 'flagged'
+              : 'uploaded',
+            open: contractCorrections.length > 0,
+            meta: uploaded
+              ? `${escapeHtml(uploaded.stage)}${uploaded.date ? ` · ${escapeHtml(uploaded.date)}` : ''}${uploaded.uploadedBy ? ` by ${escapeHtml(uploaded.uploadedBy)}` : ''}${uploaded.versionCount ? ` · ${uploaded.versionCount} earlier version${uploaded.versionCount === 1 ? '' : 's'}` : ''}`
+              : 'Fill in the blank version, then upload it here — signatures and checkboxes are checked on upload',
+            warn: contractCorrections.length
+              ? `${contractCorrections.length} item${contractCorrections.length === 1 ? '' : 's'} still missing — download the page below, fix it, and upload it again`
+              : null,
+            // Same rule as the other documents: while there are open items, the
+            // per-item fields below are the way back in, so the general
+            // "upload a version" field is not shown twice over.
+            extra: contractCorrections.length
+              ? ''
+              : contractDropzoneHTML(s.clientId, s.templateId || '', Boolean(uploaded)),
+            // Review is download → check by hand → approve or send back.
+            actions: uploaded
+              ? `<button class="btn-secondary btn-xs" onclick="downloadDoc('${escapeHtml(s.clientId)}','${escapeHtml(uploaded.docId)}')">${downloadIcon()} Download</button>`
+                + (isCompliance(State.currentRole) && s.signedStatus !== 'approved' ? `
+                  <button class="btn-success btn-xs" onclick="acceptDocument('${escapeHtml(s.clientId)}','${escapeHtml(uploaded.docId)}')">✓ Approve</button>
+                  <button class="btn-danger btn-xs" onclick="promptFlagDocument('${escapeHtml(s.clientId)}','${escapeHtml(uploaded.docId)}')">⚑ Flag</button>` : '')
+              : '',
+          })}
+          ${contractCorrections.map(correctionFixHTML).join('')}
+        `)}
+
+
+
+        ${(() => {
+          const others = supporting;
+          return others.length ? contractPrepGroup('Other Documents', `
+          ${others.map(d => contractPrepRow({
+            title: decodeEntities(d.name),
+            state: docState(d),
+            open: Boolean(correctionsByDoc.get(String(d.docId || d.id))),
+            meta: d.filePath
+              ? `<span class="status-badge status-${escapeHtml(d.status || 'pending')}">${statusLabel(d.status || 'pending')}</span>`
+                + `${d.date && d.date !== '-' ? ` &nbsp;uploaded ${escapeHtml(d.date)}` : ''}`
+              : 'Requested in the contract, not provided yet',
+            warn: (SHOW_DOCUMENT_CORRECTIONS || d.status === 'info-requested') ? d.missingNote : null,
+            // One upload field per document. Normally that is the row's own
+            // drop field; once something has been flagged, the correction's
+            // field replaces it, because a file dropped there has to go back
+            // against the issue it resolves rather than as a plain re-upload.
+            extra: (correctionsByDoc.has(String(d.docId || d.id))
+              ? ''
+              : documentDropzoneHTML(s.clientId, d.docId || d.id, d.filePath ? 'replacement' : 'document'))
+              + correctionsFor(d.docId || d.id),
+            // Download it, read it, then decide: approve it, or send it back
+            // with a reason. Re-uploading happens on the same field above.
+            actions: d.filePath
+              ? `<button class="btn-secondary btn-xs" onclick="downloadDoc('${escapeHtml(s.clientId)}','${escapeHtml(d.docId || d.id)}')">${downloadIcon()} Download</button>`
+                + (isCompliance(State.currentRole) && d.status !== 'approved' ? `
+                  <button class="btn-success btn-xs" onclick="acceptDocument('${escapeHtml(s.clientId)}','${escapeHtml(d.docId || d.id)}')">✓ Approve</button>
+                  <button class="btn-danger btn-xs" onclick="promptFlagDocument('${escapeHtml(s.clientId)}','${escapeHtml(d.docId || d.id)}')">⚑ Flag</button>` : '')
+              : '',
+          })).join('')}
+        `) : '';
+        })()}
+
+
+
+        ${(s.relatedParties || []).length ? contractPrepGroup(`Related-Party KYC (${s.relatedParties.length})`, `
+          ${s.relatedParties.map(p => {
+            const meta = p.status === 'approved'
+              ? KYC_CORRECTION_STATUS_META.corrected
+              : p.status === 'under_review'
+                ? KYC_CORRECTION_STATUS_META.resubmitted
+                : KYC_CORRECTION_STATUS_META.pending;
+            return contractPrepRow({
+              title: `${escapeHtml(p.role)}${p.name ? ` — ${escapeHtml(p.name)}` : ''}`,
+              meta: `<span class="status-badge ${meta.badge}">${escapeHtml(meta.label)}</span>${p.missingCount ? ` &nbsp;${p.missingCount} field${p.missingCount === 1 ? '' : 's'} outstanding` : ''}${p.sourceDocument ? ` &nbsp;·&nbsp; required by: ${escapeHtml(decodeEntities(p.sourceDocument))}` : ''}`,
+              warn: null,
+              actions: `<button class="btn-primary btn-xs" onclick="openRelatedPartyKyc('${escapeHtml(s.clientId)}','${escapeHtml(p.partyId)}')">${p.status === 'draft' ? 'Fill KYC' : 'Open KYC'}</button>`,
+            });
+          }).join('')}
+        `) : ''}
+
+
+
+      </div>
+    </div>
+  `;
+}
+
+// Some document names arrive already HTML-escaped (e.g. a requirement named
+// "... (Zefix, &lt; 12 months)"). Decode them back to plain text here; the
+// caller escapes exactly once when rendering, so the entity never shows
+// through as literal "&lt;".
+function decodeEntities(value) {
+  const el = document.createElement('textarea');
+  el.innerHTML = String(value ?? '');
+  return el.value;
+}
+
+// Uploading against an outstanding checklist requirement fills that specific
+// slot rather than creating a loose extra document.
+function promptUploadRequiredDocument(clientId, docId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.onchange = () => {
+    if (input.files[0]) uploadRequiredDocumentFile(clientId, docId, input.files[0]);
+  };
+  input.click();
+}
+
+// Shared by the file picker and the row's drop field, so a dragged file and a
+// browsed one are the same upload.
+async function uploadRequiredDocumentFile(clientId, docId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('name', file.name);
+  formData.append('type', 'Uploaded Document');
+  formData.append('docId', docId);
+  await postClientDocument(clientId, formData, 'Document');
+}
+
+// Manual Compliance review, now that automatic verification is off: accept
+// the document as-is, or record exactly what is wrong and on which page.
+async function acceptDocument(clientId, docId) {
+  try {
+    await apiFetch('POST', `/clients/${clientId}/documents/${docId}/approve`, {});
+    showToast('success', 'Document accepted.');
+    await refreshClients();
+    renderContractPreparation();
+  } catch (err) {
+    showToast('error', err.message || 'Could not accept this document.');
+  }
+}
+
+async function promptFlagDocument(clientId, docId) {
+  const issue = prompt('What is wrong with this document? (shown to whoever has to fix it)');
+  if (issue === null || !issue.trim()) return;
+  const page = prompt('Which page? Leave blank if it applies to the whole document.');
+  if (page === null) return;
+  try {
+    await apiFetch('POST', `/clients/${clientId}/documents/${docId}/flag`, { issue: issue.trim(), page: page.trim() || undefined });
+    showToast('warning', 'Document flagged — it now appears in Corrections.');
+    await Promise.all([refreshClients(), refreshCorrectionsBadge()]);
+    renderContractPreparation();
+  } catch (err) {
+    showToast('error', err.message || 'Could not flag this document.');
+  }
+}
+
+/* ============================================================
+   RELATED-PARTY KYC FORM
+   Same shared questionnaire the client's own KYC uses, bound to one connected
+   person (settlor, trustee, ...) instead of the client record.
+   ============================================================ */
+/* ============================================================
+   MANDATE RISK QUESTIONNAIRE (Fragebogen zum Mandatsrisiko)
+   Part of every Vertrag, and reachable from KYC Tasks. Answers already
+   established by the KYC or the contract are carried in automatically and
+   land as "saved" — the RM only fills what genuinely isn't known yet.
+   ============================================================ */
+function openMandateRisk(clientId) {
+  State._activeMandateRisk = { clientId };
+  navigateTo('mandate-risk');
+}
+
+// Read-only reference for the Fragebogen zum Mandatsrisiko, mirroring the
+// KYC Schema screen: the same field list the questionnaire renders, so the
+// two are visibly one definition rather than two that could drift.
+async function renderMandateRiskSchema() {
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="page-header"><h1>Mandate Risk Schema</h1></div><div class="cb-loading">Loading…</div>`;
+
+  // The schema is a property of the questionnaire, not of any one mandate, so
+  // it is read from its own endpoint rather than from whichever client
+  // happened to be first in the list.
+  let fields = [];
+  let removed = [];
+  try {
+    const data = await apiFetch('GET', '/mandate-risk-schema');
+    fields = data.fields || [];
+    removed = data.removed || [];
+  } catch (err) {
+    content.innerHTML = `
+      <div class="page-header"><h1>Mandate Risk Schema</h1></div>
+      <p style="color:var(--accent-red);padding:16px;">Failed to load the mandate-risk schema: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  const canEdit = isCompliance(State.currentRole);
+
+  const pages = [];
+  const byPage = new Map();
+  fields.forEach((f) => {
+    if (!byPage.has(f.page)) { byPage.set(f.page, { page: f.page, idx: pages.length, fields: [] }); pages.push(byPage.get(f.page)); }
+    byPage.get(f.page).fields.push(f);
+  });
+  const typeLabels = { text: 'Text', date: 'Date', select: 'Dropdown', textarea: 'Long text', number: 'Number' };
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>Mandate Risk Schema</h1>
+      <p>The Fragebogen zum Mandatsrisiko, exactly as the questionnaire renders it.${canEdit ? ' Add or remove a question here and every mandate&rsquo;s questionnaire follows immediately.' : ' Compliance maintains this list.'}</p>
+    </div>
+    <div class="info-box" style="margin-bottom:20px;">
+      <p><strong>(*r)</strong> marks a question that feeds the mandate-risk calculation. <strong>Compliance</strong> marks a section only Compliance or the Geschäftsleitung completes.</p>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:13px;color:var(--text-muted);">${pages.length} section${pages.length === 1 ? '' : 's'} · ${fields.length} questions total</div>
+      <button class="btn-primary btn-sm" onclick="openTasksTab('risk')">Open Mandate Risk Tasks</button>
+    </div>
+    ${pages.map(sec => `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-header" style="padding:12px 16px;">
+          <div class="card-title">${escapeHtml(sec.page)}</div>
+          ${canEdit ? `<button class="btn-secondary btn-xs" onclick="toggleAddMandateRiskField(${sec.idx})">+ Add Question</button>` : ''}
+        </div>
+        <div class="card-body" style="padding:0 16px 14px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);border-bottom:1px solid var(--border-default);">
+                <th style="padding:8px 0;text-align:left;">Question</th>
+                <th style="padding:8px 6px;text-align:left;">Control</th>
+                <th style="padding:8px 6px;text-align:left;">Options</th>
+                <th style="padding:8px 0;text-align:center;">Required</th>
+                ${canEdit ? `<th style="padding:8px 0;text-align:right;"></th>` : ''}
+              </tr>
+            </thead>
+            <tbody>
+              ${sec.fields.map(f => `
+                <tr style="border-bottom:1px solid var(--border-subtle);">
+                  <td style="padding:9px 0;font-size:13px;">
+                    ${escapeHtml(f.label)}
+                    ${f.affectsRisk ? `<span style="color:var(--accent-orange);font-size:11px;margin-left:6px;">(*r)</span>` : ''}
+                    ${f.complianceOnly ? `<span style="color:var(--text-muted);font-size:11px;margin-left:6px;">Compliance</span>` : ''}
+                    ${f.builtIn === false ? `<span style="color:var(--accent-blue);font-size:11px;margin-left:6px;">Added</span>` : ''}
+                  </td>
+                  <td style="padding:9px 6px;font-size:12px;">${escapeHtml(typeLabels[f.type] || f.type)}</td>
+                  <td style="padding:9px 6px;font-size:11px;color:var(--text-muted);">${f.options && f.options.length ? f.options.map(escapeHtml).join(', ') : '—'}</td>
+                  <td style="padding:9px 0;text-align:center;font-size:12px;">${f.required ? '<span style="color:var(--accent-red);">Yes</span>' : '<span style="color:var(--text-muted);">No</span>'}</td>
+                  ${canEdit ? `<td style="padding:9px 0;text-align:right;">
+                    <button class="btn-secondary btn-xs" onclick="deleteMandateRiskField('${escapeHtml(f.key)}','${escapeHtml(f.label)}')">Delete</button>
+                  </td>` : ''}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          ${canEdit ? mandateRiskFieldFormHTML(sec) : ''}
+        </div>
+      </div>
+    `).join('')}
+
+    ${canEdit && removed.length ? `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-header" style="padding:12px 16px;"><div class="card-title">Removed Questions (${removed.length})</div></div>
+        <div class="card-body" style="padding:0 16px 14px;">
+          <p style="font-size:12px;color:var(--text-muted);padding:8px 0;">These are part of the printed Fragebogen but are currently switched off. Nobody is asked them, and they are not required for submission.</p>
+          ${removed.map(f => `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border-subtle);">
+              <div style="flex:1;font-size:13px;">${escapeHtml(f.label)}<span style="color:var(--text-muted);font-size:11px;margin-left:6px;">${escapeHtml(f.page)}</span></div>
+              <button class="btn-secondary btn-xs" onclick="restoreMandateRiskField('${escapeHtml(f.key)}')">Restore</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
+  `;
+}
+
+// Compliance adds a question to a named section. Everything the questionnaire
+// needs to render and validate the new question is collected here, so an added
+// question behaves exactly like a printed one. The form sits inside the section
+// it will add to, so there is never any doubt where the question lands.
+function mandateRiskFieldFormHTML(sec) {
+  const i = sec.idx;
+  return `
+    <div id="mrf-form-${i}" style="display:none;border-top:1px solid var(--border-default);margin-top:10px;padding-top:14px;">
+      <div class="form-group">
+        <label class="form-label">Question</label>
+        <input type="text" class="form-input" id="mrf-label-${i}" placeholder="e.g. Herkunft der Barbestände">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label class="form-label">Control</label>
+          <select class="form-input" id="mrf-type-${i}" onchange="document.getElementById('mrf-options-row-${i}').style.display = this.value === 'select' ? '' : 'none';">
+            <option value="text">Text</option>
+            <option value="textarea">Long text</option>
+            <option value="select">Dropdown</option>
+            <option value="date">Date</option>
+            <option value="number">Number</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Required</label>
+          <select class="form-input" id="mrf-required-${i}">
+            <option value="yes">Yes — must be answered before submission</option>
+            <option value="no">No — optional</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="mrf-options-row-${i}" style="display:none;">
+        <label class="form-label">Dropdown options (comma separated)</label>
+        <input type="text" class="form-input" id="mrf-options-${i}" placeholder="tief, mittel, hoch">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label class="form-label">Feeds the risk rating</label>
+          <select class="form-input" id="mrf-risk-${i}"><option value="no">No</option><option value="yes">Yes (*r)</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Answered by</label>
+          <select class="form-input" id="mrf-who-${i}"><option value="rm">RM / client</option><option value="compliance">Compliance only</option></select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn-secondary btn-sm" onclick="toggleAddMandateRiskField(${i})">Cancel</button>
+        <button class="btn-primary btn-sm" onclick="submitAddMandateRiskField(${i},'${escapeHtml(sec.page)}')">Add Question</button>
+      </div>
+    </div>`;
+}
+
+function toggleAddMandateRiskField(i) {
+  const form = document.getElementById(`mrf-form-${i}`);
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+  if (form.style.display === '') document.getElementById(`mrf-label-${i}`)?.focus();
+}
+
+async function submitAddMandateRiskField(i, page) {
+  const label = document.getElementById(`mrf-label-${i}`).value.trim();
+  if (!label) { showToast('error', 'Enter the question text.'); return; }
+  const type = document.getElementById(`mrf-type-${i}`).value;
+  const options = document.getElementById(`mrf-options-${i}`).value;
+  if (type === 'select' && !options.trim()) { showToast('error', 'A dropdown needs at least one option.'); return; }
+  try {
+    await apiFetch('POST', '/mandate-risk-schema/fields', {
+      label, page, type, options,
+      required: document.getElementById(`mrf-required-${i}`).value === 'yes',
+      affectsRisk: document.getElementById(`mrf-risk-${i}`).value === 'yes',
+      complianceOnly: document.getElementById(`mrf-who-${i}`).value === 'compliance',
+    });
+    showToast('success', 'Question added to the mandate-risk questionnaire.');
+    renderMandateRiskSchema();
+  } catch (err) {
+    showToast('error', err.message || 'Could not add the question.');
+  }
+}
+
+async function deleteMandateRiskField(key, label) {
+  if (!confirm(`Remove "${decodeEntities(label)}" from the mandate-risk questionnaire?\n\nIt stops being asked and stops being required for submission. Answers already given are kept.`)) return;
+  try {
+    await apiFetch('DELETE', `/mandate-risk-schema/fields/${encodeURIComponent(key)}`);
+    showToast('success', 'Question removed.');
+    renderMandateRiskSchema();
+  } catch (err) {
+    showToast('error', err.message || 'Could not remove the question.');
+  }
+}
+
+async function restoreMandateRiskField(key) {
+  try {
+    await apiFetch('POST', `/mandate-risk-schema/fields/${encodeURIComponent(key)}/restore`, {});
+    showToast('success', 'Question restored.');
+    renderMandateRiskSchema();
+  } catch (err) {
+    showToast('error', err.message || 'Could not restore the question.');
+  }
+}
+
+async function renderMandateRisk() {
+  const content = document.getElementById('page-content');
+  const ctx = State._activeMandateRisk;
+  if (!ctx) {
+    content.innerHTML = `<div class="page-header"><h1>Mandate Risk</h1><p>No mandate selected.</p></div>`;
+    return;
+  }
+  content.innerHTML = `<div class="page-header"><h1>Mandate Risk</h1></div><div class="cb-loading">Loading…</div>`;
+
+  let data;
+  try { data = await apiFetch('GET', `/clients/${escapeHtml(ctx.clientId)}/mandate-risk`); }
+  catch (err) {
+    content.innerHTML = `<div class="page-header"><h1>Mandate Risk</h1></div><p style="color:var(--accent-red);padding:16px;">${escapeHtml(err.message)}</p>`;
+    return;
+  }
+
+  const prefilled = new Set(data.prefilledKeys || []);
+  const isComp = isCompliance(State.currentRole);
+  const readOnly = data.status === 'approved';
+  const pages = [];
+  const byPage = new Map();
+  data.fields.forEach((f) => {
+    if (!byPage.has(f.page)) { byPage.set(f.page, { page: f.page, fields: [] }); pages.push(byPage.get(f.page)); }
+    byPage.get(f.page).fields.push(f);
+  });
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <button class="btn-secondary btn-sm" onclick="navigateTo('contract-prep')">← Back to Contract Tasks</button>
+      <div>
+        <h1 style="font-size:20px;font-weight:700;">Fragebogen zum Mandatsrisiko</h1>
+        <div style="color:var(--text-secondary);font-size:13px;">${escapeHtml(data.clientName)} · ${escapeHtml(data.clientId)}</div>
+      </div>
+    </div>
+    ${data.status === 'under_review' ? `
+      <div class="kyc-verify-banner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <span style="flex:1;"><strong>Under Review by Compliance.</strong> ${isComp
+          ? `Confirm or send back each answer, then approve the questionnaire if it is correct.`
+          : `Compliance must review every answer before this questionnaire is complete.`}</span>
+        ${isComp ? `<button type="button" class="btn-success btn-sm" onclick="approveAllMandateRisk('${escapeHtml(ctx.clientId)}')">Approve Mandate Risk</button>` : ''}
+      </div>
+    ` : data.status === 'approved' ? `
+      <div class="kyc-verify-banner kyc-verify-banner-approved">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="8,12 11,15 16,9"/></svg>
+        <span class="status-badge status-approved">Approved by Compliance</span>
+      </div>
+    ` : ''}
+    <div class="info-box" style="margin-bottom:20px;">
+      <p>Fields marked <strong>pre-filled</strong> were carried over from the KYC and the contract — check them, and complete the rest.
+      Questions marked <strong>(*r)</strong> feed the mandate-risk calculation.
+      The <strong>Compliance &amp; Geschäftsleitung</strong> section is open to you too — fill in what you have; it never blocks submitting, and Compliance confirms it on review.</p>
+    </div>
+
+    <form id="mandate-risk-form">
+      ${pages.map(sec => `
+        <div class="card" data-kyc-page="${escapeHtml(sec.page)}" style="margin-bottom:16px;">
+          <div class="card-header" style="padding:12px 16px;"><div style="font-size:14px;font-weight:700;">${escapeHtml(sec.page)}</div></div>
+          <div class="card-body">
+            ${sec.fields.map(f => {
+              const underReview = data.status === 'under_review';
+              // Compliance may still complete its own sections while reviewing;
+              // everything else is frozen while it is being judged.
+              //
+              // While the questionnaire is still being filled in, section 7
+              // (Compliance & Geschäftsleitung) is open to the RM as well — it
+              // is part of the same sheet they complete and hand over, and
+              // flagging a question "Please Fill In" on a field nobody could
+              // type into is what made this page unusable. Only the client
+              // portal stays out of it.
+              const isClientUser = State.currentRole === 'client';
+              const locked = readOnly || underReview
+                ? !(underReview && isComp && f.complianceOnly)
+                : (f.complianceOnly && isClientUser);
+              const value = data.answers?.[f.key] || '';
+              const decision = (data.reviews || {})[f.key] || null;
+              // Only an answered, non-Compliance question is something for a
+              // reviewer to judge.
+              const reviewable = underReview && isComp && !f.complianceOnly && Boolean(String(value ?? '').trim());
+              return `
+                <div style="margin-bottom:14px;">
+                  ${kycEditableFieldHTML(
+                    { key: f.key, label: `${escapeHtml(f.label)}${f.affectsRisk ? ' (*r)' : ''}`, type: f.type, options: f.options, required: f.required },
+                    { page: sec.page, value, disabled: locked, marginBottom: '2px', submitted: underReview || readOnly }
+                  )}
+                  ${decision ? `<div style="font-size:11px;margin-top:2px;color:${decision.status === 'approved' ? 'var(--status-approved)' : 'var(--accent-gold)'};">${decision.status === 'approved' ? '✓ Confirmed by Compliance' : `⚑ Sent back: ${escapeHtml(decision.reason || '')}`}</div>` : ''}
+                  ${reviewable && !decision ? `
+                    <div style="display:flex;gap:6px;margin-top:4px;">
+                      <button type="button" class="kyc-tick-btn" title="Confirm this answer" onclick="reviewMandateRiskField('${escapeHtml(ctx.clientId)}','${escapeHtml(f.key)}','approve')">✓</button>
+                      <button type="button" class="kyc-flag-btn" title="Send this question back" onclick="reviewMandateRiskField('${escapeHtml(ctx.clientId)}','${escapeHtml(f.key)}','flag')">⚑</button>
+                    </div>` : ''}
+                  ${prefilled.has(f.key) && !underReview ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Pre-filled from KYC / contract — please confirm</div>` : ''}
+                  ${f.complianceOnly && !isComp && !isClientUser ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Compliance &amp; Geschäftsleitung section — fill in what you have; Compliance confirms it on review</div>` : ''}
+                  ${f.complianceOnly && isClientUser ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Completed by Compliance</div>` : ''}
+                </div>`;
+            }).join('')}
+          </div>
+        </div>
+      `).join('')}
+      ${readOnly || data.status === 'under_review' ? '' : `
+        <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:32px;">
+          ${data.status === 'under_review'
+            ? `<span class="status-badge status-under-review">Under Review by Compliance</span>`
+            : ''}
+          <button type="button" class="btn-secondary" onclick="saveMandateRisk(false)">Save</button>
+          ${data.status === 'under_review'
+            ? ''
+            : `<button type="button" class="btn-primary" onclick="saveMandateRisk(true)">Submit for Review</button>`}
+        </div>
+        ${isComp && data.status === 'under_review' ? `
+          <div style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:-24px;margin-bottom:32px;">
+            Reviewed in KYC &amp; Mandate Risk Tasks — confirm or send back each answer there.
+          </div>` : ''}
+      `}
+    </form>
+  `;
+}
+
+async function saveMandateRisk(submit) {
+  const ctx = State._activeMandateRisk;
+  if (!ctx) return;
+  const answers = collectKycControlValues(document.getElementById('mandate-risk-form'));
+  try {
+    const res = await apiFetch('PUT', `/clients/${escapeHtml(ctx.clientId)}/mandate-risk`, { answers, submit });
+    showToast('success', submit ? 'Submitted for Compliance review.' : 'Saved.');
+    if (submit) navigateTo('contract-prep'); else renderMandateRisk();
+    return res;
+  } catch (err) {
+    showToast('error', err.message || 'Could not save the questionnaire.');
+  }
+}
+
+// DEPRECATED: approval happens in KYC & Mandate Risk Tasks now, where the
+// questionnaire is reviewed question by question (see approveAllMandateRisk).
+// Kept because the endpoint it calls is still the whole-form sign-off.
+async function approveMandateRisk() {
+  const ctx = State._activeMandateRisk;
+  if (!ctx) return;
+  try {
+    await apiFetch('PUT', `/clients/${escapeHtml(ctx.clientId)}/mandate-risk`, { approve: true });
+    showToast('success', 'Mandate-risk questionnaire approved by Compliance.');
+    // Same landing as approving a KYC: back to the list it came from, with the
+    // caches refreshed so the row and the export readiness both reflect it.
+    await Promise.all([refreshClients(), refreshKycTasks()]);
+    openTasksTab('risk');
+  } catch (err) {
+    showToast('error', err.message || 'Could not approve.');
+  }
+}
+
+function openRelatedPartyKyc(clientId, partyId) {
+  State._activePartyKyc = { clientId, partyId };
+  navigateTo('party-kyc');
+}
+
+async function renderRelatedPartyKyc() {
+  const content = document.getElementById('page-content');
+  const ctx = State._activePartyKyc;
+  if (!ctx) {
+    content.innerHTML = `<div class="page-header"><h1>Related-Party KYC</h1><p>No party selected.</p></div>`;
+    return;
+  }
+  content.innerHTML = `<div class="page-header"><h1>Related-Party KYC</h1></div><div class="cb-loading">Loading…</div>`;
+
+  let state;
+  try { state = await apiFetch('GET', `/clients/${escapeHtml(ctx.clientId)}/contract-preparation`); }
+  catch (err) {
+    content.innerHTML = `<div class="page-header"><h1>Related-Party KYC</h1></div><p style="color:var(--accent-red);padding:16px;">${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  const party = (state.relatedParties || []).find(p => p.partyId === ctx.partyId);
+  if (!party) {
+    content.innerHTML = `<div class="page-header"><h1>Related-Party KYC</h1><p>This party no longer exists.</p></div>`;
+    return;
+  }
+
+  const client = resolveKycClient(ctx.clientId);
+  const fields = kycSchemaFor(client);
+  const pages = [];
+  const byPage = new Map();
+  fields.forEach((f) => {
+    if (!byPage.has(f.page)) { byPage.set(f.page, { page: f.page, fields: [] }); pages.push(byPage.get(f.page)); }
+    byPage.get(f.page).fields.push(f);
+  });
+  const readOnly = party.status === 'approved';
+
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <button class="btn-secondary btn-sm" onclick="navigateTo('contract-prep')">← Back to Contract Tasks</button>
+      <div>
+        <h1 style="font-size:20px;font-weight:700;">${escapeHtml(party.role)} KYC</h1>
+        <div style="color:var(--text-secondary);font-size:13px;">
+          ${escapeHtml(state.clientName)} · ${escapeHtml(state.clientId)}${party.sourceDocument ? ` · required by ${escapeHtml(decodeEntities(party.sourceDocument))}` : ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-body">
+        <div class="form-group" style="max-width:420px;margin-bottom:0;">
+          <label for="party-name">${escapeHtml(party.role)} Name</label>
+          <input type="text" id="party-name" value="${escapeHtml(party.name || '')}" ${readOnly ? 'disabled' : ''} placeholder="Full name of the ${escapeHtml(party.role.toLowerCase())}">
+        </div>
+      </div>
+    </div>
+
+    <form id="party-kyc-form">
+      ${pages.map(sec => `
+        <div class="card" data-kyc-page="${escapeHtml(sec.page)}" style="margin-bottom:16px;">
+          <div class="card-header" style="padding:12px 16px;"><div style="font-size:14px;font-weight:700;">${escapeHtml(sec.page)}</div></div>
+          <div class="card-body">
+            ${sec.fields.map(f => kycEditableFieldHTML(f, {
+              page: sec.page,
+              value: party.kyc?.[f.key] || '',
+              disabled: readOnly,
+              marginBottom: '14px',
+            })).join('')}
+          </div>
+        </div>
+      `).join('')}
+      ${readOnly ? '' : `
+        <div style="display:flex;justify-content:flex-end;gap:12px;margin-bottom:32px;">
+          <button type="button" class="btn-secondary" onclick="saveRelatedParty(false)">Save</button>
+          <button type="button" class="btn-primary" onclick="saveRelatedParty(true)">Submit for Review</button>
+        </div>
+      `}
+    </form>
+  `;
+}
+
+async function saveRelatedParty(submit) {
+  const ctx = State._activePartyKyc;
+  if (!ctx) return;
+  const answers = collectKycControlValues(document.getElementById('party-kyc-form'));
+  const name = document.getElementById('party-name')?.value || '';
+  try {
+    const res = await apiFetch('PUT', `/clients/${escapeHtml(ctx.clientId)}/related-parties/${ctx.partyId}`, { name, answers, submit });
+    showToast('success', submit ? 'Submitted for Compliance review.' : 'Saved.');
+    await refreshClients();
+    if (submit) navigateTo('contract-prep');
+    else renderRelatedPartyKyc();
+    return res;
+  } catch (err) {
+    showToast('error', err.message || 'Could not save this KYC.');
+  }
+}
+
+// Outstanding corrections for one client, so Contract Tasks can offer the
+// drag-and-drop fix for each. Corrections stays the read-only overview.
+function openCorrectionsFor(clientId) {
+  return (State.documentCorrections || []).filter(c =>
+    c.clientId === clientId && c.status !== 'corrected');
+}
+
+// One outstanding issue, rendered inside the row of the document it concerns:
+// what is wrong, what to do about it, the download of exactly the part that
+// needs fixing, and the field to put the fixed version back.
+function correctionFixHTML(c) {
+  const what = c.pageFrom ? (c.page || 'page') : 'document';
+  return `
+    <div class="doc-item" style="align-items:flex-start;border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.03);">
+      <div class="doc-info" style="flex:1;">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:3px;">
+          ${c.page ? `${escapeHtml(c.page)} — ` : ''}${escapeHtml(c.issue || '')}
+        </div>
+        ${c.remedy ? `<div style="font-size:11.5px;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(c.remedy)}</div>` : ''}
+        <div class="correction-dropzone" id="corrzone-${escapeHtml(c.id)}"
+             ondragover="correctionDragOver(event,'${escapeHtml(c.id)}')"
+             ondragleave="correctionDragLeave(event,'${escapeHtml(c.id)}')"
+             ondrop="correctionDrop(event,'${escapeHtml(c.id)}')"
+             onclick="promptUploadCorrectedPages('${escapeHtml(c.id)}')">
+          Drag the corrected ${escapeHtml(what)} here, or click to browse
+        </div>
+      </div>
+      <div class="doc-actions" style="flex-direction:column;align-items:flex-end;gap:6px;">
+        <button class="btn-secondary btn-xs" onclick="downloadCorrectionPages('${escapeHtml(c.id)}')">${downloadIcon()} Download ${escapeHtml(what)}</button>
+      </div>
+    </div>`;
+}
+
+// A drop field on the document's own row. Every document on this page can be
+// provided the same way — drag a file onto it or click to browse — instead of
+// the upload living only behind a button.
+function documentDropzoneHTML(clientId, docId, what) {
+  const zoneId = `docdrop-${clientId}-${docId}`;
+  return `
+    <div class="correction-dropzone" id="${escapeHtml(zoneId)}" style="margin-bottom:8px;"
+         ondragover="docDropzoneOver(event,'${escapeHtml(zoneId)}')"
+         ondragleave="docDropzoneLeave(event,'${escapeHtml(zoneId)}')"
+         ondrop="docDropzoneDrop(event,'${escapeHtml(zoneId)}','${escapeHtml(clientId)}','${escapeHtml(docId)}')"
+         onclick="promptUploadRequiredDocument('${escapeHtml(clientId)}','${escapeHtml(docId)}')">
+      Drag the ${escapeHtml(what)} here, or click to browse
+    </div>`;
+}
+
+function contractDropzoneHTML(clientId, templateId, hasUpload) {
+  const zoneId = `contractdrop-${clientId}`;
+  return `
+    <div class="correction-dropzone" id="${escapeHtml(zoneId)}" style="margin-bottom:8px;"
+         ondragover="docDropzoneOver(event,'${escapeHtml(zoneId)}')"
+         ondragleave="docDropzoneLeave(event,'${escapeHtml(zoneId)}')"
+         ondrop="contractDropzoneDrop(event,'${escapeHtml(zoneId)}','${escapeHtml(clientId)}','${escapeHtml(templateId)}')"
+         onclick="promptUploadSignedContract('${escapeHtml(clientId)}','${escapeHtml(templateId)}')">
+      Drag the ${hasUpload ? 'new version of the signed contract' : 'completed, signed contract'} here, or click to browse
+    </div>`;
+}
+
+// Dragging a file onto a collapsed row opens it, so the drop field underneath
+// becomes reachable without putting the file down first. Only reacts to a real
+// file drag — moving the pointer over a row should not open it.
+function openDocRowOnDrag(event, details) {
+  const types = event.dataTransfer?.types;
+  if (!types || !Array.from(types).includes('Files')) return;
+  event.preventDefault();
+  if (!details.open) details.open = true;
+}
+
+function docDropzoneOver(event, zoneId) {
+  event.preventDefault();
+  document.getElementById(zoneId)?.classList.add('drag-over');
+}
+function docDropzoneLeave(event, zoneId) {
+  event.preventDefault();
+  document.getElementById(zoneId)?.classList.remove('drag-over');
+}
+function docDropzoneDrop(event, zoneId, clientId, docId) {
+  event.preventDefault();
+  event.stopPropagation();
+  document.getElementById(zoneId)?.classList.remove('drag-over');
+  const file = event.dataTransfer?.files?.[0];
+  if (file) uploadRequiredDocumentFile(clientId, docId, file);
+}
+function contractDropzoneDrop(event, zoneId, clientId, templateId) {
+  event.preventDefault();
+  event.stopPropagation();
+  document.getElementById(zoneId)?.classList.remove('drag-over');
+  const file = event.dataTransfer?.files?.[0];
+  if (file) uploadSignedContractFile(clientId, templateId, file);
+}
+
+// A document only earns the green tick once Compliance has approved it;
+// until then an uploaded file is orange (pending) and an empty slot is grey.
+function docState(d) {
+  if (!d || !d.filePath) return 'missing';
+  if (d.status === 'approved') return 'approved';
+  // Compliance looked at it and asked for it again — that is not the same as
+  // "waiting to be looked at", and the row must not imply it is.
+  if (d.status === 'info-requested') return 'flagged';
+  return 'uploaded';
+}
+
+function contractPrepGroup(title, inner) {
+  return `
+    <div style="margin-bottom:18px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin:2px 0 8px;">${escapeHtml(title)}</div>
+      ${inner}
+    </div>
+  `;
+}
+
+// One document, as a single collapsible entry: the header shows its name and
+// whether it has been provided (✓), and everything else — status, actions,
+// any correction — lives inside so a mandate with many documents stays a
+// short scannable list rather than a wall of controls.
+// `state` is the document's real standing, shown next to its name rather than
+// hidden inside the dropdown:
+//   'approved'  ✓ green  — checked and accepted by Compliance
+//   'uploaded'  ● orange — provided, still awaiting Compliance
+//   'missing'   ○ grey   — nothing uploaded yet
+//   null                 — not applicable (e.g. the blank template)
+function contractPrepRow({ title, meta, actions, warn, state = null, open = false, extra = '', stateLabel = '' }) {
+  const hasChevron = Boolean(actions || extra || warn);
+  const MARKS = {
+    approved: { icon: '✓', color: 'var(--status-approved)', label: 'Approved by Compliance' },
+    ready:    { icon: '◆', color: 'var(--accent-blue)', label: 'Ready to download' },
+    flagged:  { icon: '⚑', color: 'var(--accent-red)', label: 'Sent back by Compliance — upload a corrected version' },
+    uploaded: { icon: '●', color: 'var(--status-info-requested)', label: 'Uploaded — awaiting Compliance' },
+    missing:  { icon: '○', color: 'var(--text-muted)', label: 'Not uploaded yet' },
+  };
+  const m = state ? MARKS[state] : null;
+  const mark = m
+    ? `<span title="${escapeHtml(m.label)}" style="color:${m.color};font-weight:700;margin-right:6px;">${m.icon}</span>`
+    : '';
+  const inlineStatus = m
+    ? `<span style="color:${m.color};font-size:11px;font-weight:600;margin-left:8px;">${escapeHtml(stateLabel || m.label)}</span>`
+    : '';
+  const body = `
+    <div style="padding:10px 14px 12px 58px;">
+      <div class="doc-meta" style="margin-bottom:${warn || actions || extra ? '8px' : '0'};">${meta}</div>
+      ${warn ? `<div style="font-size:11.5px;color:var(--status-info-requested);margin-bottom:8px;">⚠&nbsp;${escapeHtml(warn)}</div>` : ''}
+      ${extra}
+      ${actions ? `<div class="doc-actions" style="justify-content:flex-start;flex-wrap:wrap;gap:6px;">${actions}</div>` : ''}
+    </div>`;
+
+  if (!hasChevron) {
+    return `
+      <div class="doc-item" style="align-items:center;">
+        <div class="doc-icon" style="background:${docIconColor('Other')}22;color:${docIconColor('Other')}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+        </div>
+        <div class="doc-info">
+          <div class="doc-name">${mark}${escapeHtml(title)}${inlineStatus}</div>
+          <div class="doc-meta">${meta}</div>
+        </div>
+      </div>`;
+  }
+
+  return `
+    <details class="doc-item doc-collapsible" ${open ? 'open' : ''}
+             ondragover="openDocRowOnDrag(event, this)" ondragenter="openDocRowOnDrag(event, this)"
+             style="display:block;padding:0;${warn ? 'border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.03);' : ''}">
+      <summary style="display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;list-style:none;">
+        <div class="doc-icon" style="background:${docIconColor('Other')}22;color:${docIconColor('Other')}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+        </div>
+        <div class="doc-info" style="flex:1;">
+          <div class="doc-name">${mark}${escapeHtml(title)}${inlineStatus}</div>
+        </div>
+        <span class="doc-chevron" style="color:var(--text-muted);font-size:12px;">▾</span>
+      </summary>
+      ${body}
+    </details>
+  `;
+}
+
+// The physically-signed contract. This is the upload that runs the
+// signature/checkbox check — it targets the client's contract document slot,
+// so the blank/previous file is preserved in that document's version history.
+function promptUploadSignedContract(clientId, templateId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.onchange = () => { if (input.files[0]) uploadSignedContractFile(clientId, templateId, input.files[0]); };
+  input.click();
+}
+
+async function uploadSignedContractFile(clientId, templateId, file) {
+  const client = resolveKycClient(clientId);
+  const templateDoc = client?.documents?.find(d => d.type === 'Template');
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('name', file.name);
+  formData.append('type', 'Signed Contract');
+  if (templateDoc) formData.append('docId', templateDoc.docId || templateDoc.id);
+  if (templateId) formData.append('templateId', templateId);
+  await postClientDocument(clientId, formData, 'Signed contract');
+}
+
+
+// Shared upload + result reporting for everything on this page that posts to
+// the client-documents endpoint, so validation feedback reads the same way
+// regardless of which document type was sent.
+async function postClientDocument(clientId, formData, label) {
+  try {
+        const res = await fetch(`${API_BASE}/clients/${clientId}/documents/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result?.error || 'Upload failed');
+    if (result.missingNote) {
+      showToast('warning', `${label} uploaded, but flagged for correction: ${result.missingNote}`);
+    } else {
+      showToast('success', `${label} uploaded successfully.`);
+    }
+    await Promise.all([
+      State.currentRole === 'client' ? refreshMyClientProfile() : refreshClients(),
+      refreshCorrectionsBadge(),
+    ]);
+    renderContractPreparation();
+  } catch (err) {
+    showToast('error', `${label} upload failed: ${err.message}`);
+  }
+}
+
+function promptUploadContractDraft(clientId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.onchange = () => { if (input.files[0]) uploadContractDraft(clientId, input.files[0]); };
+  input.click();
+}
+
+async function uploadContractDraft(clientId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+        const res = await fetch(`${API_BASE}/clients/${clientId}/contract-draft`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result?.error || 'Upload failed');
+    if (result.complete) {
+      showToast('success', 'Saved version uploaded — all required components present.');
+    } else {
+      showToast('warning', `Saved version uploaded, but incomplete: ${result.missingNote}`);
+    }
+    await refreshCorrectionsBadge();
+    renderContractPreparation();
+  } catch (err) {
+    showToast('error', err.message || 'Failed to upload the saved version.');
+  }
+}
+
+async function submitContractFinal(clientId) {
+  try {
+    await apiFetch('POST', `/clients/${clientId}/contract-draft/submit`, {});
+    showToast('success', 'Contract submitted — the final version is ready to download.');
+    renderContractPreparation();
+  } catch (err) {
+    showToast('error', err.message || 'Could not submit this contract.');
+  }
+}
+
 function switchCorrectionsTab(name) {
-  ['kyc','docs'].forEach(n => {
+  ['kyc','docs','risk'].forEach(n => {
     document.getElementById(`corrtab-btn-${n}`)?.classList.toggle('active', n === name);
     document.getElementById(`corrtab-${n}`)?.classList.toggle('active', n === name);
   });
 }
 
+// Fixes one flagged page of a Signed Contract in place — no full re-upload.
+// A throwaway file input (never inserted into the DOM) keeps this a single
+// call from the row's button, same pattern as triggerFileInputFor.
+function promptFixDocumentPage(clientId, docId, pageNum) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.onchange = () => {
+    const file = input.files[0];
+    if (file) fixDocumentPage(clientId, docId, pageNum, file);
+  };
+  input.click();
+}
+
+async function fixDocumentPage(clientId, docId, pageNum, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+        const res = await fetch(`${API_BASE}/clients/${clientId}/documents/${docId}/pages/${pageNum}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result?.error || 'Page fix failed');
+    await Promise.all([refreshCorrectionsBadge(), refreshClients()]);
+    if (result.missingNote) {
+      showToast('warning', `Page ${pageNum} updated, but still flagged: ${result.missingNote}`);
+    } else {
+      showToast('success', `Page ${pageNum} fixed and re-checked — no issues found.`);
+    }
+    if (State.currentPage === 'kyc-corrections') renderKycCorrections();
+  } catch (err) {
+    showToast('error', `Failed to fix page ${pageNum}: ${err.message}`);
+  }
+}
+
 // RM may only move an item to 'resubmitted'; only Compliance may confirm 'corrected'.
-async function updateKycCorrectionStatus(correctionId, status) {
+async function updateKycCorrectionStatus(correctionId, status, reason) {
   if (status === 'resubmitted' && State.currentRole !== 'rm') return;
   if (status === 'corrected' && !isCompliance(State.currentRole)) return;
   try {
-    await apiFetch('POST', `/corrections/kyc/${correctionId}/status`, { status });
+    await apiFetch('POST', `/corrections/kyc/${correctionId}/status`, { status, reason });
     showToast('success', `KYC correction updated to ${status}.`);
     refreshNotifications();
-    await renderKycCorrections();
+    await refreshCorrectionsBadge();
+    // Confirm/Deny is reachable from the Corrections list AND from the KYC
+    // Review page now — re-render whichever one is actually showing instead
+    // of always jumping to the Corrections list.
+    if (State.currentPage === 'kyc-corrections') await renderKycCorrections();
+    else rerenderKycView();
   } catch (err) {
     showToast('error', err.message || 'Failed to update KYC correction.');
   }
+}
+
+// Deny is the only correction transition that carries a free-text reason —
+// shown back to the RM alongside the reopened field so they know what to fix.
+async function denyKycCorrection(correctionId) {
+  if (!isCompliance(State.currentRole)) return;
+  const reason = prompt('Reason for denying this correction (shown to the RM):');
+  if (reason === null) return;
+  await updateKycCorrectionStatus(correctionId, 'needs_correction', reason);
 }
 
 async function updateDocumentCorrectionStatus(correctionId, status) {
@@ -5191,11 +7326,36 @@ function resolveKycClient(clientId) {
   if (State.myClientProfile && (State.myClientProfile.id === clientId || State.myClientProfile.clientId === clientId)) {
     return State.myClientProfile;
   }
-  return State.clients.find(c => c.id === clientId);
+  return State.clients.find(c => c.id === clientId || c.clientId === clientId);
+}
+
+// Compliance's "Review KYC" destination (reached from the KYC Tasks list) —
+// the one place a currently-fine field can be flagged wrong. Kept off the
+// Client Detail "KYC Details" tab entirely: that tab is a pure read-only
+// snapshot of a field's value and status at a point in time, with no actions.
+function renderKycReview() {
+  const content = document.getElementById('page-content');
+  const client = State.clients.find(c => c.id === State.selectedClientId);
+  if (!client) {
+    content.innerHTML = `<div class="page-header"><h1>KYC Review</h1><p>No client selected.</p></div>`;
+    return;
+  }
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+      <button class="btn-secondary btn-sm" onclick="navigateTo('kyc-tasks')">← Back to KYC Tasks</button>
+      <div style="flex:1;">
+        <h1 style="font-size:20px;font-weight:700;">${escapeHtml(client.name)}</h1>
+        <div style="color:var(--text-secondary);font-size:13px;">Case ${escapeHtml(client.id)} · Reviewing submitted KYC</div>
+      </div>
+      <button class="btn-secondary btn-sm" onclick="downloadKycExcel('${escapeHtml(client.id)}')">${downloadIcon()} Export KYC (.xlsx)</button>
+    </div>
+    ${clientKycEditableFormHTML(client)}
+  `;
 }
 
 // Shared KYC display — used by the staff-side Client Detail "KYC Details" tab
-// (RM + Compliance) and the client's own portal (if they have one). Read-only:
+// (RM + Compliance), the KYC Review page (Compliance only) and the client's
+// own portal (if they have one). Read-only:
 // values only ever arrive via a completed KYC Task or an approved correction,
 // never free-typed here. The one exception is a field with an OPEN correction
 // (pending or needs_correction) — that renders empty, gold, and editable, and
@@ -5205,73 +7365,183 @@ function resolveKycClient(clientId) {
 // used for a client's very first KYC submission, before anything has ever
 // been flagged missing. Otherwise only fields with an open correction are
 // editable (gold), matching the normal correction-resolution flow.
-function clientKycEditableFormHTML(client, firstTime = false) {
+// allowReview=false renders the same record without any way to act on it —
+// All Cases is for reading what happened, and deciding it there as well would
+// mean two screens that could disagree about the same questionnaire.
+function clientKycEditableFormHTML(client, firstTime = false, { allowReview = true } = {}) {
   if (!client.kyc) client.kyc = {};
-  const fields = REQUIRED_KYC_FIELDS[client.type] || [];
+  const fields = kycSchemaFor(client);
   const k = client.kyc;
-  const openByKey = new Map(
+  // Everything short of 'corrected' stays part of the active correction
+  // workflow (item 2/3 of the correction lifecycle): open (pending/
+  // needs_correction) is still editable and glowing, 'saved' is editable
+  // with a soft highlight, 'resubmitted' is a neutral read-only "awaiting
+  // review" state — none of them are a plain approved read-only field yet.
+  const correctionByKey = new Map(
     (State.kycCorrections || [])
-      .filter(c => c.clientId === client.id && c.autoGenerated && (c.status === 'pending' || c.status === 'needs_correction'))
+      .filter(c => c.clientId === client.id && c.autoGenerated && c.status !== 'corrected')
+      .map(c => [c.fieldKey, c])
+  );
+  // Confirmed fields are excluded above because they need no action — but the
+  // confirmation itself has to be visible, the way a confirmed mandate-risk
+  // answer is. Without this a field Compliance had just ticked still read
+  // "Under Review by Compliance", so the tick appeared to do nothing.
+  const confirmedByKey = new Map(
+    (State.kycCorrections || [])
+      .filter(c => c.clientId === client.id && c.autoGenerated && c.status === 'corrected' && c.everFilled)
       .map(c => [c.fieldKey, c])
   );
 
   const pages = [];
   const pageIndex = new Map();
-  fields.forEach(([key, label, page]) => {
+  fields.forEach((field) => {
+    const { page } = field;
     if (!pageIndex.has(page)) { pageIndex.set(page, pages.length); pages.push({ page, fields: [] }); }
-    pages[pageIndex.get(page)].fields.push([key, label]);
+    pages[pageIndex.get(page)].fields.push(field);
   });
 
-  const canFlag = isCompliance(State.currentRole) && !firstTime;
-  const canResubmit = State.currentRole === 'rm' || isCompliance(State.currentRole) || State.currentRole === 'client';
+  const workflowStatus = clientKycWorkflowStatus(client);
+  const allFieldsSaved = fields.every(({ key }) => String(k[key] ?? '').trim());
+  // Draft edits can retain historical submitter provenance, so provenance
+  // alone must never expose flag controls. Compliance may flag only a KYC
+  // that is actively under review or has already been approved — and only
+  // from the dedicated KYC Review page (reached via KYC Tasks), never from
+  // the Client Detail "KYC Details" tab, which is a pure read-only snapshot
+  // of what's filled in and its status at that moment, with no actions.
+  const canFlag = isCompliance(State.currentRole)
+    && !firstTime
+    && State.currentPage === 'kyc-review'
+    && (workflowStatus === 'under_review' || workflowStatus === 'approved');
+  // Only the client's own portal actually edits/saves/submits values here —
+  // for RM and Compliance this same component renders inside the staff
+  // Client Detail "KYC Details" tab, which is a read-only snapshot of what's
+  // filled in or not. Real editing for staff happens on the KYC Tasks page.
+  const canEdit = State.currentRole === 'client';
 
-  const verifyBanner = client.kycAwaitingVerification ? `
+  const actionableCount = (State.kycCorrections || []).filter(c =>
+    c.clientId === client.id && c.autoGenerated
+    && (c.status === 'pending' || c.status === 'needs_correction' || c.status === 'saved')
+  ).length;
+
+  const verifyBanner = actionableCount > 0 && !firstTime ? `
     <div class="kyc-verify-banner">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-      <span>${isCompliance(State.currentRole)
-        ? `This KYC was submitted by ${client.kycSubmittedBy === 'rm' ? 'the RM' : 'the client'} and is awaiting your verification.`
-        : `Submitted — awaiting Compliance verification.`}</span>
+      <span>${actionableCount} field${actionableCount === 1 ? '' : 's'} need${actionableCount === 1 ? 's' : ''} completion or correction.
+        ${allowReview ? `<a href="#" onclick="navigateTo('kyc-tasks');return false;" style="color:inherit;font-weight:600;">Resolve in Tasks →</a>` : ''}
+      </span>
     </div>
-  ` : '';
+  ` : workflowStatus === 'under_review' ? `
+    <div class="kyc-verify-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span style="flex:1;"><strong>Under Review by Compliance.</strong> ${isCompliance(State.currentRole)
+        ? `Review every KYC field, then approve the questionnaire if it is correct.`
+        : `Compliance must review and approve every field before this KYC is complete.`}</span>
+      ${isCompliance(State.currentRole) && allowReview
+        ? `<button type="button" class="btn-success btn-sm" data-client-id="${escapeHtml(client.id)}" onclick="approveKycFromReview(this.dataset.clientId)">Approve KYC</button>`
+        : ''}
+    </div>
+  ` : workflowStatus === 'approved' ? `
+    <div class="kyc-verify-banner kyc-verify-banner-approved">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="8,12 11,15 16,9"/></svg>
+      <span class="status-badge status-approved">Approved by Compliance</span>
+    </div>
+  ` : (!client.kycSubmittedBy && !firstTime ? `
+    <div class="kyc-verify-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>No KYC submitted yet.
+        <a href="#" onclick="navigateTo('kyc-tasks');return false;" style="color:inherit;font-weight:600;">Complete via KYC Tasks →</a>
+      </span>
+    </div>
+  ` : '');
 
   return `
     ${verifyBanner}
     ${pages.map(({ page, fields: pageFields }) => {
-      const hasOpen = firstTime || pageFields.some(([key]) => openByKey.has(key));
+      // Only 'open'/'saved' fields need further RM action — a page with only
+      // resubmitted/approved fields gets no Save/Resubmit button at all.
+      const hasActionable = firstTime || pageFields.some(({ key }) => {
+        const correction = correctionByKey.get(key);
+        return correction && correction.status !== 'resubmitted';
+      });
       return `
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card" data-kyc-page="${escapeHtml(page)}" style="margin-bottom:16px;">
           <div class="card-header">
-            <div class="card-title">${page}</div>
-            ${hasOpen && canResubmit ? `<button class="btn-primary btn-sm" onclick="resubmitKycPage('${client.id}','${page.replace(/'/g,"\\'")}')">${firstTime ? 'Submit Section' : 'Resubmit Section'}</button>` : ''}
+            <div class="card-title">${escapeHtml(page)}</div>
+            ${hasActionable && (firstTime || canEdit) ? `
+              <div style="display:flex;gap:8px;">
+                <button class="btn-secondary btn-sm" data-client-id="${escapeHtml(client.id)}" data-page="${escapeHtml(page)}" onclick="saveKycPage(this.dataset.clientId,this.dataset.page)">Save Section</button>
+                <button class="btn-primary btn-sm" data-client-id="${escapeHtml(client.id)}" data-page="${escapeHtml(page)}" data-first-time="${firstTime ? 'true' : 'false'}" onclick="resubmitKycPage(this.dataset.clientId,this.dataset.page,this.dataset.firstTime==='true')" ${allFieldsSaved ? '' : 'disabled title="Save a non-empty value for every KYC field first"'}>${firstTime ? 'Submit Section' : 'Resubmit Section'}</button>
+              </div>
+            ` : ''}
           </div>
           <div class="card-body">
-            <div class="cb-fields-grid">
-              ${pageFields.map(([key, label]) => {
-                const correction = openByKey.get(key);
+            <div class="cb-fields-grid" data-kyc-correction-page="${escapeHtml(page)}">
+              ${pageFields.map((field) => {
+                const { key, label } = field;
+                const correction = correctionByKey.get(key);
                 const val = k[key] || '';
                 if (firstTime) {
-                  return `
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label for="clientkyc_${key}">${label}</label>
-                      <input type="text" id="clientkyc_${key}" data-page="${page.replace(/"/g,'&quot;')}" value="${String(val).replace(/"/g,'&quot;')}" placeholder="Enter ${label}…">
-                    </div>
-                  `;
+                  return kycEditableFieldHTML(field, { page, value: val, marginBottom: '0' });
                 }
                 if (correction) {
+                  const status = correction.status;
+                  if (canEdit && status !== 'resubmitted') {
+                    return kycEditableFieldHTML(field, {
+                      page,
+                      value: status === 'saved' ? val : '',
+                      correctionStatus: status,
+                      correctionReason: correction.rejectionReason || '',
+                      marginBottom: '0',
+                    });
+                  }
+                  // Staff (RM/Compliance) view: always read-only here, just the
+                  // current fill status — actual editing happens on KYC Tasks.
+                  const meta = KYC_CORRECTION_STATUS_META[status] || KYC_CORRECTION_STATUS_META.pending;
+                  const displayVal = (status === 'saved' || status === 'resubmitted') ? val : '';
                   return `
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label for="clientkyc_${key}">${label} <span style="color:var(--accent-gold);font-weight:600;">— needs correction</span></label>
-                      <input type="text" id="clientkyc_${key}" data-page="${page.replace(/"/g,'&quot;')}" value="" placeholder="Enter ${label}…" class="kyc-field-missing">
+                    <div class="form-group" data-kyc-key="${escapeHtml(key)}" data-kyc-label="${escapeHtml(label)}" data-kyc-value="${escapeHtml(val ?? '')}" data-page="${escapeHtml(page)}" style="margin-bottom:0;">
+                      <label>${escapeHtml(label)} <span class="status-badge ${meta.badge}" style="margin-left:4px;">${escapeHtml(meta.label)}</span></label>
+                      <div style="display:flex;align-items:center;gap:2px;">
+                        <div class="kyc-field-readonly ${!String(displayVal).trim() ? 'empty' : ''}" style="flex:1;">${escapeHtml(String(displayVal).trim() || '—')}</div>
+                        ${canFlag && status === 'resubmitted' && String(displayVal).trim() ? `
+                          <button type="button" class="kyc-tick-btn" title="Confirm correct" onclick="updateKycCorrectionStatus('${escapeHtml(correction.id)}','corrected')">✓</button>
+                          <button type="button" class="kyc-flag-btn" title="Deny — send back to RM" onclick="denyKycCorrection('${escapeHtml(correction.id)}')">⚑</button>
+                        ` : ''}
+                      </div>
                     </div>
                   `;
                 }
+                // No open correction for this field. Its badge follows the
+                // whole-form workflow: a saved draft is not approved, and a
+                // submitted value stays under review until explicit sign-off.
+                const isEmpty = !String(val).trim();
+                // A blank optional question in a submitted questionnaire is a
+                // finished answer — "not provided" — not an outstanding task.
+                // Only a mandatory blank is still owed, and submission already
+                // makes that impossible.
+                const isRequired = field.required !== false;
+                const confirmed = confirmedByKey.get(key);
+                const meta = isEmpty
+                  ? (isRequired ? KYC_CORRECTION_STATUS_META.pending
+                    : { label: 'Not provided', badge: 'status-neutral' })
+                  : confirmed
+                    ? KYC_CORRECTION_STATUS_META.corrected
+                  : workflowStatus === 'approved'
+                    ? KYC_CORRECTION_STATUS_META.corrected
+                    : workflowStatus === 'under_review'
+                      ? KYC_CORRECTION_STATUS_META.resubmitted
+                      : KYC_CORRECTION_STATUS_META.saved;
                 return `
-                  <div class="form-group" style="margin-bottom:0;">
-                    <label>${label}</label>
+                  <div class="form-group" data-kyc-key="${escapeHtml(key)}" data-kyc-label="${escapeHtml(label)}" data-kyc-value="${escapeHtml(val ?? '')}" data-page="${escapeHtml(page)}" style="margin-bottom:0;">
+                    <label>${escapeHtml(label)} <span class="status-badge ${meta.badge}" style="margin-left:4px;">${escapeHtml(meta.label)}</span></label>
                     <div style="display:flex;align-items:center;gap:2px;">
-                      <div class="kyc-field-readonly ${!String(val).trim() ? 'empty' : ''}" style="flex:1;">${String(val).trim() || '—'}</div>
-                      ${canFlag && String(val).trim() ? `<button type="button" class="kyc-flag-btn" title="Flag as incorrect" onclick="flagKycFieldPrompt('${client.id}','${key}','${label.replace(/'/g,"\\'")}')">⚑</button>` : ''}
+                      <div class="kyc-field-readonly ${isEmpty ? 'empty' : ''}" style="flex:1;">${escapeHtml(String(val).trim() || '—')}</div>
+                      ${canFlag && !isEmpty && !confirmed ? `
+                        <button type="button" class="kyc-tick-btn" title="Confirm correct" data-client-id="${escapeHtml(client.id)}" data-field-key="${escapeHtml(key)}" data-field-label="${escapeHtml(label)}" onclick="confirmKycFieldPrompt(this.dataset.clientId,this.dataset.fieldKey,this.dataset.fieldLabel)">✓</button>
+                        <button type="button" class="kyc-flag-btn" title="Flag as incorrect" data-client-id="${escapeHtml(client.id)}" data-field-key="${escapeHtml(key)}" data-field-label="${escapeHtml(label)}" onclick="flagKycFieldPrompt(this.dataset.clientId,this.dataset.fieldKey,this.dataset.fieldLabel)">⚑</button>
+                      ` : ''}
                     </div>
+                    ${confirmed ? `<div style="font-size:11px;margin-top:2px;color:var(--status-approved);">✓ Confirmed by Compliance</div>` : ''}
                   </div>
                 `;
               }).join('')}
@@ -5296,28 +7566,70 @@ function clientKycEditableFormHTML(client, firstTime = false) {
 
 // Re-renders whichever KYC view is currently showing (staff Client Detail tab
 // or the client's own portal dashboard) after a resubmit/flag action.
+// Save/Submit/Flag on a single field all rebuild the whole KYC tab from
+// fresh server state (there's no per-field DOM patching in this app), which
+// would otherwise reset the scroll position after every action — jarring
+// when you're working your way down a long form. Preserve it explicitly so
+// only the one field that actually changed looks different, not "the whole
+// page jumped."
 function rerenderKycView() {
+  const scrollY = window.scrollY;
   if (State.currentPage === 'client-detail') { renderClientDetail(); switchTab('kyc'); }
+  else if (State.currentPage === 'kyc-review') renderKycReview();
+  else if (State.currentPage === 'kyc-fill') renderKycFill();
   else if (State.currentPage === 'dashboard' && State.currentRole === 'client') renderClientDashboard();
+  window.scrollTo(0, scrollY);
+}
+
+function collectKycPageValues(page, root = document) {
+  return collectKycControlValues(root, page);
+}
+
+// Draft save for one page's flagged fields — persists whatever's filled in
+// so far without submitting anything to Compliance. Explicit blanks are sent
+// too: clearing a previously-saved value must persist that blank and keep the
+// control gold after the canonical data is reloaded.
+async function saveKycPage(clientId, page) {
+  const values = collectKycPageValues(page);
+  if (!Object.keys(values).length) {
+    showToast('warning', 'No editable KYC fields were found in this section.');
+    return;
+  }
+  try {
+    await apiFetch('POST', '/corrections/kyc/save-section', { clientId, values });
+    showToast('success', 'Progress saved. Empty fields remain gold until they have a saved value.');
+    if (State.currentRole === 'client') {
+      const updated = await apiFetch('GET', '/clients/me').catch(() => null);
+      if (updated) State.myClientProfile = { ...updated, id: updated.clientId };
+      await refreshCorrectionsBadge();
+    } else {
+      await Promise.all([refreshCorrectionsBadge(), refreshClients()]);
+    }
+    rerenderKycView();
+  } catch (err) {
+    showToast('error', `Failed to save section: ${err.message}`);
+  }
 }
 
 async function resubmitKycPage(clientId, page, firstTime) {
-  const inputs = Array.from(document.querySelectorAll('input[data-page]')).filter(el => el.dataset.page === page);
-  const values = {};
-  inputs.forEach(el => {
-    const key = el.id.replace('clientkyc_', '');
-    values[key] = el.value.trim();
-  });
-  // A correction resolution is about fixing specifically-flagged fields, so
-  // all of them must be filled in before resubmitting. A first-time
-  // submission can be partial — whatever's still blank just becomes a
-  // tracked gap afterward instead of blocking submission outright.
-  if (!firstTime && Object.values(values).some(v => !v)) {
-    showToast('warning', `Please fill in every highlighted field in this section before resubmitting.`);
+  const values = collectKycPageValues(page);
+  if (Object.values(values).some(v => !v)) {
+    showToast('warning', `Please fill in and save every gold field in this section before ${firstTime ? 'submitting' : 'resubmitting'}.`);
     return;
   }
-  if (firstTime && Object.values(values).every(v => !v)) {
-    showToast('warning', `Please fill in at least one field before submitting.`);
+  const client = resolveKycClient(clientId);
+  const hasUnsavedValue = Object.entries(values).some(
+    ([key, value]) => value !== String(client?.kyc?.[key] ?? '').trim()
+  );
+  if (hasUnsavedValue) {
+    showToast('warning', 'Save this section before submitting it for Compliance review.');
+    return;
+  }
+  const missingFields = kycSchemaFor(client).filter(
+    ({ key }) => !String(client?.kyc?.[key] ?? '').trim()
+  );
+  if (missingFields.length) {
+    showToast('warning', 'Save a non-empty value for every KYC field before submitting for Compliance review.');
     return;
   }
   try {
@@ -5344,6 +7656,20 @@ async function flagKycFieldPrompt(clientId, key, label) {
     rerenderKycView();
   } catch (err) {
     showToast('error', `Failed to flag field: ${err.message}`);
+  }
+}
+
+// The tick counterpart to the flag above — explicitly signs off on a field
+// that was never flagged, giving it the same audit trail as one that went
+// through a correction cycle.
+async function confirmKycFieldPrompt(clientId, key, label) {
+  try {
+    await apiFetch('POST', '/corrections/kyc/confirm', { clientId, fieldKey: key });
+    await Promise.all([refreshCorrectionsBadge(), refreshClients()]);
+    showToast('success', `"${label}" confirmed correct.`);
+    rerenderKycView();
+  } catch (err) {
+    showToast('error', `Failed to confirm field: ${err.message}`);
   }
 }
 
@@ -5389,7 +7715,7 @@ function renderClientContract() {
             <div style="display:flex;gap:16px;padding:14px 0;border-bottom:1px solid var(--border-subtle);">
               <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--accent-purple-light);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${s.n}</div>
               <div>
-                <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px;">${s.title}</div>
+                <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px;">${escapeHtml(s.title)}</div>
                 <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">${s.body}</div>
               </div>
             </div>
@@ -5420,7 +7746,7 @@ function renderClientUpload() {
   content.innerHTML = `
     <div class="page-header">
       <h1>Upload Signed Documents</h1>
-      <p>Upload the scanned, signed version of your contract package for compliance review. Client: <strong>${client.name}</strong></p>
+      <p>Upload the scanned, signed version of your contract package for compliance review. Client: <strong>${escapeHtml(client.name)}</strong></p>
     </div>
 
     <div class="card" style="margin-bottom:20px;">
@@ -5482,10 +7808,10 @@ function renderClientUpload() {
           <tbody>
             ${uploads.length ? uploads.map(u => `
               <tr>
-                <td style="font-weight:500;">${u.name}</td>
+                <td style="font-weight:500;">${escapeHtml(u.name)}</td>
                 <td>${u.date}</td>
                 <td>${u.size}</td>
-                <td><span class="status-badge status-${u.status}">${statusLabel(u.status)}</span></td>
+                <td><span class="status-badge status-${escapeHtml(u.status)}">${statusLabel(u.status)}</span></td>
               </tr>
             `).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px;">No signed documents uploaded yet.</td></tr>`}
           </tbody>
@@ -5621,13 +7947,13 @@ async function renderRiskRatings() {
           <tbody>
             ${State.clients.map(c => `
               <tr style="cursor:pointer;" onclick="openClientDetail('${c.id}')">
-                <td><div style="display:flex;align-items:center;gap:8px;"><div class="client-avatar" style="width:28px;height:28px;font-size:11px;background:${clientGradient(c.type)}">${c.name[0]}</div> <span style="font-weight:500;">${c.name}</span></div></td>
-                <td>${c.type}</td>
-                <td>${c.country}</td>
+                <td><div style="display:flex;align-items:center;gap:8px;"><div class="client-avatar" style="width:28px;height:28px;font-size:11px;background:${clientGradient(c.type)}">${c.name[0]}</div> <span style="font-weight:500;">${escapeHtml(c.name)}</span></div></td>
+                <td>${escapeHtml(c.type)}</td>
+                <td>${escapeHtml(c.country)}</td>
                 <td>${c.industry}</td>
                 <td><span style="color:${c.kyc?.pep==='No'?'var(--accent-green)':'var(--accent-red)'};font-weight:600;">${c.kyc?.pep||'—'}</span></td>
                 <td><span style="color:${c.kyc?.sanctions==='No'?'var(--accent-green)':'var(--accent-red)'};font-weight:600;">${c.kyc?.sanctions||'—'}</span></td>
-                <td><span class="risk-${c.risk.toLowerCase()}" style="font-weight:700;font-size:14px;">${c.risk}</span></td>
+                <td><span class="risk-${c.risk.toLowerCase()}" style="font-weight:700;font-size:14px;">${escapeHtml(c.risk)}</span></td>
                 <td><button class="btn-secondary btn-xs" onclick="event.stopPropagation();openClientDetail('${c.id}')">Review</button></td>
               </tr>
             `).join('')}
@@ -5699,7 +8025,7 @@ async function renderRiskRatings() {
             </select>
           </div>
         </div>
-        ${computed ? `<div class="info-box"><p><strong>Computed Risk:</strong> ${computed.level} (score ${computed.score}) · ${computed.reason}</p></div>` : ''}
+        ${computed ? `<div class="info-box"><p><strong>Computed Risk:</strong> ${computed.level} (score ${computed.score}) · ${escapeHtml(computed.reason)}</p></div>` : ''}
       </div>
     </div>
     ` : ''}
@@ -5852,7 +8178,14 @@ function showToast(type, message) {
   };
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.innerHTML = `${icons[type]||''}<span class="toast-text">${message}</span>`;
+  // The message routinely carries names, filenames and server error text, none
+  // of which is ours to trust. Only the fixed icon markup is set as HTML; the
+  // message goes in as text, so a name like "<img onerror=...>" is shown, not run.
+  toast.innerHTML = icons[type] || '';
+  const text = document.createElement('span');
+  text.className = 'toast-text';
+  text.textContent = message;
+  toast.appendChild(text);
   toast.onclick = () => { toast.classList.add('exit'); setTimeout(() => toast.remove(), 300); };
   container.appendChild(toast);
   setTimeout(() => { toast.classList.add('exit'); setTimeout(() => toast.remove(), 300); }, 4000);
@@ -5908,15 +8241,14 @@ function updateNewClientForm() {
 
 async function loadStateFromBackend() {
   try {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!hasAuthToken()) return;
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 2000);
 
     if (user.role === 'client') {
-      const res = await fetch('http://localhost:5000/api/clients/me', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const res = await fetch(`${API_BASE}/clients/me`, {
+        credentials: 'include',
         signal: controller.signal,
       });
       if (res.ok) {
@@ -5927,8 +8259,8 @@ async function loadStateFromBackend() {
         }
       }
     } else {
-      const res = await fetch('http://localhost:5000/api/clients', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const res = await fetch(`${API_BASE}/clients`, {
+        credentials: 'include',
         signal: controller.signal,
       });
       if (res.ok) {
@@ -5972,8 +8304,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Restore session on page refresh (token-based or demo role)
   const savedRole   = localStorage.getItem('sessionRole');
   const sessionOn   = localStorage.getItem('sessionActive');
-  const token       = localStorage.getItem('token');
-  if ((token || sessionOn) && savedRole && ROLES[savedRole]) {
+  if (sessionOn && savedRole && ROLES[savedRole]) {
     AuthState.selectedRole = savedRole;
     await enterApp(savedRole);
     return;

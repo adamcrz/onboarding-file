@@ -1,4 +1,9 @@
-node_modules/ 
-.env 
-dist/ 
-uploads/ 
+# Repo-root ignores. The app has its own .gitignore under onboarding-app/.
+
+# Large presentation/document files that live here for convenience but are not
+# part of the app — GitHub rejects pushes near 100MB and a 54MB binary in the
+# history slows every clone from then on.
+*.pptx
+*.docx
+!onboarding-app/backend/*.docx
+!onboarding-app/Form A T S/*.docx

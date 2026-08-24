@@ -1,6 +1,6 @@
 const Mandate = require('../models/Mandate');
 const Client  = require('../models/Client');
-const { notify } = require('../services/notify.service');
+const { notifyRm } = require('../services/notify.service');
 
 function mandateToClientStatus(status) {
   if (status === 'approved') return 'approved';
@@ -30,8 +30,10 @@ async function setMandateStatus(req, res, status) {
       const client = await Client.findOne({ clientId: mandate.clientId });
       if (client) {
         client.status = mandateToClientStatus(status);
-        if (status === 'approved') client.progress = 100;
-        if (status === 'rejected') client.progress = Math.min(client.progress, 80);
+        // Progress is no longer set by hand here: it is derived from the
+        // mandate's own documents (n documents, 1/n each) every time a client
+        // is read, so a decision on the mandate cannot claim paperwork is
+        // complete when it isn't. See services/mandateProgress.service.js.
         client.auditTrail.push({
           action: `Mandate ${mandate.mandateName} ${status.replace('-', ' ')} by compliance`,
           user: 'Compliance',
@@ -43,7 +45,10 @@ async function setMandateStatus(req, res, status) {
     }
 
     const verb = status === 'rejected' ? 'rejected' : status === 'approved' ? 'approved' : 'flagged for more info';
-    await notify(`Mandate "${mandate.mandateName}" ${verb} by compliance`, status === 'rejected' ? 'warning' : status === 'approved' ? 'success' : 'info');
+    const owner = mandate.clientId ? await Client.findOne({ clientId: mandate.clientId }).select('rm') : null;
+    await notifyRm(`Mandate "${mandate.mandateName}" ${verb} by compliance`,
+      status === 'rejected' ? 'warning' : status === 'approved' ? 'success' : 'info',
+      { rmCode: owner?.rm, clientId: mandate.clientId, page: 'clients' });
 
     res.json(mandate);
   } catch (err) {

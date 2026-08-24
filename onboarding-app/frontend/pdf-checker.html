@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>PDF checker harness</title></head>
+<body>
+<!--
+  Not a user-facing page — this is the harness the backend's Playwright-driven
+  document checker (backend/services/pdfChecker.service.js) navigates a
+  headless browser to, so it can reuse the exact same pdf.js rendering pipeline
+  the app itself uses, but running reliably on the server for every upload
+  instead of depending on the uploader's own browser.
+-->
+<script type="module" src="./vendor/pdfjs/pdfjs-bridge.mjs"></script>
+</body>
+</html>

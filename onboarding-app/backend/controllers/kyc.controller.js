@@ -41,6 +41,12 @@ exports.exportKycPdf = async (req, res) => {
     if (req.user.role === 'rm' && client.rm !== req.user.rmCode) {
       return res.status(403).json({ error: 'Not authorised for this client' });
     }
+    if (req.user.role === 'client' && String(client.userId || '') !== String(req.user.id || '')) {
+      return res.status(403).json({ error: 'Not authorised for this client' });
+    }
+    if (!['rm', 'client', 'compliance', 'compliance_external', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Not authorised for this client' });
+    }
 
     const buffer = await buildKycSummaryPdf(client);
     res.setHeader('Content-Disposition', `attachment; filename="KYC_${client.clientId}.pdf"`);

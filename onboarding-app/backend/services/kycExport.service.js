@@ -177,4 +177,7 @@ function buildNaturalPersonKycXlsx() {
   return buildMinimalXlsx(buildNaturalPersonKycRows(loadRecords()));
 }
 
-module.exports = { appendConfirmedKyc, buildNaturalPersonKycXlsx, QUESTION_MAP };
+// buildMinimalXlsx is exported so other exports (the per-mandate KYC and
+// mandate-risk sheets) write real .xlsx through the same writer rather than a
+// second, subtly different one.
+module.exports = { appendConfirmedKyc, buildNaturalPersonKycXlsx, buildMinimalXlsx, QUESTION_MAP };
