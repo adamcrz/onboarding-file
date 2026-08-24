@@ -153,7 +153,67 @@ async function deleteClientFiles(clientId) {
   return files.length;
 }
 
+// Creates a mandate's folder in the archive as soon as the case exists, so
+// there is somewhere obvious to look before any document has been uploaded —
+// an empty folder named after the client reads as "nothing yet", where a
+// missing one reads as "something is wrong".
+function ensureClientArchiveDir(clientId) {
+  if (!ARCHIVE_ROOT || !clientId) return null;
+  const dir = path.join(ARCHIVE_ROOT, String(clientId));
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch (err) {
+    console.warn('⚠  Could not create the archive folder:', err.message);
+    return null;
+  }
+}
+
+// Everything one mandate holds, written to the archive and then released from
+// the database — the end of a mandate's life in the system, after its final
+// export has been taken.
+//
+// Each file is archived, re-read from the archive, and compared byte for byte
+// against what is about to be deleted. Anything that fails is kept: a file is
+// only ever dropped from the database once a verified copy exists elsewhere.
+// Returns what happened so the caller can record it.
+async function releaseClientFiles(client) {
+  const result = { released: 0, bytes: 0, kept: [] };
+  if (!ARCHIVE_ROOT) { result.kept.push('ARCHIVE_DIR is not configured'); return result; }
+
+  for (const doc of (client.documents || [])) {
+    for (const target of [doc, ...(doc.versions || [])]) {
+      if (!target.filePath || target.purgedFromStore) continue;
+
+      const key = keyFor(toAbsolutePath(target.filePath));
+      const stored = await getFile(key);
+      if (!stored) continue; // already gone from the database
+
+      archiveFile(key, stored);
+
+      // Read it back rather than trusting the write: a OneDrive placeholder,
+      // a full disk or a permissions problem all fail here instead of costing
+      // the only copy of a contract.
+      const archived = archivePathFor(target.filePath);
+      let verified = false;
+      try {
+        verified = Boolean(archived) && fs.existsSync(archived)
+          && fs.readFileSync(archived).equals(stored);
+      } catch (_) { verified = false; }
+
+      if (!verified) { result.kept.push(target.filePath); continue; }
+
+      await deleteFile(target.filePath);
+      if (target === doc) { doc.purgedFromStore = true; doc.purgedAt = new Date(); }
+      result.released += 1;
+      result.bytes += stored.length;
+    }
+  }
+  return result;
+}
+
 module.exports = {
   putFile, getFile, ensureLocal, ensureLocalQuiet, deleteFile, deleteClientFiles, keyFor,
-  archiveFile, isArchived, ARCHIVE_ENABLED: Boolean(ARCHIVE_ROOT),
+  archiveFile, isArchived, ensureClientArchiveDir, releaseClientFiles,
+  ARCHIVE_ENABLED: Boolean(ARCHIVE_ROOT),
 };

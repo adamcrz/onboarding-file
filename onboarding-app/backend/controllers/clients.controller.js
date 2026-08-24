@@ -66,6 +66,9 @@ const createClient = async (req, res) => {
   try {
     const client = new Client(req.body);
     await client.save();
+    // Somewhere obvious to look for this mandate's paperwork from the moment
+    // the case exists, rather than only once the first file lands.
+    fileStore.ensureClientArchiveDir(client.clientId);
     res.status(201).json(client);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1343,12 +1346,35 @@ const downloadMandateExport = async (req, res) => {
     const { buildMandatePackage } = require('../services/mandateExport.service');
     const { buffer, fileName, fileCount } = buildMandatePackage(client, currentMandateRiskFields());
 
+    const actor = String(req.user.email || req.user.name || 'Compliance');
     client.auditTrail.push({
       action: `Mandate exported (KYC + Mandatsrisiko sheets and ${fileCount} document${fileCount === 1 ? '' : 's'})`,
-      user: String(req.user.email || req.user.name || 'Compliance'),
+      user: actor,
       time: new Date().toLocaleString(),
       type: 'approved',
     });
+    client.exportedAt = new Date();
+    client.exportedBy = actor;
+
+    // The export is the mandate leaving the system as a finished package, so
+    // this is the point its files stop needing to be in the database. Each one
+    // is written to the archive and read back byte for byte before its copy
+    // here is dropped; anything that cannot be verified is kept. Downloads
+    // still work afterwards — they fall back to the archive.
+    const release = await fileStore.releaseClientFiles(client);
+    if (release.released) {
+      client.filesReleasedAt = new Date();
+      client.auditTrail.push({
+        action: `${release.released} file(s) archived and released from the database (${(release.bytes / 1048576).toFixed(2)} MB)`,
+        user: actor,
+        time: new Date().toLocaleString(),
+        type: 'uploaded',
+      });
+    }
+    if (release.kept.length) {
+      console.warn(`⚠  ${release.kept.length} file(s) kept in the database — no verified archive copy:`);
+      release.kept.forEach((k) => console.warn('   ', k));
+    }
     await client.save();
 
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);

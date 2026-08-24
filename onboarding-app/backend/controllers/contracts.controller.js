@@ -1041,6 +1041,9 @@ exports.sendInvite = async (req, res) => {
     // same server request. The frontend's follow-up call is now only an
     // idempotent compatibility call, so a task can never miss its client link.
     await ensureKycTaskForClient(client, effectiveRmName);
+    // Give the mandate its folder in the archive straight away, so the
+    // documents have somewhere to land and somewhere to be looked for.
+    fileStore.ensureClientArchiveDir(client.clientId);
 
     // Persist the actual filled contract to disk now, not just a placeholder
     // document entry with no file — this is what KUBE later downloads, adds

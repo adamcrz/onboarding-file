@@ -98,6 +98,12 @@ const clientSchema = new mongoose.Schema({
   status:     { type: String, default: 'pending' },
   rm:         { type: String },
   progress:   { type: Number, default: 0 },
+  // The final export — the point the mandate leaves the system as a finished
+  // package. Everything it contains is in the archive by then, so the copies
+  // held in the database can be released.
+  exportedAt:       { type: Date },
+  exportedBy:       { type: String },
+  filesReleasedAt:  { type: Date },
   country:    { type: String },
   industry:   { type: String },
   documents:  [documentSchema],
