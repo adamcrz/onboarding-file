@@ -2717,13 +2717,17 @@ function renderClientRows(clients) {
       <td onclick="event.stopPropagation()">
         <div class="actions-row">
           ${isCompliance(State.currentRole)
-            && (c.status === 'under-review' || c.status === 'pending')
-            && clientKycWorkflowStatus(c) === 'approved' ? `
-            ${allClientDocumentsSubmitted(c)
-              ? `<button class="btn-success btn-xs" onclick="event.stopPropagation();approveClient('${c.id}')">Approve</button>`
-              : `<button class="btn-success btn-xs" disabled title="Every requested document must be submitted first" style="opacity:.5;cursor:not-allowed;">Approve</button>`}
-            <button class="btn-secondary btn-xs" onclick="event.stopPropagation();rejectClient('${c.id}')">Reject</button>
-          ` : ''}
+            && (c.status === 'under-review' || c.status === 'pending') ? (() => {
+              // Always shown, never hidden. An action that disappears when it
+              // is unavailable reads as a missing feature; one that is present
+              // and says why is a state you can act on.
+              const blocker = clientApprovalBlocker(c);
+              return `
+            ${blocker
+              ? `<button class="btn-success btn-xs" disabled title="${escapeHtml(blocker)}" style="opacity:.5;cursor:not-allowed;">Approve</button>`
+              : `<button class="btn-success btn-xs" onclick="event.stopPropagation();approveClient('${c.id}')">Approve</button>`}
+            <button class="btn-secondary btn-xs" onclick="event.stopPropagation();rejectClient('${c.id}')">Reject</button>`;
+            })() : ''}
         </div>
       </td>
     </tr>
@@ -2835,13 +2839,15 @@ function renderClientDetail() {
       </div>
       <div class="actions-row">
         ${isCompliance(State.currentRole)
-          && (client.status === 'under-review' || client.status === 'pending')
-          && clientKycWorkflowStatus(client) === 'approved' ? `
-          ${allClientDocumentsSubmitted(client)
-            ? `<button class="btn-success btn-sm" onclick="approveClientFromDetail('${client.id}')">✓ Approve</button>`
-            : `<button class="btn-success btn-sm" disabled title="Every requested document must be submitted first" style="opacity:.5;cursor:not-allowed;">✓ Approve</button>`}
-          <button class="btn-secondary btn-sm" onclick="rejectClientFromDetail('${client.id}')">Reject</button>
-        ` : ''}
+          && (client.status === 'under-review' || client.status === 'pending') ? (() => {
+            const blocker = clientApprovalBlocker(client);
+            return `
+          ${blocker
+            ? `<button class="btn-success btn-sm" disabled title="${escapeHtml(blocker)}" style="opacity:.5;cursor:not-allowed;">✓ Approve</button>
+               <span style="font-size:11.5px;color:var(--text-muted);max-width:320px;">${escapeHtml(blocker)}</span>`
+            : `<button class="btn-success btn-sm" onclick="approveClientFromDetail('${client.id}')">✓ Approve</button>`}
+          <button class="btn-secondary btn-sm" onclick="rejectClientFromDetail('${client.id}')">Reject</button>`;
+          })() : ''}
         ${State.currentRole === 'rm' ? `<button class="btn-secondary btn-sm" onclick="editClientKycFromDetail('${escapeHtml(client.id)}')">Edit KYC</button>` : ''}
         ${isCompliance(State.currentRole)
           ? `<button class="btn-danger btn-sm" onclick="deleteMandate('${escapeHtml(client.id)}')" title="Delete this mandate and everything belonging to it">Delete</button>`
@@ -3130,7 +3136,30 @@ function rejectClientFromDetail(id) {
 function allClientDocumentsSubmitted(client) {
   const docs = client?.documents || [];
   if (!docs.length) return true;
-  return docs.every(d => d.type === 'Template' || Boolean(d.filePath));
+  // A flagged document is not a submitted one. It has a file, but Compliance
+  // has asked for that file again, so counting it as provided would let a case
+  // be approved with an outstanding correction against it.
+  return docs.every(d => d.type === 'Template'
+    || (Boolean(d.filePath) && d.status !== 'info-requested'));
+}
+
+// Why a case cannot be approved yet, or null when it can.
+//
+// One definition, used by the list and the case screen, so the two can never
+// give different answers. It returns the reason rather than a boolean because
+// a disabled button with no explanation is the thing people ask about.
+function clientApprovalBlocker(client) {
+  if (clientKycWorkflowStatus(client) !== 'approved') {
+    return 'The KYC must be approved by Compliance first';
+  }
+  const flagged = (client?.documents || []).filter(d => d.status === 'info-requested');
+  if (flagged.length) {
+    return `${flagged.length} flagged document${flagged.length === 1 ? '' : 's'} must be corrected and uploaded again: ${flagged.map(d => d.name).join(', ')}`;
+  }
+  if (!allClientDocumentsSubmitted(client)) {
+    return 'Every requested document must be submitted first';
+  }
+  return null;
 }
 
 async function approveDoc(clientId, docId) {

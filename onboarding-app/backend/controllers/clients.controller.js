@@ -115,6 +115,20 @@ const updateClient = async (req, res) => {
       });
     }
 
+    // A flagged document is one Compliance has asked for again. Approving the
+    // case while that request is outstanding would close a mandate over an
+    // objection Compliance itself raised, so the server refuses it rather than
+    // relying on the button being disabled — the button explains, this decides.
+    if (existing && updates.status === 'approved') {
+      const flagged = (existing.documents || []).filter((d) => d.status === 'info-requested');
+      if (flagged.length) {
+        return res.status(409).json({
+          error: `${flagged.length} flagged document${flagged.length === 1 ? '' : 's'} must be corrected and uploaded again first: ${flagged.map((d) => d.name).join(', ')}`,
+          details: { flagged: flagged.map((d) => ({ docId: d.docId, name: d.name, issue: d.missingNote })) },
+        });
+      }
+    }
+
     if (existing && updates.type) {
       await assertKycTypeChangeAllowed(existing, updates.type);
     }
