@@ -52,7 +52,10 @@ const has = (name) => process.argv.includes(`--${name}`);
       for (const target of [doc, ...(doc.versions || [])]) {
         if (!target.filePath) continue;
         const key = fileStore.keyFor(toAbsolutePath(target.filePath));
-        const dest = archivePathFor(target.filePath);
+        // Same readable naming the app writes with, so a catch-up run files
+        // things exactly where a live upload would have.
+        const meta = { clientId: client.clientId, clientName: client.name, docName: doc.name };
+        const dest = archivePathFor(target.filePath, meta);
         if (!dest) continue;
 
         const data = (await fileStore.getFile(key))

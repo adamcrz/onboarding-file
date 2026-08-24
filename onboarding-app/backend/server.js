@@ -15,6 +15,7 @@ const correctionsRoutes = require('./routes/corrections.routes');
 const notificationsRoutes = require('./routes/notifications.routes');
 const documentRequirementsRoutes = require('./routes/documentRequirements.routes');
 const mandateRiskSchemaRoutes = require('./routes/mandateRiskSchema.routes');
+const kycSchemaRoutes = require('./routes/kycSchema.routes');
 
 const helmet       = require('helmet');
 const cookieParser = require('cookie-parser');
@@ -57,6 +58,7 @@ app.use('/api/corrections', correctionsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/document-requirements', documentRequirementsRoutes);
 app.use('/api/mandate-risk-schema', mandateRiskSchemaRoutes);
+app.use('/api/kyc-schema', kycSchemaRoutes);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
@@ -112,11 +114,13 @@ const { seedDemoUsers, seedDocumentRequirements } = require('./services/demoSeed
 const PORT = process.env.PORT || 5000;
 
 const { refreshMandateRiskSchema } = require('./services/mandateRiskSchema.service');
+const { refreshKycSchema } = require('./services/kycSchema.service');
 
 connectDB()
   .then(seedDemoUsers)
   .then(seedDocumentRequirements)
   .then(refreshMandateRiskSchema)
+  .then(refreshKycSchema)
   .then(() => {
     // Say plainly whether the periodic email check is armed. Discovering it is
     // off only when it fails to challenge anybody is worse than a line of log.

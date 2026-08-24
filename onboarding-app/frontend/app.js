@@ -585,6 +585,50 @@ function completeSignIn(data) {
   enterApp(data.user.role);
 }
 
+// Deletes a mandate and everything the app holds for it: the case, its KYC
+// task, its corrections, its notifications and its files in the database.
+//
+// Two confirmations, because there is no undo and the second one is the point
+// where somebody who clicked by accident stops. Typing the case number is not
+// bureaucracy — it is the difference between deleting the mandate you meant
+// and the one you happened to have open.
+async function deleteMandate(clientId) {
+  const client = State.clients.find(c => c.id === clientId);
+  const name = client ? client.name : clientId;
+  const docCount = client ? (client.documents || []).length : 0;
+
+  const warning = [
+    `Delete the mandate for ${name}?`,
+    '',
+    `This removes the case ${clientId}, its KYC task, its corrections,`,
+    `its notifications and its ${docCount} document${docCount === 1 ? '' : 's'} from the app.`,
+    '',
+    'It cannot be undone.',
+    '',
+    'The copies already written to the SharePoint archive are NOT deleted —',
+    'those stay as the permanent record. Remove that folder by hand if this',
+    'was only a test.',
+  ].join('\n');
+  if (!confirm(warning)) return;
+
+  const typed = prompt(`To confirm, type the case number:  ${clientId}`);
+  if (typed === null) return;
+  if (typed.trim().toUpperCase() !== String(clientId).toUpperCase()) {
+    showToast('error', 'That did not match — nothing was deleted.');
+    return;
+  }
+
+  try {
+    await apiFetch('DELETE', `/clients/${encodeURIComponent(clientId)}`);
+    showToast('success', `${name} deleted.`);
+    State.clients = State.clients.filter(c => c.id !== clientId);
+    await Promise.all([refreshClients(), refreshKycTasks(), refreshCorrectionsBadge()]);
+    navigateTo('clients');
+  } catch (err) {
+    showToast('error', err.message || 'Could not delete this mandate.');
+  }
+}
+
 function resetLoginBtn() {
   const btn = document.getElementById('login-btn');
   if (btn) {
@@ -2784,6 +2828,9 @@ function renderClientDetail() {
           <button class="btn-secondary btn-sm" onclick="rejectClientFromDetail('${client.id}')">Reject</button>
         ` : ''}
         ${State.currentRole === 'rm' ? `<button class="btn-secondary btn-sm" onclick="editClientKycFromDetail('${escapeHtml(client.id)}')">Edit KYC</button>` : ''}
+        ${isCompliance(State.currentRole)
+          ? `<button class="btn-danger btn-sm" onclick="deleteMandate('${escapeHtml(client.id)}')" title="Delete this mandate and everything belonging to it">Delete</button>`
+          : ''}
       </div>
     </div>
 
@@ -5162,86 +5209,199 @@ function renderKycFormLegacy() {
   `;
 }
 
-// Read-only inspection of the schema actually returned by the API. The old
-// in-browser template builder never persisted anything, while task/profile
-// forms are server-defined, so presenting it as an editor was misleading.
-// Keep the route/function intact for existing navigation and expose the real
-// schema without claiming that local changes configure future questionnaires.
-function renderKycForm() {
+/* ============================================================
+   PAGE: KYC SCHEMA
+   The questionnaire itself, and — for Compliance — the place it is edited.
+   Built the same way as the Mandate Risk Schema screen, because the two
+   questionnaires are maintained the same way and one pattern is easier to
+   follow than two that merely resemble each other.
+   ============================================================ */
+async function renderKycForm() {
   const content = document.getElementById('page-content');
-  const selectedClient = State.clients.find(client =>
-    client.id === State.selectedClientId || client.clientId === State.selectedClientId
-  );
-  const sourceClient = [selectedClient, ...State.clients]
-    .filter(Boolean)
-    .find(client => Array.isArray(client.kycSchema) && client.kycSchema.length);
-  const usingBundledFallback = !sourceClient;
-  const schemaClient = sourceClient || { type: 'Individual', kyc: {} };
-  const fields = kycSchemaFor(schemaClient);
-  const sections = [];
+  content.innerHTML = `<div class="page-header"><h1>KYC Schema</h1></div><div class="cb-loading">Loading…</div>`;
+
+  // Read from its own endpoint rather than from whichever client happened to
+  // be first in the list: the schema belongs to the questionnaire, not to any
+  // one mandate, and it has to be visible before any client exists.
+  let fields = [];
+  let removed = [];
+  try {
+    const data = await apiFetch('GET', '/kyc-schema');
+    fields = data.fields || [];
+    removed = data.removed || [];
+  } catch (err) {
+    content.innerHTML = `
+      <div class="page-header"><h1>KYC Schema</h1></div>
+      <p style="color:var(--accent-red);padding:16px;">Failed to load the KYC schema: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+
+  const canEdit = isCompliance(State.currentRole);
+  const pages = [];
   const byPage = new Map();
-
-  fields.forEach((field) => {
-    if (!byPage.has(field.page)) {
-      const section = { page: field.page, fields: [] };
-      byPage.set(field.page, section);
-      sections.push(section);
-    }
-    byPage.get(field.page).fields.push(field);
+  fields.forEach((f) => {
+    if (!byPage.has(f.page)) { byPage.set(f.page, { page: f.page, idx: pages.length, fields: [] }); pages.push(byPage.get(f.page)); }
+    byPage.get(f.page).fields.push(f);
   });
-
   const typeLabels = {
     text: 'Text', email: 'Email', date: 'Date', number: 'Number',
     select: 'Dropdown', textarea: 'Long text', yesno: 'Yes / No',
   };
-  const sourceDescription = usingBundledFallback
-    ? 'No client schema is currently loaded. This is the bundled Individual fallback for reference only.'
-    : `Live API schema for ${escapeHtml(sourceClient.name)} (${escapeHtml(sourceClient.clientId || sourceClient.id)} · ${escapeHtml(sourceClient.type)}).`;
 
   content.innerHTML = `
     <div class="page-header">
-      <h1>Canonical KYC Schema</h1>
-      <p>The KYC Tasks form, client KYC Details, and correction editor all render this same field definition.</p>
+      <h1>KYC Schema</h1>
+      <p>The KYC questionnaire, exactly as every client&rsquo;s form renders it.${canEdit
+        ? ' Add or remove a question here and every KYC form, gap check and export follows immediately.'
+        : ' Compliance maintains this list.'}</p>
     </div>
-    <div class="info-box" data-kyc-schema-source="${usingBundledFallback ? 'bundled-individual-fallback' : 'client-api'}" style="margin-bottom:20px;">
-      <p><strong>Read-only.</strong> The schema is managed by the backend; this screen does not edit or save questionnaire fields. ${sourceDescription}</p>
+    <div class="info-box" style="margin-bottom:20px;">
+      <p>One list serves every legal form. A removed question stops being asked and stops being required — answers already given are kept, and come back if it is restored.</p>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;flex-wrap:wrap;">
-      <div style="font-size:13px;color:var(--text-muted);">${sections.length} section${sections.length === 1 ? '' : 's'} · ${fields.length} fields total</div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn-primary btn-sm" onclick="openTasksTab('kyc')">Open KYC Tasks</button>
-      </div>
+      <div style="font-size:13px;color:var(--text-muted);">${pages.length} section${pages.length === 1 ? '' : 's'} · ${fields.length} questions total</div>
+      <button class="btn-primary btn-sm" onclick="openTasksTab('kyc')">Open KYC Tasks</button>
     </div>
-    ${sections.map(section => `
-      <div class="card" data-kyc-schema-page="${escapeHtml(section.page)}" style="margin-bottom:12px;">
+    ${pages.map(sec => `
+      <div class="card" data-kyc-schema-page="${escapeHtml(sec.page)}" style="margin-bottom:12px;">
         <div class="card-header" style="padding:12px 16px;">
-          <div class="card-title">${escapeHtml(section.page)}</div>
+          <div class="card-title">${escapeHtml(sec.page)}</div>
+          ${canEdit ? `<button class="btn-secondary btn-xs" onclick="toggleAddKycField(${sec.idx})">+ Add Question</button>` : ''}
         </div>
         <div class="card-body" style="padding:0 16px 14px;">
           <table style="width:100%;border-collapse:collapse;">
             <thead>
               <tr style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);border-bottom:1px solid var(--border-default);">
-                <th style="padding:8px 0;text-align:left;">Field</th>
+                <th style="padding:8px 0;text-align:left;">Question</th>
                 <th style="padding:8px 6px;text-align:left;">Control</th>
                 <th style="padding:8px 6px;text-align:left;">Options</th>
                 <th style="padding:8px 0;text-align:center;">Required</th>
+                ${canEdit ? `<th style="padding:8px 0;text-align:right;"></th>` : ''}
               </tr>
             </thead>
             <tbody>
-              ${section.fields.map(field => `
-                <tr data-kyc-schema-field data-kyc-key="${escapeHtml(field.key)}" data-kyc-label="${escapeHtml(field.label)}" data-kyc-type="${escapeHtml(field.type)}" data-kyc-required="${field.required ? 'true' : 'false'}" data-kyc-options="${escapeHtml(JSON.stringify(field.options || []))}" style="border-bottom:1px solid var(--border-subtle);">
-                  <td style="padding:9px 0;font-size:13px;">${escapeHtml(field.label)} <span style="font-size:10px;color:var(--text-muted);">${escapeHtml(field.key)}</span></td>
-                  <td style="padding:9px 6px;font-size:12px;">${escapeHtml(typeLabels[field.type] || field.type)}</td>
-                  <td style="padding:9px 6px;font-size:11px;color:var(--text-muted);">${field.options.length ? field.options.map(escapeHtml).join(', ') : '—'}</td>
-                  <td style="padding:9px 0;text-align:center;font-size:12px;">${field.required ? '<span style="color:var(--accent-red);">Yes</span>' : '<span style="color:var(--text-muted);">No</span>'}</td>
+              ${sec.fields.map(f => `
+                <tr data-kyc-schema-field data-kyc-key="${escapeHtml(f.key)}" data-kyc-label="${escapeHtml(f.label)}" data-kyc-type="${escapeHtml(f.type || 'text')}" data-kyc-required="${f.required ? 'true' : 'false'}" data-kyc-options="${escapeHtml(JSON.stringify(f.options || []))}" style="border-bottom:1px solid var(--border-subtle);">
+                  <td style="padding:9px 0;font-size:13px;">
+                    ${escapeHtml(f.label)}
+                    ${f.builtIn === false ? `<span style="color:var(--accent-blue);font-size:11px;margin-left:6px;">Added</span>` : ''}
+                  </td>
+                  <td style="padding:9px 6px;font-size:12px;">${escapeHtml(typeLabels[f.type] || f.type || 'Text')}</td>
+                  <td style="padding:9px 6px;font-size:11px;color:var(--text-muted);">${f.options && f.options.length ? f.options.map(escapeHtml).join(', ') : '—'}</td>
+                  <td style="padding:9px 0;text-align:center;font-size:12px;">${f.required ? '<span style="color:var(--accent-red);">Yes</span>' : '<span style="color:var(--text-muted);">No</span>'}</td>
+                  ${canEdit ? `<td style="padding:9px 0;text-align:right;">
+                    <button class="btn-secondary btn-xs" onclick="deleteKycField('${escapeHtml(f.key)}','${escapeHtml(f.label)}')">Delete</button>
+                  </td>` : ''}
                 </tr>
               `).join('')}
             </tbody>
           </table>
+          ${canEdit ? kycFieldFormHTML(sec) : ''}
         </div>
       </div>
     `).join('')}
+
+    ${canEdit && removed.length ? `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-header" style="padding:12px 16px;"><div class="card-title">Removed Questions (${removed.length})</div></div>
+        <div class="card-body" style="padding:0 16px 14px;">
+          <p style="font-size:12px;color:var(--text-muted);padding:8px 0;">Part of the shipped questionnaire but currently switched off. Nobody is asked them, and they are not required for submission.</p>
+          ${removed.map(f => `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border-subtle);">
+              <div style="flex:1;font-size:13px;">${escapeHtml(f.label)}<span style="color:var(--text-muted);font-size:11px;margin-left:6px;">${escapeHtml(f.page)}</span></div>
+              <button class="btn-secondary btn-xs" onclick="restoreKycField('${escapeHtml(f.key)}')">Restore</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
   `;
+}
+
+// The add form sits inside the section it will add to, so there is never any
+// doubt about where the question lands.
+function kycFieldFormHTML(sec) {
+  const i = sec.idx;
+  return `
+    <div id="kycf-form-${i}" style="display:none;border-top:1px solid var(--border-default);margin-top:10px;padding-top:14px;">
+      <div class="form-group">
+        <label class="form-label">Question</label>
+        <input type="text" class="form-input" id="kycf-label-${i}" placeholder="e.g. Zweite Staatsangehörigkeit">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label class="form-label">Control</label>
+          <select class="form-input" id="kycf-type-${i}" onchange="document.getElementById('kycf-options-row-${i}').style.display = this.value === 'select' ? '' : 'none';">
+            <option value="text">Text</option>
+            <option value="textarea">Long text</option>
+            <option value="select">Dropdown</option>
+            <option value="date">Date</option>
+            <option value="number">Number</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Required</label>
+          <select class="form-input" id="kycf-required-${i}">
+            <option value="yes">Yes — must be answered before submission</option>
+            <option value="no">No — optional</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="kycf-options-row-${i}" style="display:none;">
+        <label class="form-label">Dropdown options (comma separated)</label>
+        <input type="text" class="form-input" id="kycf-options-${i}" placeholder="Ja, Nein">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn-secondary btn-sm" onclick="toggleAddKycField(${i})">Cancel</button>
+        <button class="btn-primary btn-sm" onclick="submitAddKycField(${i},'${escapeHtml(sec.page)}')">Add Question</button>
+      </div>
+    </div>`;
+}
+
+function toggleAddKycField(i) {
+  const form = document.getElementById(`kycf-form-${i}`);
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+  if (form.style.display === '') document.getElementById(`kycf-label-${i}`)?.focus();
+}
+
+async function submitAddKycField(i, page) {
+  const label = document.getElementById(`kycf-label-${i}`).value.trim();
+  if (!label) { showToast('error', 'Enter the question text.'); return; }
+  const type = document.getElementById(`kycf-type-${i}`).value;
+  const options = document.getElementById(`kycf-options-${i}`).value;
+  if (type === 'select' && !options.trim()) { showToast('error', 'A dropdown needs at least one option.'); return; }
+  try {
+    await apiFetch('POST', '/kyc-schema/fields', {
+      label, page, type, options,
+      required: document.getElementById(`kycf-required-${i}`).value === 'yes',
+    });
+    showToast('success', 'Question added to the KYC questionnaire.');
+    renderKycForm();
+  } catch (err) {
+    showToast('error', err.message || 'Could not add the question.');
+  }
+}
+
+async function deleteKycField(key, label) {
+  if (!confirm(`Remove "${decodeEntities(label)}" from the KYC questionnaire?\n\nIt stops being asked and stops being required for submission. Answers already given are kept, and return if it is restored.`)) return;
+  try {
+    await apiFetch('DELETE', `/kyc-schema/fields/${encodeURIComponent(key)}`);
+    showToast('success', 'Question removed.');
+    renderKycForm();
+  } catch (err) {
+    showToast('error', err.message || 'Could not remove the question.');
+  }
+}
+
+async function restoreKycField(key) {
+  try {
+    await apiFetch('POST', `/kyc-schema/fields/${encodeURIComponent(key)}/restore`, {});
+    showToast('success', 'Question restored.');
+    renderKycForm();
+  } catch (err) {
+    showToast('error', err.message || 'Could not restore the question.');
+  }
 }
 
 function submitKyc() {

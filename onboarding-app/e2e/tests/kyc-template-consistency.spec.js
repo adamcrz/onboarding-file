@@ -321,14 +321,17 @@ test.describe('KYC canonical schema: KYC Tasks vs client KYC Details', () => {
     expect(collectedControlValues.identity.profileRemarks).toBe('<Suite & Street>');
     await page.locator('#kyc-correction-schema-probe').evaluate((element) => element.remove());
 
-    // The former browser-only "template builder" is now an explicitly
-    // read-only view of this selected client's API schema.
+    // The KYC Schema screen renders the questionnaire from its own endpoint and,
+    // for Compliance, is where it is edited. What matters here is unchanged and
+    // is asserted below: the screen shows exactly the same questions, in the
+    // same order, as the task API and the client profile — one canonical schema,
+    // three readers. The old browser-only "template builder" that persisted
+    // nothing is gone.
     await page.evaluate((clientId) => {
       State.selectedClientId = clientId;
       navigateTo('kyc-form');
     }, client.clientId);
-    await expect(page.locator('[data-kyc-schema-source="client-api"]')).toBeVisible();
-    await expect(page.getByText('Read-only.', { exact: true })).toBeVisible();
+    await expect(page.locator('[data-kyc-schema-page]').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save Template' })).toHaveCount(0);
     const schemaViewMetadata = await page.locator('[data-kyc-schema-field]').evaluateAll((rows) =>
       rows.map((row) => ({

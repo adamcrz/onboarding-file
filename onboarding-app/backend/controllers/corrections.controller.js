@@ -499,7 +499,8 @@ exports.uploadCorrectedPages = async (req, res) => {
       fs.copyFileSync(req.file.path, replacedPath);
       doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
       doc.filePath = replacedPath;
-      await fileStore.putFile(replacedPath);
+      await fileStore.putFile(replacedPath, null,
+        { clientId: client.clientId, clientName: client.name, docName: doc.name });
       doc.uploadedBy = actor;
       doc.date = new Date().toISOString().slice(0, 10);
       doc.size = (fs.statSync(replacedPath).size / 1024 / 1024).toFixed(1) + ' MB';
@@ -546,7 +547,8 @@ exports.uploadCorrectedPages = async (req, res) => {
     fs.writeFileSync(mergedPath, mergedBuffer);
     doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
     doc.filePath = mergedPath;
-    await fileStore.putFile(mergedPath);
+    await fileStore.putFile(mergedPath, null,
+      { clientId: client.clientId, clientName: client.name, docName: doc.name });
     doc.uploadedBy = actor;
     doc.date = new Date().toISOString().slice(0, 10);
     doc.size = (mergedBuffer.length / 1024 / 1024).toFixed(1) + ' MB';

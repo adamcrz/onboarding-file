@@ -164,15 +164,42 @@ const SHARED_KYC_FIELDS = [
   { key: 'advisorSignature',      label: 'Name / Unterschrift des Kundenbetreuers', page: '13. Abschluss', required: false },
 ];
 
+// The questionnaire as it currently stands: the list above, minus anything
+// Compliance retired, plus anything they added. services/kycSchema.service.js
+// does the merging and calls setActiveKycFields() whenever it changes.
+//
+// It is held here, behind the same names the rest of the app already reads,
+// because about forty places look questions up through REQUIRED_KYC_FIELDS or
+// getKycFieldDefinitions. Routing the merge through one variable means every
+// one of them — the task form, the gap check, the exports, the submission
+// gate, the PDF — reflects an edit without being touched, and none of them can
+// be forgotten.
+let activeFields = SHARED_KYC_FIELDS;
+
+// Replaces the effective list. Passing nothing restores the shipped questions,
+// which is what a schema-store outage falls back to.
+function setActiveKycFields(fields) {
+  activeFields = Array.isArray(fields) && fields.length ? fields : SHARED_KYC_FIELDS;
+  return activeFields;
+}
+
+// The questions as shipped, for anyone who needs to tell an addition from an
+// original — the schema screen, and restoring a retired built-in.
+const BUILT_IN_KYC_FIELDS = SHARED_KYC_FIELDS;
+
 // Every legal form maps to the same list. Kept as a per-type map so the rest
 // of the app (which looks schemas up by Client.type) needs no changes, and so
 // a genuinely type-specific question could be reintroduced later.
+//
+// Getters rather than fixed arrays: consumers hold on to this object, and a
+// property read has to give the list as it stands now, not as it stood when
+// the module was first required.
 const REQUIRED_KYC_FIELDS = {
-  Individual:  SHARED_KYC_FIELDS,
-  Corporate:   SHARED_KYC_FIELDS,
-  Domiciliary: SHARED_KYC_FIELDS,
-  Foundation:  SHARED_KYC_FIELDS,
-  Trust:       SHARED_KYC_FIELDS,
+  get Individual()  { return activeFields; },
+  get Corporate()   { return activeFields; },
+  get Domiciliary() { return activeFields; },
+  get Foundation()  { return activeFields; },
+  get Trust()       { return activeFields; },
 };
 
 // This is the only persisted/rendered KYC schema. KycTask records reference a
@@ -396,6 +423,8 @@ function missingKycFieldDefinitions(values, clientType) {
 module.exports = {
   KYC_SCHEMA_VERSION,
   REQUIRED_KYC_FIELDS,
+  BUILT_IN_KYC_FIELDS,
+  setActiveKycFields,
   getKycFieldDefinitions,
   buildKycSections,
   canonicalKycValues,

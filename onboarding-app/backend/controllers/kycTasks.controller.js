@@ -9,6 +9,7 @@ const {
   validateKycSubmission,
   missingKycFieldDefinitions,
 } = require('../config/kycRequiredFields');
+const { refreshKycSchema } = require('../services/kycSchema.service');
 const {
   syncKycCorrectionsForClient,
   saveKycFields,
@@ -202,6 +203,9 @@ exports.createKycTask = async (req, res) => {
 };
 
 exports.listKycTasks = async (req, res) => {
+  // Another instance may have edited the questionnaire since this process
+  // last looked; the form and the checks against it must agree.
+  await refreshKycSchema().catch(() => {});
   try {
     // Mandate-risk counts below are read against the current schema, so pick up
     // any question Compliance has added or removed since the last request.
@@ -228,6 +232,9 @@ exports.listKycTasks = async (req, res) => {
 };
 
 exports.completeKycTask = async (req, res) => {
+  // Another instance may have edited the questionnaire since this process
+  // last looked; the form and the checks against it must agree.
+  await refreshKycSchema().catch(() => {});
   try {
     const task = await KycTask.findById(req.params.id);
     if (!task) return res.status(404).json({ error: 'KYC task not found' });
@@ -373,6 +380,9 @@ exports.completeKycTask = async (req, res) => {
 // 'completed': a Save must only persist data and move an open correction to
 // 'saved', never resolve/approve/resubmit it.
 exports.saveKycTask = async (req, res) => {
+  // Another instance may have edited the questionnaire since this process
+  // last looked; the form and the checks against it must agree.
+  await refreshKycSchema().catch(() => {});
   try {
     const task = await KycTask.findById(req.params.id);
     if (!task) return res.status(404).json({ error: 'KYC task not found' });
@@ -446,6 +456,9 @@ exports.saveKycTask = async (req, res) => {
 // answers remain projected from the same Client.kyc object as every other KYC
 // view. Per-field corrections must be resolved first.
 exports.verifyKycTask = async (req, res) => {
+  // Another instance may have edited the questionnaire since this process
+  // last looked; the form and the checks against it must agree.
+  await refreshKycSchema().catch(() => {});
   try {
     let task;
     if (req.params.clientId) {
