@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
-const { toStoredPath, toAbsolutePath, ARCHIVE_ROOT, archivePathFor, safeName } = require('../config/paths');
+const { toStoredPath, toAbsolutePath, ARCHIVE_ROOT, archivePathFor, archivePathVariants, safeName } = require('../config/paths');
 
 const BUCKET = 'uploads';
 
@@ -77,6 +77,17 @@ function archiveFile(key, data, meta = null) {
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, data);
+
+    // The same file under an older set of markers is now a duplicate of what
+    // was just written, so it goes. Only ever a name this exact file could
+    // have had, and only when the content matches — never anything else in
+    // the folder.
+    for (const stale of archivePathVariants(key, meta)) {
+      if (stale === target || !fs.existsSync(stale)) continue;
+      try {
+        if (fs.readFileSync(stale).equals(data)) fs.unlinkSync(stale);
+      } catch (_) { /* leave anything that cannot be read or removed */ }
+    }
     return target;
   } catch (err) {
     console.warn('⚠  Could not write to the archive:', err.message);

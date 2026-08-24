@@ -72,7 +72,8 @@ const has = (name) => process.argv.includes(`--${name}`);
       if (!doc.downloadedAt) { skipped.notDownloaded += 1; continue; }
 
       // Checked here, against the real filesystem, right before deleting.
-      const meta = { clientId: client.clientId, clientName: client.name, docName: doc.name };
+      const meta = { clientId: client.clientId, clientName: client.name, docName: doc.name,
+            signed: Boolean(doc.signedVersion), approved: doc.status === 'approved' };
       if (!fileStore.isArchived(doc.filePath, meta)) {
         skipped.notArchived.push(`${client.clientId}: ${doc.name}`);
         continue;

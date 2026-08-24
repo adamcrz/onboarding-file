@@ -1630,11 +1630,21 @@ async function renderKycTasksPage() {
   const riskStatus = (t) => t.mandateRiskStatus || 'draft';
   const riskPending = State.kycTasks.filter(t => ['draft', 'saved'].includes(riskStatus(t)));
   const riskUnderReview = State.kycTasks.filter(t => riskStatus(t) === 'under_review');
-  const riskApproved = State.kycTasks.filter(t => riskStatus(t) === 'approved');
+  // Approved work is finished work. The full history lives on each case; a
+  // task list that keeps every completed item forever stops being a list of
+  // things to do. Newest first, most recent few only.
+  const APPROVED_SHOWN = 3;
+  const newestFirst = (a, b) =>
+    new Date(b.approvedAt || b.completedAt || b.updatedAt || 0) -
+    new Date(a.approvedAt || a.completedAt || a.updatedAt || 0);
+
+  const riskApprovedAll = State.kycTasks.filter(t => riskStatus(t) === 'approved').sort(newestFirst);
+  const riskApproved = riskApprovedAll.slice(0, APPROVED_SHOWN);
 
   const pending = State.kycTasks.filter(t => kycTaskWorkflowStatus(t) === 'pending');
   const underReview = State.kycTasks.filter(t => kycTaskWorkflowStatus(t) === 'under_review');
-  const approved = State.kycTasks.filter(t => kycTaskWorkflowStatus(t) === 'approved');
+  const approvedAll = State.kycTasks.filter(t => kycTaskWorkflowStatus(t) === 'approved').sort(newestFirst);
+  const approved = approvedAll.slice(0, APPROVED_SHOWN);
 
   // Each task is a dropdown: the header carries the client and its status,
   // and expanding it lists exactly which fields are still outstanding — with
@@ -1753,9 +1763,10 @@ async function renderKycTasksPage() {
     </div>
 
     <div class="card">
-      <div class="card-header"><div class="card-title">Approved by Compliance (${approved.length})</div></div>
+      <div class="card-header"><div class="card-title">Approved by Compliance${approvedAll.length > approved.length ? ` — ${approved.length} most recent of ${approvedAll.length}` : ` (${approvedAll.length})`}</div></div>
       <div>
         ${approved.map(t => taskRow(t, 'approved')).join('') || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">No KYC questionnaires have been approved yet.</p>`}
+        ${approvedAll.length > approved.length ? `<p style="padding:12px 16px;font-size:12px;color:var(--text-muted);">${approvedAll.length - approved.length} older approved questionnaire${approvedAll.length - approved.length === 1 ? '' : 's'} — open the case to see them.</p>` : ''}
       </div>
     </div>
     </div>
@@ -1767,13 +1778,14 @@ async function renderKycTasksPage() {
         { title: 'Under Review by Compliance', empty: 'No questionnaires are awaiting Compliance review.',
           rows: riskUnderReview },
         { title: 'Approved by Compliance', empty: 'No mandate-risk questionnaires have been approved yet.',
-          rows: riskApproved },
+          rows: riskApproved, hidden: riskApprovedAll.length - riskApproved.length },
       ].map(group => `
         <div class="card" style="margin-bottom:20px;">
-          <div class="card-header"><div class="card-title">${group.title} (${group.rows.length})</div></div>
+          <div class="card-header"><div class="card-title">${group.title}${group.hidden ? ` — ${group.rows.length} most recent of ${group.rows.length + group.hidden}` : ` (${group.rows.length})`}</div></div>
           <div>
             ${group.rows.map(t => mandateRiskRow(t)).join('')
               || `<p style="padding:16px;font-size:13px;color:var(--text-muted);">${group.empty}</p>`}
+            ${group.hidden ? `<p style="padding:12px 16px;font-size:12px;color:var(--text-muted);">${group.hidden} older approved questionnaire${group.hidden === 1 ? '' : 's'} — open the case to see them.</p>` : ''}
           </div>
         </div>
       `).join('')}
@@ -6270,7 +6282,7 @@ async function downloadCorrectionPages(correctionId) {
 function promptUploadCorrectedPages(correctionId) {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.accept = '.pdf,.docx,.doc,.jpg,.jpeg,.png';
   input.onchange = () => {
     const file = input.files[0];
     if (file) uploadCorrectedPages(correctionId, file);
@@ -6355,13 +6367,60 @@ async function renderContractPreparation() {
     catch (_) { return null; }
   }));
 
+  // A mandate whose paperwork is entirely approved is finished business. It
+  // stays reachable, but it stops sitting in a list of things to do — a task
+  // list that never shortens is one nobody reads.
+  const live = states.filter(Boolean);
+  const isSettled = (s) => {
+    const p = s.documentProgress;
+    return Boolean(p && p.total > 0 && p.completed === p.total && s.allApproved);
+  };
+  const outstanding = live.filter((s) => !isSettled(s));
+  const settled = live.filter(isSettled);
+
   content.innerHTML = `
     <div class="page-header">
       <h1>Contract Tasks</h1>
       <p>Download each document, review it, and upload the completed version back onto the same field.</p>
     </div>
-    ${states.filter(Boolean).map(s => contractPrepCardHTML(s)).join('')}
+    ${outstanding.length
+      ? outstanding.map(s => contractPrepCardHTML(s)).join('')
+      : `<div class="card"><div class="card-body" style="text-align:center;padding:28px;">
+           <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Nothing outstanding</div>
+           <div style="font-size:13px;color:var(--text-muted);">Every mandate's paperwork is in and approved.</div>
+         </div></div>`}
+
+    ${settled.length ? `
+      <div class="card" style="margin-top:8px;">
+        <div class="card-header" style="padding:12px 16px;">
+          <div>
+            <div class="card-title">Completed (${settled.length})</div>
+            <div class="card-subtitle">All documents uploaded and approved by Compliance</div>
+          </div>
+          <button class="btn-secondary btn-xs" onclick="toggleSettledMandates()">
+            ${State._showSettledMandates ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        <div class="card-body" style="padding:0 16px 12px;${State._showSettledMandates ? '' : 'display:none;'}" id="settled-mandates">
+          ${settled.map(s => `
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border-subtle);">
+              <span style="color:var(--accent-green);font-size:15px;">✓</span>
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:600;">${escapeHtml(s.clientName)} — ${escapeHtml(s.clientId)}</div>
+                <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(s.contractType || 'Contract')} · ${s.documentProgress.total} document${s.documentProgress.total === 1 ? '' : 's'}, all approved</div>
+              </div>
+              <button class="btn-secondary btn-xs" onclick="openClientDetail('${escapeHtml(s.clientId)}')">Open case</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
   `;
+}
+
+function toggleSettledMandates() {
+  State._showSettledMandates = !State._showSettledMandates;
+  renderContractPreparation();
 }
 
 // Findings from the automatic signature/checkbox checks are switched off on
@@ -6584,7 +6643,7 @@ function decodeEntities(value) {
 function promptUploadRequiredDocument(clientId, docId) {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.accept = '.pdf,.docx,.doc,.jpg,.jpeg,.png';
   input.onchange = () => {
     if (input.files[0]) uploadRequiredDocumentFile(clientId, docId, input.files[0]);
   };
@@ -7293,7 +7352,7 @@ function contractPrepRow({ title, meta, actions, warn, state = null, open = fals
 function promptUploadSignedContract(clientId, templateId) {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.accept = '.pdf,.docx,.doc,.jpg,.jpeg,.png';
   input.onchange = () => { if (input.files[0]) uploadSignedContractFile(clientId, templateId, input.files[0]); };
   input.click();
 }
@@ -7341,7 +7400,7 @@ async function postClientDocument(clientId, formData, label) {
 function promptUploadContractDraft(clientId) {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.accept = '.pdf,.docx,.doc,.jpg,.jpeg,.png';
   input.onchange = () => { if (input.files[0]) uploadContractDraft(clientId, input.files[0]); };
   input.click();
 }
@@ -7392,7 +7451,7 @@ function switchCorrectionsTab(name) {
 function promptFixDocumentPage(clientId, docId, pageNum) {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.pdf,.jpg,.jpeg,.png';
+  input.accept = '.pdf,.docx,.doc,.jpg,.jpeg,.png';
   input.onchange = () => {
     const file = input.files[0];
     if (file) fixDocumentPage(clientId, docId, pageNum, file);
