@@ -118,7 +118,6 @@ async function sendClientInviteEmail(to, name, otp, contractName) {
   const previewUrl = await sendMail({
     from:    process.env.EMAIL_FROM || '"Tramondo Investment Partners" <noreply@tramondo.ch>',
     to,
-    cc:      'jennyfabio74@gmail.com',
     subject: 'Your Tramondo Client Portal Access',
     html: brand(`
       <h2 style="color:#111827;margin:0 0 8px;">Welcome, ${name}!</h2>
@@ -144,4 +143,21 @@ async function sendClientInviteEmail(to, name, otp, contractName) {
   return { previewUrl };
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendClientInviteEmail };
+// Informational only — never blocks or gates login. Lets a client know their
+// account was just accessed after a long gap, so they'd notice if it wasn't them.
+async function sendNewSignInAlertEmail(to, name) {
+  const previewUrl = await sendMail({
+    from:    process.env.EMAIL_FROM || '"ComplianceOS" <noreply@complianceos.com>',
+    to,
+    subject: 'New sign-in to your ComplianceOS account',
+    html: brand(`
+      <h2 style="color:#111827;margin:0 0 8px;">New sign-in detected</h2>
+      <p style="color:#4b5563;line-height:1.6;">Hi ${name}, your account was just signed into after a while. If this was you, no action is needed.</p>
+      <p style="color:#6b7280;font-size:13px;margin-top:20px;">If you don't recognise this activity, please reset your password immediately.</p>
+    `),
+  });
+
+  return { previewUrl };
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendClientInviteEmail, sendNewSignInAlertEmail };

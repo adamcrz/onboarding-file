@@ -4,6 +4,9 @@ const User = require('../models/User');
 const Client = require('../models/Client');
 const DocumentRequirement = require('../models/DocumentRequirement');
 const { sendClientInviteEmail } = require('../services/email.service');
+const { ensureKycTaskForClient } = require('../services/kycTask.service');
+const { assertKycTypeChangeAllowed } = require('../services/kycTypeIntegrity.service');
+const { clientUploadDir } = require('../config/paths');
 
 const CONTRACTS_DIR = path.join(__dirname, '..');
 const APPENDIX_DIR  = path.join(__dirname, '..', '..', 'Form A T S');
@@ -999,15 +1002,22 @@ exports.sendInvite = async (req, res) => {
     clientName, clientEmail, templateId, templateName, fieldValues,
     rmName, createClientAccount, requiredDocuments,
   } = req.body;
-  if (!clientEmail || !clientName) {
-    return res.status(400).json({ error: 'Client name and email are required' });
+  const willCreateAccount = createClientAccount !== false;
+  if (!clientName) {
+    return res.status(400).json({ error: 'Client name is required' });
+  }
+  // The email only has to exist when there is somewhere to send the invitation.
+  // A contract prepared without a portal account is a perfectly normal case —
+  // the paperwork is handled offline — and demanding an address there would
+  // mean inventing one.
+  if (willCreateAccount && !clientEmail) {
+    return res.status(400).json({ error: 'A client email is required to create a portal account' });
   }
 
   try {
-    const email = clientEmail.toLowerCase();
+    const email = String(clientEmail || '').toLowerCase().trim();
     const clientType = CLIENT_TYPE_LABELS[(fieldValues || {}).client_type] || 'Individual';
     const docEntries = await buildDocEntries(fieldValues, requiredDocuments, templateName, templateId);
-    const willCreateAccount = createClientAccount !== false;
     // An RM sending a contract can only assign it to themselves — the
     // Contract Builder's RM picker is a UI convenience, not an authorization
     // boundary, so the server derives the real owner from the logged-in
@@ -1026,6 +1036,10 @@ exports.sendInvite = async (req, res) => {
       email, clientName, clientType, rm: effectiveRmName, country: (fieldValues || {}).client_country,
       status: 'pending', progress: 40, docEntries, auditEntry,
     });
+    // Create the KYC workflow from the same authoritative Client record in the
+    // same server request. The frontend's follow-up call is now only an
+    // idempotent compatibility call, so a task can never miss its client link.
+    await ensureKycTaskForClient(client, effectiveRmName);
 
     // Persist the actual filled contract to disk now, not just a placeholder
     // document entry with no file — this is what KUBE later downloads, adds
@@ -1035,8 +1049,7 @@ exports.sendInvite = async (req, res) => {
       const template = TEMPLATES.find(t => t.id === templateId);
       if (template) {
         const buffer = buildFilledContractBuffer(template, fieldValues || {}, []);
-        const dir = path.join(__dirname, '..', 'uploads', client.clientId);
-        fs.mkdirSync(dir, { recursive: true });
+        const dir = clientUploadDir(client.clientId);
         const savedPath = path.join(dir, `${Date.now()}-${template.file}`);
         fs.writeFileSync(savedPath, buffer);
 
@@ -1052,6 +1065,20 @@ exports.sendInvite = async (req, res) => {
       console.error('Failed to persist generated contract for', client.clientId, ':', genErr.message);
     }
 
+    // Run these only after the generated contract has been written, so neither
+    // is working from — or invalidating — the copy of the client that the
+    // file-persist step above still holds.
+    // Identification documents on the checklist (Form A/K — Settlor, Copy of
+    // ID — Trustee, ...) each imply a person who needs their own KYC.
+    await ensureRelatedPartyKycs(client, requiredDocuments || []);
+    // Carry the contract's own client details into the KYC first, so the
+    // mandate-risk prefill below can build on them.
+    await prefillKycFromContract(client, fieldValues || {});
+    // The mandate-risk questionnaire belongs to every Vertrag. Seed it with
+    // whatever the KYC and this contract already state so the RM only has to
+    // answer what genuinely isn't known yet.
+    await ensureMandateRiskQuestionnaire(client, { currency: (fieldValues || {}).currency || CB_DEFAULT_CURRENCY });
+
     const otp = willCreateAccount ? await createClientInviteAndEmail(clientName, clientEmail, templateId) : null;
     if (otp) {
       const user = await User.findOne({ email, role: 'client' });
@@ -1063,7 +1090,7 @@ exports.sendInvite = async (req, res) => {
       : 'Contract processed — no portal account created';
     res.json({ success: true, message, otp, clientId: client.clientId });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 };
 
@@ -1118,18 +1145,208 @@ async function buildDocEntries(fieldValues, requiredDocuments, templateName, tem
 // Creates the client case (or reuses/updates it if this client already exists)
 // so both the RM ("My Clients") and Compliance ("All Cases") see it immediately —
 // shared by the Contract Reviews submission path and the direct-invite path.
+const CB_DEFAULT_CURRENCY = 'CHF';
+
+// Everything the contract form already captured is carried into the client's
+// KYC so the same fact is never asked twice. Only blanks are filled — an
+// answer the RM has already given is never overwritten — and the values go in
+// as saved content, exactly as if they had been typed and saved.
+async function prefillKycFromContract(client, fieldValues = {}) {
+  const fresh = await Client.findById(client._id);
+  if (!fresh) return client;
+  // Once the questionnaire has been submitted it is the RM's record; topping
+  // it up behind their back would change what Compliance is reviewing.
+  if (['under_review', 'approved'].includes(fresh.kycStatus)) return fresh;
+
+  const v = (key) => String(fieldValues[key] ?? '').trim();
+  const fullName = [v('client_first_name'), v('client_last_name')].filter(Boolean).join(' ');
+
+  // Keys follow the Personenprofil questionnaire. The contract already asked
+  // for these facts, so the RM should never be made to type them twice.
+  const candidates = {
+    firstName:          v('client_first_name'),
+    lastName:           v('client_last_name'),
+    passportFullName:   fullName,
+    dateOfBirth:        v('client_dob'),
+    nationality:        v('client_nationality'),
+    legalDomicile:      v('client_country'),
+    taxDomicile:        v('client_country'),
+    residentialStreet:  [v('client_address1'), v('client_address2')].filter(Boolean).join(', '),
+    residentialCity:    v('client_city'),
+    residentialCountry: v('client_country'),
+    emailAddress:       v('client_email'),
+  };
+  // "Ort, Datum" and the Kundenberater's signature are deliberately not
+  // prefilled: they are the act of completing the questionnaire, not facts the
+  // contract already established.
+
+  const set = {};
+  const filledKeys = [];
+  for (const [key, value] of Object.entries(candidates)) {
+    if (!value) continue;
+    if (String(fresh.kyc?.[key] ?? '').trim()) continue;
+    set[`kyc.${key}`] = value;
+    filledKeys.push(key);
+  }
+  if (!filledKeys.length) return fresh;
+
+  const updated = await Client.findByIdAndUpdate(fresh._id, { $set: set }, { new: true });
+  // Carried-over answers are real saved values, so the matching gap rows move
+  // from "pending" to "saved" rather than still reading as never touched.
+  try {
+    const { saveKycFields } = require('../services/kycGapCheck.service');
+    await saveKycFields(updated._id, filledKeys, 'rm');
+  } catch (err) {
+    console.error('⚠  Could not mark contract-prefilled KYC fields as saved:', err.message);
+  }
+  return updated;
+}
+
+// Ensures the mandate-risk questionnaire exists for this mandate and that
+// everything already known from the KYC/contract has been carried into it.
+// Re-running is safe: prefill never overwrites an answer that already exists,
+// so a resend tops up blanks without touching the RM's own input.
+async function ensureMandateRiskQuestionnaire(client, contract = {}) {
+  const { prefillMandateRisk, MANDATE_RISK_DOCUMENT_NAME } = require('../config/mandateRiskFields');
+  const fresh = await Client.findById(client._id);
+  if (!fresh) return client;
+
+  const current = fresh.mandateRisk || {};
+  // Nothing to do once it has been submitted — that is the RM's record.
+  if (['under_review', 'approved'].includes(current.status)) return fresh;
+
+  const { answers, prefilledKeys } = prefillMandateRisk({
+    client: fresh, contract, existing: current.answers || {},
+  });
+  const merged = Array.from(new Set([...(current.prefilledKeys || []), ...prefilledKeys]));
+
+  // Targeted atomic writes rather than a whole-document save: the caller is
+  // still holding its own copy of this client and will save it moments later
+  // (to attach the generated contract file). A full save here would bump the
+  // version and make that later save fail silently.
+  const update = {
+    $set: {
+      'mandateRisk.answers': answers,
+      'mandateRisk.prefilledKeys': merged,
+      // Carried-over answers are real saved content, so the questionnaire
+      // opens as 'saved' rather than an untouched draft.
+      'mandateRisk.status': Object.keys(answers).length ? 'saved' : 'draft',
+    },
+  };
+  // It is also a document of the mandate, so it shows up in the package.
+  const hasDoc = (fresh.documents || []).some((d) => d.name === MANDATE_RISK_DOCUMENT_NAME);
+  if (!hasDoc) {
+    update.$push = {
+      documents: {
+        docId: 'DOC-' + Date.now() + '-risk',
+        clientId: fresh.clientId,
+        name: MANDATE_RISK_DOCUMENT_NAME,
+        type: 'Compliance',
+        status: 'draft',
+        uploadedBy: '-', date: '-', size: '-',
+        required: true, templateAvailable: false, signedVersion: false,
+      },
+    };
+  }
+  return Client.findByIdAndUpdate(fresh._id, update, { new: true });
+}
+
+// Adds a related-party KYC for every person the checklist identifies, without
+// disturbing any that already exist (a resend must not wipe answers already
+// captured for a settlor/trustee). Parties are never removed automatically:
+// dropping one would silently discard its KYC answers.
+async function ensureRelatedPartyKycs(client, requiredDocuments) {
+  const { partyRoleForDocument } = require('../config/relatedPartyRoles');
+  const existingRoles = new Set((client.relatedParties || []).map((p) => p.role));
+  const added = [];
+  for (const docName of requiredDocuments) {
+    const role = partyRoleForDocument(docName);
+    if (!role || existingRoles.has(role)) continue;
+    existingRoles.add(role);
+    added.push({
+      partyId: `PTY-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      role,
+      sourceDocument: docName,
+      kyc: {},
+      status: 'draft',
+    });
+  }
+  if (!added.length) return client;
+  return Client.findByIdAndUpdate(
+    client._id,
+    { $push: { relatedParties: { $each: added } } },
+    { new: true }
+  );
+}
+
 async function upsertClientCase({ email, clientName, clientType, rm, country, status, progress, docEntries, auditEntry }) {
-  let client = await Client.findOne({ email });
+  // Email is what identifies "the same outstanding paperwork being resent".
+  // With no email there is nothing to match on, and matching anyway would make
+  // every address-less mandate collapse into the first one ever created —
+  // different people sharing one case. So a case with no email is always new.
+  const existing = email ? await Client.findOne({ email }) : null;
+  // A closed case (already decided, approved or rejected) is done — a fresh
+  // invite to the same email afterwards is a genuinely new mandate, not a
+  // resend, and must not inherit the old case's clientId, KYC data, or
+  // documents. Only a still-open case (nothing decided yet) is treated as
+  // "the same outstanding paperwork, being resent" — the original reason
+  // this email-match existed, to avoid piling up duplicate Contract Package
+  // documents on top of an in-progress case.
+  let client = existing && !['approved', 'rejected'].includes(existing.status) ? existing : null;
   if (client) {
-    client.name = clientName;
-    client.type = clientType;
-    client.rm = rm || client.rm;
-    client.status = status;
-    client.progress = Math.max(client.progress || 0, progress);
-    client.country = country || client.country;
-    client.documents.push(...docEntries);
-    client.auditTrail.push(auditEntry);
-    await client.save();
+    await assertKycTypeChangeAllowed(client, clientType);
+    const typePredicate = client.type === clientType
+      ? { type: client.type }
+      : {
+          type: client.type,
+          'kycSubmittedBy': { $exists: false },
+          kycAwaitingVerification: { $ne: true },
+          $or: [{ kyc: { $exists: false } }, { kyc: {} }],
+        };
+    // A resend/regeneration must replace the client's outstanding paperwork,
+    // never pile a duplicate on top of it — otherwise a client accumulates
+    // several "Template — Contract Package" placeholders for the same case,
+    // and every piece of code that assumes "the" Template doc (upload
+    // matching, the checkbox/signature checker, the Documents tab default)
+    // silently picks an arbitrary one instead of the one actually being sent
+    // now. Any document that already has a real uploaded/signed file is
+    // never touched — only still-outstanding (unsigned) placeholders are
+    // superseded: every unsigned Template doc is replaced by the fresh send
+    // (even across a template switch), and other checklist items are
+    // replaced only when the exact same type+name is being resent.
+    const incomingTemplateNames = new Set(docEntries.filter(d => d.type === 'Template').map(d => d.name));
+    const incomingOtherKeys = new Set(
+      docEntries.filter(d => d.type !== 'Template').map(d => `${d.type}::${d.name}`)
+    );
+    const survivingDocuments = (client.documents || []).filter((d) => {
+      if (d.signedVersion) return true;
+      if (d.type === 'Template') return incomingTemplateNames.size === 0;
+      return !incomingOtherKeys.has(`${d.type}::${d.name}`);
+    });
+    const updated = await Client.findOneAndUpdate(
+      { _id: client._id, ...typePredicate },
+      {
+        $set: {
+          name: clientName,
+          type: clientType,
+          rm: rm || client.rm,
+          status,
+          progress: Math.max(client.progress || 0, progress),
+          country: country || client.country,
+          documents: [...survivingDocuments, ...docEntries],
+        },
+        $push: { auditTrail: auditEntry },
+      },
+      { new: true, runValidators: true }
+    );
+    if (!updated) {
+      const conflict = new Error(
+        'Client legal form cannot be changed after KYC data has been submitted. Create a separate case for the new legal form.'
+      );
+      conflict.status = 409;
+      throw conflict;
+    }
+    client = updated;
   } else {
     client = await Client.create({
       clientId: await Client.generateClientId(),

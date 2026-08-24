@@ -19,7 +19,7 @@ test.describe('RM access control: an RM only sees their own assigned records', (
     if (clientEmail) await deleteClientsByEmailPattern(clientEmail);
   });
 
-  test('a client assigned to one RM is invisible (list) and forbidden (direct id) to a different RM', async ({ request }) => {
+  test('a client assigned to one RM is invisible (list) and forbidden (direct id) to a different RM', async ({ request, playwright }) => {
     const loginRes = await request.post('/api/auth/login', {
       data: { email: 'rm@demo.com', password: 'Demo1234!', role: 'rm' },
     });
@@ -63,9 +63,14 @@ test.describe('RM access control: an RM only sees their own assigned records', (
     });
     expect(updateRes.status()).toBe(403);
 
-    // A completely unauthenticated request is rejected outright
-    const anonRes = await request.get('/api/clients');
+    // A completely unauthenticated request is rejected outright. This needs its
+    // own context: sessions are httpOnly cookies now, and the shared `request`
+    // fixture keeps the cookie jar from the logins above — so a request made
+    // through it is authenticated, not anonymous.
+    const anon = await playwright.request.newContext();
+    const anonRes = await anon.get('http://localhost:5000/api/clients');
     expect(anonRes.status()).toBe(401);
+    await anon.dispose();
   });
 
   test('an RM with no rmCode assigned sees nothing (fails closed, not open)', async ({ request }) => {

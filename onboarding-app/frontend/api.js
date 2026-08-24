@@ -4,24 +4,26 @@ const API_BASE = window.location.hostname === 'localhost' ||
   ? 'http://localhost:5000/api'
   : '/api';
 
-// Updated fetch wrapper — sends token automatically
+// The session travels in an httpOnly cookie the server sets at login. Script
+// on this page cannot read it — which is the point: an injected script can no
+// longer copy the session and use it elsewhere. `credentials: 'include'` is
+// what tells fetch to send it.
 async function apiFetch(method, path, body) {
   try {
-    const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE}${path}`, {
       method,
-      // REPLACE WITH:
-    headers: {
-  'Content-Type': 'application/json',
-  ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {}),
-    },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      // If token expired, log out
+      // Session gone or expired — clear the whole local session marker, not
+      // just part of it. Leaving sessionRole/sessionActive set let the
+      // DOMContentLoaded restore check still treat this as "logged in",
+      // landing on a broken partial session instead of a clean login screen.
       if (res.status === 401) {
-        localStorage.removeItem('token');
+        clearLocalSession();
         window.location.reload();
       }
       throw new Error(err.error || `HTTP ${res.status}`);
@@ -31,6 +33,15 @@ async function apiFetch(method, path, body) {
     console.warn(`[API] ${method} ${path} failed:`, e.message);
     throw e;
   }
+}
+
+// Only the cookie is the session. These keys are UI state — which portal was
+// chosen, the display name — and never a credential.
+function clearLocalSession() {
+  localStorage.removeItem('token');       // legacy key from before cookie sessions
+  localStorage.removeItem('sessionRole');
+  localStorage.removeItem('sessionActive');
+  localStorage.removeItem('user');
 }
 
 // Auth

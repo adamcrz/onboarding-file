@@ -2,15 +2,32 @@ const crypto = require('crypto');
 const jwt    = require('jsonwebtoken');
 const User   = require('../models/User');
 const Client = require('../models/Client');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email.service');
+const { sendVerificationEmail, sendPasswordResetEmail, sendNewSignInAlertEmail } = require('../services/email.service');
+const { ensureKycTaskForClient } = require('../services/kycTask.service');
+const { SESSION_COOKIE, sessionCookieOptions } = require('../config/security');
 
 const SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+// How long since a client's last successful login before a fresh sign-in
+// counts as "after a while" and earns an informational heads-up email.
+const STALE_LOGIN_DAYS = 14;
+
+// Issues the session two ways at once: an httpOnly cookie the browser will
+// send automatically and cannot read from script, and the token in the body
+// for non-browser callers (test suites, scripts). The browser is expected to
+// ignore the body value — see api.js, which no longer stores it.
+function issueSession(res, user) {
+  const token = signToken(user);
+  res.cookie(SESSION_COOKIE, token, sessionCookieOptions());
+  return token;
+}
 
 function signToken(user) {
   return jwt.sign(
     { id: user._id, email: user.email, role: user.role, name: user.name, rmCode: user.rmCode || null },
     SECRET,
-    { expiresIn: '8h' }
+    // Long enough that a normal work session (or a page refresh days later)
+    // never silently drops the user back to the login screen mid-task.
+    { expiresIn: '7d' }
   );
 }
 
@@ -18,10 +35,19 @@ function safeUser(user) {
   return { id: user._id, name: user.name, email: user.email, role: user.role, rmCode: user.rmCode || null };
 }
 
+// POST /api/auth/logout
+// Signing out has to happen server-side now: an httpOnly cookie cannot be
+// removed by the page that set it, which is exactly the property that makes it
+// safe from injected script.
+const logout = (_req, res) => {
+  res.clearCookie(SESSION_COOKIE, { ...sessionCookieOptions(), maxAge: undefined });
+  res.status(200).json({ message: 'Signed out.' });
+};
+
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, password, role, rmCode } = req.body;
+    const { name, email, password, role } = req.body;
 
     if (!name || !email || !password)
       return res.status(400).json({ error: 'Name, email and password are required.' });
@@ -29,23 +55,18 @@ const register = async (req, res) => {
     if (password.length < 8)
       return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
-    // Which portal (role) the account is created for is decided by which
-    // portal card the user picked on the login screen before reaching this
-    // form, not a raw dropdown — but the value still arrives here as a plain
-    // field, so it's validated against the allowed set the same way.
-    // Uniqueness is scoped per role, so this email may already have an
-    // account under a different role category without blocking this one.
-    const allowedRoles = ['compliance', 'compliance_external', 'rm', 'client'];
-    const resolvedRole = allowedRoles.includes(role) ? role : 'client';
+    // Public self-registration is for clients only. Staff roles grant access
+    // to every KYC/case workflow and require trusted admin provisioning.
+    if (role && role !== 'client') {
+      return res.status(403).json({ error: 'Staff accounts cannot be created through public registration.' });
+    }
+    const resolvedRole = 'client';
 
     const existing = await User.findOne({ email: email.toLowerCase(), role: resolvedRole });
     if (existing)
       return res.status(400).json({ error: 'An account with that email already exists.' });
 
-    const user = new User({
-      name, email, password, role: resolvedRole,
-      rmCode: resolvedRole === 'rm' && rmCode ? String(rmCode).trim().toUpperCase() : undefined,
-    });
+    const user = new User({ name, email, password, role: resolvedRole });
 
     const verificationToken = user.createEmailVerificationToken();
     await user.save();
@@ -55,13 +76,15 @@ const register = async (req, res) => {
       // No gap-check here — a brand new client hasn't attempted their KYC
       // yet, so nothing should read as "missing" until their first
       // submission (see completeKycTask / resubmitKycSection).
-      await Client.create({
+      const client = await Client.create({
         clientId,
         userId: user._id,
         email:  user.email,
         name:   user.name,
+        type:   'Individual',
         status: 'pending',
       });
+      await ensureKycTaskForClient(client, '');
     }
 
     let emailPreviewUrl = null;
@@ -126,7 +149,23 @@ const login = async (req, res) => {
       });
     }
 
-    res.status(200).json({ token: signToken(user), user: safeUser(user) });
+    const previousLoginAt = user.lastLoginAt;
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    // Informational only — never delays or blocks the login response. Staff
+    // accounts are provisioned/trusted directly, so this is client-only.
+    if (user.role === 'client') {
+      const staleMs = STALE_LOGIN_DAYS * 24 * 60 * 60 * 1000;
+      const isStaleLogin = !previousLoginAt || (Date.now() - previousLoginAt.getTime()) > staleMs;
+      if (isStaleLogin) {
+        sendNewSignInAlertEmail(user.email, user.name).catch((err) => {
+          console.error('⚠  New sign-in alert email failed to send:', err.message);
+        });
+      }
+    }
+
+    res.status(200).json({ token: issueSession(res, user), user: safeUser(user) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -151,7 +190,7 @@ const verifyEmail = async (req, res) => {
 
     res.status(200).json({
       message: 'Email verified successfully.',
-      token:   signToken(user),
+      token:   issueSession(res, user),
       user:    safeUser(user),
     });
   } catch (err) {
@@ -237,7 +276,7 @@ const resetPassword = async (req, res) => {
 
     res.status(200).json({
       message: 'Password reset successful.',
-      token:   signToken(user),
+      token:   issueSession(res, user),
       user:    safeUser(user),
     });
   } catch (err) {
@@ -257,6 +296,7 @@ const getMe = async (req, res) => {
 };
 
 module.exports = {
+  logout,
   register, login, getMe,
   verifyEmail, resendVerification,
   forgotPassword, resetPassword,

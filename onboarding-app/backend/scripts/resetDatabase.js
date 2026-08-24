@@ -65,6 +65,7 @@ async function resetDatabase() {
   // avoids any brief window where a correction/task could outlive its client.
   const models = [
     ['DocumentCorrection', require('../models/DocumentCorrection')],
+    ['ClientCounter',      require('../models/ClientCounter')],
     ['KycCorrection',      require('../models/KycCorrection')],
     ['KycTask',            require('../models/KycTask')],
     ['Notification',       require('../models/Notification')],
@@ -80,8 +81,12 @@ async function resetDatabase() {
     console.log(`🗑️   ${name}: deleted ${result.deletedCount}`);
   }
 
-  // No separate sequence counter to reset — Client.generateClientId() derives
-  // the next id from countDocuments(), so it's already back to CLT-0001.
+  for (const collectionName of ['kyctaskmigrationarchives', 'kycmigrationmanualreviews']) {
+    const result = await mongoose.connection.db.collection(collectionName).deleteMany({});
+    console.log(`🗑️   ${collectionName}: deleted ${result.deletedCount}`);
+  }
+
+  // ClientCounter is deleted above, so the next case starts again at CLT-0001.
 
   if (shouldSeed) {
     console.log('\n🌱  Reseeding demo accounts and the document requirements catalog…');

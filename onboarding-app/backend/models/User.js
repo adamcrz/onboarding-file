@@ -19,6 +19,11 @@ const userSchema = new mongoose.Schema({
 
   passwordResetToken:   { type: String },
   passwordResetExpires: { type: Date },
+
+  // When this account last completed a successful login — used to decide
+  // whether a fresh sign-in is "after a while" and worth an informational
+  // new-sign-in email (clients only; see auth.controller.js login()).
+  lastLoginAt: { type: Date },
 }, { timestamps: true });
 
 // One account per email PER ROLE — the same email may hold, say, both an RM

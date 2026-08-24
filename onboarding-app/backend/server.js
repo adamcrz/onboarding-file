@@ -14,11 +14,30 @@ const mandatesRoutes   = require('./routes/mandates.routes');
 const correctionsRoutes = require('./routes/corrections.routes');
 const notificationsRoutes = require('./routes/notifications.routes');
 const documentRequirementsRoutes = require('./routes/documentRequirements.routes');
+const mandateRiskSchemaRoutes = require('./routes/mandateRiskSchema.routes');
+
+const helmet       = require('helmet');
+const cookieParser = require('cookie-parser');
+const {
+  assertSecretsPresent, corsOptions, helmetOptions, apiLimiter,
+} = require('./config/security');
+
+// Checked before anything is wired up, so a misconfigured production deploy
+// stops here rather than serving requests with a known-guessable signing key.
+assertSecretsPresent();
 
 const app = express();
 
-app.use(cors());
+// Behind App Service / Render / any reverse proxy, the client's real address
+// and the fact the request arrived over HTTPS are in X-Forwarded-* headers.
+// Without this, rate limiting sees one shared proxy IP and secure cookies
+// are never set.
+app.set('trust proxy', 1);
+
+app.use(helmet(helmetOptions()));
+app.use(cors(corsOptions()));
 app.use(express.json());
+app.use(cookieParser());
 
 // ─── Serve frontend static files ──────────────────────────────────────────────
 const FRONTEND_DIR = path.join(__dirname, '../frontend');
@@ -26,6 +45,7 @@ app.use(express.static(FRONTEND_DIR));                    // serves at /
 app.use('/frontend', express.static(FRONTEND_DIR));       // keeps email links working
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
+app.use('/api', apiLimiter);
 app.use('/api/auth',      authRoutes);
 app.use('/api/clients',   clientsRoutes);
 app.use('/api/documents', documentsRoutes);
@@ -36,6 +56,7 @@ app.use('/api/mandates',  mandatesRoutes);
 app.use('/api/corrections', correctionsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/document-requirements', documentRequirementsRoutes);
+app.use('/api/mandate-risk-schema', mandateRiskSchemaRoutes);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
@@ -73,9 +94,12 @@ const { seedDemoUsers, seedDocumentRequirements } = require('./services/demoSeed
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
+const { refreshMandateRiskSchema } = require('./services/mandateRiskSchema.service');
+
 connectDB()
   .then(seedDemoUsers)
   .then(seedDocumentRequirements)
+  .then(refreshMandateRiskSchema)
   .then(() => {
     app.listen(PORT, () => {
       console.log(`🚀  Server running — open http://localhost:${PORT} in your browser`);
