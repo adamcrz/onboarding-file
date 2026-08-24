@@ -387,7 +387,25 @@ exports.listDocumentCorrections = async (req, res) => {
     const filter = {};
     if (needsScoping(req.user.role)) filter.clientId = { $in: await ownClientIdsFor(req.user) };
     const items = await DocumentCorrection.find(filter).sort({ createdAt: -1 });
-    res.json(items);
+
+    // Whether this correction's page can actually be handed over on its own.
+    // Only the server knows what the stored file is, and the answer decides
+    // what the screen may offer: promising "Download Page 2" of a Word
+    // document is a promise the format cannot keep.
+    const clientIds = [...new Set(items.map((i) => i.clientId))];
+    const clients = await Client.find({ clientId: { $in: clientIds } }).select('clientId documents');
+    const fileByDoc = new Map();
+    for (const c of clients) {
+      for (const d of (c.documents || [])) fileByDoc.set(`${c.clientId}:${d.docId}`, d.filePath || '');
+    }
+
+    res.json(items.map((i) => {
+      const filePath = fileByDoc.get(`${i.clientId}:${i.docId}`) || '';
+      return {
+        ...i.toObject(),
+        pageSeparable: Boolean(i.pageFrom) && /\.pdf$/i.test(filePath),
+      };
+    }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -424,16 +442,30 @@ exports.downloadCorrectionPages = async (req, res) => {
     await fileStore.ensureLocalQuiet(doc.filePath);
     if (!fs.existsSync(doc.filePath)) return res.status(404).json({ error: 'File is missing on disk' });
 
-    // An issue with no page range (an unreadable scan, a non-PDF upload, a
-    // contract whose type could not be identified) concerns the document as a
-    // whole. Hand back the whole file so it can still be fixed and returned —
-    // the fix is the same download → correct → upload loop, just at document
-    // scope instead of page scope.
-    if (!correction.pageFrom) {
+    // Only a PDF has pages that can be handed over on their own. A Word file
+    // does not: what Word calls page 2 is a rendering decision made by
+    // whoever opens it, and depends on their fonts, margins and printer. The
+    // contracts here are Word documents, so asking pdf-lib to cut page 2 out
+    // of one failed with "No PDF header found" — an error about the library's
+    // expectations rather than anything the person could act on.
+    //
+    // So a page reference on a Word document stays what it usefully is — a
+    // note saying where to look — and the download hands over the whole
+    // document, which is the thing that can actually be edited and returned.
+    const isPdf = /\.pdf$/i.test(doc.filePath);
+
+    // An issue with no page range (an unreadable scan, a contract whose type
+    // could not be identified), or any issue on a file that has no separable
+    // pages, concerns the document as a whole. Hand back the whole file so it
+    // can still be fixed and returned — the same download → correct → upload
+    // loop, at document scope instead of page scope.
+    if (!correction.pageFrom || !isPdf) {
       correction.history.push({
         action: 'downloaded',
         actor: req.user.role === 'rm' ? 'RM' : req.user.role === 'client' ? 'Client' : 'Compliance',
-        detail: 'Whole document',
+        detail: (correction.pageFrom && !isPdf)
+          ? `Whole document (issue noted on page ${correction.pageFrom}; a Word file has no separable pages)`
+          : 'Whole document',
       });
       await correction.save();
       res.setHeader('Content-Type', 'application/octet-stream');

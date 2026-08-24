@@ -7179,7 +7179,15 @@ function openCorrectionsFor(clientId) {
 // what is wrong, what to do about it, the download of exactly the part that
 // needs fixing, and the field to put the fixed version back.
 function correctionFixHTML(c) {
-  const what = c.pageFrom ? (c.page || 'page') : 'document';
+  // Only a PDF can hand over one page on its own. The contracts are Word
+  // files, where "page 2" is whatever the reader's fonts and margins make it —
+  // so offering "Download Page 2" there promised something the format cannot
+  // do, and produced a pdf-lib parse error when taken up. The page reference
+  // stays on the issue, because it still says where to look; the download and
+  // the upload are simply the whole document.
+  // The server decides this — only it knows what the stored file actually is.
+  const pageSeparable = Boolean(c.pageSeparable);
+  const what = pageSeparable ? (c.page || 'page') : 'document';
   return `
     <div class="doc-item" style="align-items:flex-start;border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.03);">
       <div class="doc-info" style="flex:1;">
@@ -7187,6 +7195,7 @@ function correctionFixHTML(c) {
           ${c.page ? `${escapeHtml(c.page)} — ` : ''}${escapeHtml(c.issue || '')}
         </div>
         ${c.remedy ? `<div style="font-size:11.5px;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(c.remedy)}</div>` : ''}
+        ${c.pageFrom && !pageSeparable ? `<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">A Word document has no separable pages — the whole document is downloaded and sent back.</div>` : ''}
         <div class="correction-dropzone" id="corrzone-${escapeHtml(c.id)}"
              ondragover="correctionDragOver(event,'${escapeHtml(c.id)}')"
              ondragleave="correctionDragLeave(event,'${escapeHtml(c.id)}')"
