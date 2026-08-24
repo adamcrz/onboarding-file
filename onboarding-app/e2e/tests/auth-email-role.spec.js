@@ -1,16 +1,43 @@
 const { test, expect } = require('@playwright/test');
 const { deleteE2eTestUsers, deleteAccountByEmailAndRole } = require('../helpers/dbTestUsers');
 
-// Public registration creates client accounts only; staff identities are
-// trusted roles and must be provisioned administratively. Email uniqueness
-// stays scoped per role, so a staff email can still have a client account.
-
+// Public registration is closed by default: accounts are provisioned by
+// Compliance, so an open sign-up only creates accounts nobody asked for on a
+// system holding client records. ALLOW_PUBLIC_REGISTRATION=true reopens it.
+//
+// The rules below still govern the endpoint whenever it is open — client
+// accounts only, and email uniqueness scoped per role so a staff email can
+// still hold a client account — so they are kept and run against whichever
+// way the server under test is configured.
 test.describe('Registration: public client accounts only', () => {
+  let registrationOpen;
+
+  test.beforeAll(async ({ request }) => {
+    const probe = await request.post('/api/auth/register', { data: {} });
+    // Closed: the route answers 403 before it looks at the body at all.
+    // Open: the same empty body fails validation with 400.
+    registrationOpen = probe.status() !== 403;
+  });
+
   test.afterAll(async () => {
     await deleteE2eTestUsers();
   });
 
+  test('public registration is closed unless deliberately enabled', async ({ request }) => {
+    const res = await request.post('/api/auth/register', {
+      data: { name: 'Outsider', email: `outsider-${Date.now()}@e2e.local`, password: 'Testpass1' },
+    });
+    if (registrationOpen) {
+      // Deliberately enabled on this server — the rules below cover it.
+      expect(res.status()).not.toBe(403);
+      return;
+    }
+    expect(res.status()).toBe(403);
+    expect((await res.json()).error).toMatch(/created by compliance/i);
+  });
+
   test('registering twice with the same email and role is rejected', async ({ request }) => {
+    test.skip(!registrationOpen, 'public registration is closed on this server');
     const email = `dupe-${Date.now()}@e2e.local`;
     const first = await request.post('/api/auth/register', {
       data: { name: 'First', email, password: 'Testpass1' },
@@ -26,6 +53,7 @@ test.describe('Registration: public client accounts only', () => {
   });
 
   test('caller-selected staff or unknown roles are rejected', async ({ request }) => {
+    test.skip(!registrationOpen, 'public registration is closed on this server');
     const email = `sneaky-${Date.now()}@e2e.local`;
     for (const role of ['rm', 'compliance', 'compliance_external', 'super-admin']) {
       const response = await request.post('/api/auth/register', {
@@ -37,6 +65,7 @@ test.describe('Registration: public client accounts only', () => {
   });
 
   test('the same email already used by an RM account can still register as a client', async ({ request }) => {
+    test.skip(!registrationOpen, 'public registration is closed on this server');
     // rm@demo.com is a seeded demo RM account — registering it fresh as a
     // client (a different category) must succeed, not be blocked as a dupe.
     const res = await request.post('/api/auth/register', {

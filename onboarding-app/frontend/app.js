@@ -163,6 +163,7 @@ function renderAuthPanel() {
     'role-login':      roleLoginFormHTML,
     'register':        registerFormHTML,
     'verify-pending':  verifyPendingHTML,
+    'login-code':      loginCodeHTML,
     'forgot-password': forgotPasswordHTML,
     'reset-sent':      resetSentHTML,
     'reset-password':  resetPasswordFormHTML,
@@ -171,6 +172,55 @@ function renderAuthPanel() {
 }
 
 /* --- HTML generators -------------------------------------------------- */
+
+// Shown when a sign-in is challenged: the password was accepted, and the
+// address on the account is being re-confirmed before the session is issued.
+function loginCodeHTML() {
+  return `
+    <button class="auth-back-btn" onclick="setAuthPanel('role-login')">&larr; Back</button>
+    <h1 class="login-title" style="text-align:center;">Confirm it's you</h1>
+    <p class="login-subtitle" style="text-align:center;">
+      We emailed a 6-digit code to <strong>${escapeHtml(AuthState.pendingEmail || '')}</strong>.
+      It expires in 10 minutes.
+    </p>
+    <div class="form-group">
+      <label class="form-label" for="login-code-input">Code</label>
+      <input class="form-input" id="login-code-input" type="text" inputmode="numeric"
+             autocomplete="one-time-code" maxlength="6" placeholder="123456"
+             style="letter-spacing:8px;text-align:center;font-size:22px;"
+             onkeydown="if(event.key==='Enter')submitLoginCode()">
+    </div>
+    <button class="btn-primary btn-full" id="login-code-btn" onclick="submitLoginCode()">Confirm</button>
+    <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:14px;">
+      No email? Check spam, or go back and sign in again to get a new code.
+    </p>
+  `;
+}
+
+async function submitLoginCode() {
+  const code = (document.getElementById('login-code-input')?.value || '').trim();
+  if (!code) { showToast('error', 'Enter the code from the email.'); return; }
+
+  const btn = document.getElementById('login-code-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  const reset = () => { if (btn) { btn.disabled = false; btn.textContent = 'Confirm'; } };
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/verify-login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: AuthState.pendingEmail, role: AuthState.pendingRole, code }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast('error', data.error || 'That code is not right.'); reset(); return; }
+    completeSignIn(data);
+  } catch (err) {
+    showToast('error', 'Could not reach the server. Try again.');
+    reset();
+  }
+}
+
 
 function loginFormHTML() {
   return `
@@ -483,6 +533,16 @@ async function login() {
 
     const data = await res.json();
 
+    // Periodic re-confirmation: the password was right, but it has been long
+    // enough that the address behind the account is being checked again.
+    if (res.ok && data.reverifyRequired) {
+      AuthState.pendingEmail = data.email || email;
+      AuthState.pendingRole  = data.role || demoRole;
+      setAuthPanel('login-code');
+      showToast('info', data.message || 'Enter the code we just emailed you.');
+      return;
+    }
+
     if (res.status === 403 && data.code === 'EMAIL_NOT_VERIFIED') {
       AuthState.pendingEmail    = data.email || email;
       AuthState.emailPreviewUrl = '';
@@ -499,12 +559,7 @@ async function login() {
       return;
     }
 
-    const backendRole = data.user.role;
-    // The session itself is the httpOnly cookie the server just set. Nothing
-    // credential-bearing is kept here — only who is signed in, for the UI.
-    localStorage.setItem('sessionActive', '1');
-    localStorage.setItem('user', JSON.stringify(data.user));
-    enterApp(backendRole);
+    completeSignIn(data);
 
   } catch (err) {
     const isNetwork = err.name === 'AbortError'
@@ -518,6 +573,16 @@ async function login() {
       resetLoginBtn();
     }
   }
+}
+
+// The one place a successful sign-in is turned into a session, whether it came
+// straight from the password or from the emailed code afterwards.
+function completeSignIn(data) {
+  // The session itself is the httpOnly cookie the server just set. Nothing
+  // credential-bearing is kept here — only who is signed in, for the UI.
+  localStorage.setItem('sessionActive', '1');
+  localStorage.setItem('user', JSON.stringify(data.user));
+  enterApp(data.user.role);
 }
 
 function resetLoginBtn() {

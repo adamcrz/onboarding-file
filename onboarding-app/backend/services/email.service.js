@@ -160,4 +160,28 @@ async function sendNewSignInAlertEmail(to, name) {
   return { previewUrl };
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendClientInviteEmail, sendNewSignInAlertEmail };
+// The periodic sign-in code. Deliberately plain: a short code, what it is for,
+// and what to do if it was not you. Anything more decorative gives a forger
+// more to imitate.
+async function sendLoginCodeEmail(to, name, code, ttlMs) {
+  const minutes = Math.round((ttlMs || 600000) / 60000);
+  const previewUrl = await sendMail({
+    from:    process.env.EMAIL_FROM || '"ComplianceOS" <noreply@complianceos.com>',
+    to,
+    subject: `${code} is your ComplianceOS sign-in code`,
+    html: brand(`
+      <h2 style="color:#111827;margin:0 0 8px;">Confirm it's you</h2>
+      <p style="color:#4b5563;line-height:1.6;">Hi ${name}, it has been a while since we last confirmed this address. Enter this code to finish signing in:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:6px;color:#005073;margin:24px 0;text-align:center;">${code}</p>
+      <p style="color:#6b7280;font-size:13px;">It expires in ${minutes} minutes and can be used once.</p>
+      <p style="color:#6b7280;font-size:13px;margin-top:20px;">If you were not signing in, someone else has your password. Change it now.</p>
+    `),
+  });
+
+  return { previewUrl };
+}
+
+module.exports = {
+  sendVerificationEmail, sendPasswordResetEmail, sendClientInviteEmail,
+  sendNewSignInAlertEmail, sendLoginCodeEmail,
+};

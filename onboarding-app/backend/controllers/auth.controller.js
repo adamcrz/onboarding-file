@@ -2,7 +2,8 @@ const crypto = require('crypto');
 const jwt    = require('jsonwebtoken');
 const User   = require('../models/User');
 const Client = require('../models/Client');
-const { sendVerificationEmail, sendPasswordResetEmail, sendNewSignInAlertEmail } = require('../services/email.service');
+const { sendVerificationEmail, sendPasswordResetEmail, sendNewSignInAlertEmail, sendLoginCodeEmail } = require('../services/email.service');
+const reverify = require('../services/loginReverify.service');
 const { ensureKycTaskForClient } = require('../services/kycTask.service');
 const { SESSION_COOKIE, sessionCookieOptions } = require('../config/security');
 
@@ -149,6 +150,32 @@ const login = async (req, res) => {
       });
     }
 
+    // Periodic re-confirmation of the address behind the account. Armed only
+    // when it is switched on AND real mail can actually be sent — see
+    // services/loginReverify.service.js for why that second condition is not
+    // optional.
+    if (reverify.isDue(user)) {
+      const code = reverify.issueCode(user);
+      await user.save();
+      try {
+        await sendLoginCodeEmail(user.email, user.name, code, reverify.CODE_TTL_MS);
+        return res.status(200).json({
+          reverifyRequired: true,
+          email: user.email,
+          role: user.role,
+          message: `For security, enter the code we just sent to ${user.email}.`,
+        });
+      } catch (err) {
+        // The mail did not go out. Blocking here would lock an account out
+        // over a problem it has no part in and cannot fix, so the sign-in
+        // proceeds and this round of the check is skipped.
+        console.error('⚠  Login code email failed; allowing sign-in without it:', err.message);
+        reverify.clearCode(user);
+        user.lastReverifiedAt = new Date();
+        await user.save();
+      }
+    }
+
     const previousLoginAt = user.lastLoginAt;
     user.lastLoginAt = new Date();
     await user.save();
@@ -165,6 +192,36 @@ const login = async (req, res) => {
       }
     }
 
+    res.status(200).json({ token: issueSession(res, user), user: safeUser(user) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/auth/verify-login
+// Second half of a sign-in that was challenged: the code from the email is
+// exchanged for the session the password alone no longer granted.
+const verifyLogin = async (req, res) => {
+  try {
+    const { email, role, code } = req.body || {};
+    if (!email || !code) {
+      return res.status(400).json({ error: 'Email and code are required.' });
+    }
+
+    const user = await User.findOne(role
+      ? { email: String(email).toLowerCase(), role }
+      : { email: String(email).toLowerCase() });
+    // Deliberately the same message a wrong code gets: which addresses have
+    // accounts is not something an unauthenticated caller should be able to
+    // map out by trying them.
+    if (!user) return res.status(401).json({ error: 'That code is not right.' });
+
+    const result = reverify.verifyCode(user, code);
+    await user.save();
+    if (!result.ok) return res.status(401).json({ error: result.error });
+
+    user.lastLoginAt = new Date();
+    await user.save();
     res.status(200).json({ token: issueSession(res, user), user: safeUser(user) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -300,4 +357,5 @@ module.exports = {
   register, login, getMe,
   verifyEmail, resendVerification,
   forgotPassword, resetPassword,
+  verifyLogin,
 };

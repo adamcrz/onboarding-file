@@ -24,6 +24,15 @@ const userSchema = new mongoose.Schema({
   // whether a fresh sign-in is "after a while" and worth an informational
   // new-sign-in email (clients only; see auth.controller.js login()).
   lastLoginAt: { type: Date },
+
+  // Periodic re-confirmation that the person signing in still controls the
+  // mailbox the account belongs to. A password alone proves only that it has
+  // not leaked; this re-proves the address every so often, without asking on
+  // every sign-in. See LOGIN_REVERIFY_DAYS.
+  lastReverifiedAt:     { type: Date },
+  loginCodeHash:        { type: String },
+  loginCodeExpires:     { type: Date },
+  loginCodeAttempts:    { type: Number, default: 0 },
 }, { timestamps: true });
 
 // One account per email PER ROLE — the same email may hold, say, both an RM
