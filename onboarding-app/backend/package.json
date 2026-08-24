@@ -14,7 +14,8 @@
     "test:migration": "node --test tests/migrateKycTasksToCanonical.test.js",
     "reset-db": "node scripts/resetDatabase.js",
     "check-db": "node scripts/checkDatabase.js",
-    "migrate-to-host": "node scripts/migrateToHost.js"
+    "migrate-to-host": "node scripts/migrateToHost.js",
+    "migrate-file-paths": "node scripts/migrateFilePaths.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

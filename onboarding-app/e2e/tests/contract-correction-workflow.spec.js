@@ -5,6 +5,13 @@ const PDFDocument = require('../../backend/node_modules/pdfkit');
 const { PDFDocument: PDFLib } = require('../../backend/node_modules/pdf-lib');
 const { deleteClientsByEmailPattern } = require('../helpers/dbTestUsers');
 const { CONTRACT_REQUIREMENTS } = require('../../backend/config/contractRequirements');
+const { toAbsolutePath } = require('../../backend/config/paths');
+
+// The API reports a document's path relative to the uploads root, not as an
+// absolute path on the server — so the same record is valid whichever machine
+// or container the app is running on. Reading the file from the test therefore
+// has to resolve it the same way the server does.
+const onDisk = (stored) => toAbsolutePath(stored);
 
 const headersFor = (token) => ({ Authorization: `Bearer ${token}` });
 const LETTER_W = 612;
@@ -270,12 +277,12 @@ test.describe('Contract correction workflow', () => {
 
     // --- page order / no duplicates / unaffected pages preserved ---
     const mergedDoc = goodBody.client.documents.find((d) => d.docId === body.docId);
-    const merged = await PDFLib.load(fs.readFileSync(mergedDoc.filePath));
+    const merged = await PDFLib.load(fs.readFileSync(onDisk(mergedDoc.filePath)));
     expect(merged.getPageCount()).toBe(12); // not 13 — replaced, never appended
 
     // --- version history preserved: original + each corrected generation ---
     expect(mergedDoc.versions.length).toBeGreaterThanOrEqual(2);
-    expect(fs.existsSync(mergedDoc.versions[0].filePath)).toBe(true);
+    expect(fs.existsSync(onDisk(mergedDoc.versions[0].filePath))).toBe(true);
 
     // --- correction history preserved end to end ---
     const finalAll = await (await request.get('/api/corrections/documents', { headers })).json();
