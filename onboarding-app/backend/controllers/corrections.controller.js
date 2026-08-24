@@ -473,10 +473,24 @@ exports.uploadCorrectedPages = async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'file is required' });
     tempPath = req.file.path;
 
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+    // Word is accepted as well as PDF and images. The contracts themselves are
+    // Word documents, so a correction is very often made by editing the
+    // original and sending it back — refusing that forced a needless export to
+    // PDF first.
+    const WORD_MIME = [
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+    ];
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', ...WORD_MIME];
     if (!allowed.includes(req.file.mimetype)) {
-      return res.status(415).json({ error: 'Unsupported file type — upload the corrected page as a PDF, JPG or PNG.' });
+      return res.status(415).json({ error: 'Unsupported file type — upload the correction as a Word document, PDF, JPG or PNG.' });
     }
+    // A Word file has no fixed pages to splice into: what Word calls page 2
+    // depends on the fonts and margins of whoever opens it. So a Word upload
+    // against a page-scoped issue is treated as what it actually is — a
+    // corrected version of the whole document — rather than being refused for
+    // not being something it was never going to be.
+    const isWordUpload = WORD_MIME.includes(req.file.mimetype);
     if (correction.status === 'corrected') {
       return res.status(409).json({ error: 'This correction has already been resolved.' });
     }
@@ -493,14 +507,15 @@ exports.uploadCorrectedPages = async (req, res) => {
     // still preserved as a version, and because there is no page-level rule to
     // re-run, the item goes to Compliance for a human decision instead of
     // closing itself.
-    if (!correction.pageFrom) {
+    if (!correction.pageFrom || isWordUpload) {
       const replacedPath = path.join(path.dirname(doc.filePath),
         `${Date.now()}-corrected${path.extname(req.file.originalname || '') || path.extname(doc.filePath) || '.pdf'}`);
       fs.copyFileSync(req.file.path, replacedPath);
       doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
       doc.filePath = replacedPath;
       await fileStore.putFile(replacedPath, null,
-        { clientId: client.clientId, clientName: client.name, docName: doc.name });
+        { clientId: client.clientId, clientName: client.name, docName: doc.name,
+        signed: Boolean(doc.signedVersion), approved: doc.status === 'approved' });
       doc.uploadedBy = actor;
       doc.date = new Date().toISOString().slice(0, 10);
       doc.size = (fs.statSync(replacedPath).size / 1024 / 1024).toFixed(1) + ' MB';
@@ -511,7 +526,9 @@ exports.uploadCorrectedPages = async (req, res) => {
       correction.history.push({
         action: 'corrected-upload',
         actor,
-        detail: 'Whole document replaced',
+        detail: (correction.pageFrom && isWordUpload)
+          ? `Whole document replaced with a corrected Word version (issue was raised on page ${correction.pageFrom})`
+          : 'Whole document replaced',
         validation: null,
       });
       client.auditTrail.push({
@@ -526,7 +543,9 @@ exports.uploadCorrectedPages = async (req, res) => {
         validationPassed: false,
         correction,
         client,
-        detail: 'Uploaded — Compliance will review the replacement document.',
+        detail: (correction.pageFrom && isWordUpload)
+          ? 'Word document uploaded as a complete replacement — Compliance will review it.'
+          : 'Uploaded — Compliance will review the replacement document.',
       });
     }
     const from = correction.pageFrom;
@@ -548,7 +567,8 @@ exports.uploadCorrectedPages = async (req, res) => {
     doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
     doc.filePath = mergedPath;
     await fileStore.putFile(mergedPath, null,
-      { clientId: client.clientId, clientName: client.name, docName: doc.name });
+      { clientId: client.clientId, clientName: client.name, docName: doc.name,
+        signed: Boolean(doc.signedVersion), approved: doc.status === 'approved' });
     doc.uploadedBy = actor;
     doc.date = new Date().toISOString().slice(0, 10);
     doc.size = (mergedBuffer.length / 1024 / 1024).toFixed(1) + ' MB';

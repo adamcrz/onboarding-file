@@ -126,14 +126,47 @@ const archivePathFor = (storedPath, meta = null) => {
   const clientId = meta.clientId || rel.split('/')[0];
   const folder = safeName(`${clientId} ${meta.clientName}`, clientId);
   const ext = path.extname(rel) || '';
+
+  // Whether a document is the signed copy is the thing somebody opening this
+  // folder most needs to know, and it is invisible from a filename alone —
+  // a signed contract and the blank it came from are the same document under
+  // the same name. Said in the name rather than left to be worked out by
+  // opening each one. APPROVED is Compliance's sign-off, which is a different
+  // fact from a signature being on the page.
+  const marks = [
+    meta.signed ? 'SIGNED' : null,
+    meta.approved ? 'APPROVED' : null,
+  ].filter(Boolean);
+  const suffix = marks.length ? ` [${marks.join(' + ')}]` : '';
+
   const base = safeName(
-    `${meta.clientName} - ${meta.docName || path.basename(rel, ext)} (${stampFrom(rel)})`,
+    `${meta.clientName} - ${meta.docName || path.basename(rel, ext)}${suffix} (${stampFrom(rel)})`,
     path.basename(rel, ext),
   );
   return path.join(ARCHIVE_ROOT, folder, `${base}${ext}`);
 };
 
+// Every name this file could have under a different combination of markers.
+//
+// A document's markers change over its life — a blank becomes signed, a signed
+// one becomes approved — and each change moves it to a new name. Without this,
+// the previous name would be left behind and the folder would fill with copies
+// of one document at different stages, which is precisely the confusion the
+// markers were added to remove.
+const archivePathVariants = (storedPath, meta) => {
+  if (!meta || !meta.clientName) return [];
+  const combos = [
+    { signed: false, approved: false },
+    { signed: true,  approved: false },
+    { signed: false, approved: true  },
+    { signed: true,  approved: true  },
+  ];
+  return combos
+    .map((c) => archivePathFor(storedPath, { ...meta, ...c }))
+    .filter(Boolean);
+};
+
 module.exports = {
   UPLOADS_ROOT, ensureUploadsRoot, clientUploadDir, toStoredPath, toAbsolutePath,
-  ARCHIVE_ROOT, archivePathFor, safeName,
+  ARCHIVE_ROOT, archivePathFor, archivePathVariants, safeName,
 };

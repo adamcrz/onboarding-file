@@ -44,7 +44,8 @@ async function syncOnce({ quiet = false } = {}) {
         for (const target of [doc, ...(doc.versions || [])]) {
           if (!target.filePath) continue;
 
-          const meta = { clientId: client.clientId, clientName: client.name, docName: doc.name };
+          const meta = { clientId: client.clientId, clientName: client.name, docName: doc.name,
+            signed: Boolean(doc.signedVersion), approved: doc.status === 'approved' };
           const dest = archivePathFor(target.filePath, meta);
           if (!dest) continue;
 

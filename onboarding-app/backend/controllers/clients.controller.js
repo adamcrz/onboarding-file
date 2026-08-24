@@ -456,7 +456,8 @@ const uploadDocument = async (req, res) => {
     // database rather than only on the machine that received the upload. The
     // names go with it so the archive copy is filed somewhere readable.
     await fileStore.putFile(req.file.path, null,
-      { clientId: client.clientId, clientName: client.name, docName: doc.name });
+      { clientId: client.clientId, clientName: client.name, docName: doc.name,
+        signed: Boolean(doc.signedVersion), approved: doc.status === 'approved' });
 
     let missingNote = '';
     let pendingCorrections = [];
@@ -578,7 +579,8 @@ const replaceDocumentPage = async (req, res) => {
     doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
     doc.filePath = splicedPath;
     await fileStore.putFile(splicedPath, null,
-      { clientId: client.clientId, clientName: client.name, docName: doc.name });
+      { clientId: client.clientId, clientName: client.name, docName: doc.name,
+        signed: Boolean(doc.signedVersion), approved: doc.status === 'approved' });
     doc.uploadedBy = uploadedBy;
     doc.date = new Date().toISOString().slice(0, 10);
     doc.size = (splicedBuffer.length / 1024 / 1024).toFixed(1) + ' MB';
@@ -726,6 +728,14 @@ const getContractPreparation = async (req, res) => {
       // The same n-documents/1-each figure the dashboards show, so the card
       // header and the client's progress bar can never disagree.
       documentProgress: mandateProgress(client),
+      // Whether every document that counts has been signed off by Compliance —
+      // the difference between "all the paperwork is in" and "the paperwork is
+      // finished". Only the second takes a mandate out of the task list.
+      allApproved: (() => {
+        const counted = (client.documents || []).filter(
+          (d) => !['Fragebogen zum Mandatsrisiko', 'KYC Questionnaire'].includes(d.name));
+        return counted.length > 0 && counted.every((d) => d.status === 'approved');
+      })(),
       mandateRisk: {
         status: (client.mandateRisk || {}).status || 'draft',
         missingCount: missingMandateRiskFields((client.mandateRisk || {}).answers || {}).length,
@@ -766,7 +776,13 @@ const uploadContractDraft = async (req, res) => {
     if (!canAccessClient(client, req.user)) return res.status(403).json({ error: 'Not authorised for this client' });
     if (!req.file) return res.status(400).json({ error: 'file is required' });
 
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+    const allowed = [
+      'application/pdf', 'image/jpeg', 'image/png',
+      // The contracts are Word documents, so a filled or corrected one comes
+      // back as Word far more often than as anything else.
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+    ];
     if (!allowed.includes(req.file.mimetype)) {
       return res.status(415).json({ error: 'Unsupported file type — upload the saved contract as a PDF.' });
     }
@@ -785,7 +801,8 @@ const uploadContractDraft = async (req, res) => {
       }
       draft.filePath = req.file.path;
       await fileStore.putFile(req.file.path, null,
-        { clientId: client.clientId, clientName: client.name, docName: draft.name });
+        { clientId: client.clientId, clientName: client.name, docName: draft.name,
+          signed: Boolean(draft.signedVersion), approved: draft.status === 'approved' });
       draft.uploadedBy = uploadedBy;
       draft.date = dateLabel;
       draft.size = sizeLabel;
@@ -884,7 +901,8 @@ const submitContractFinal = async (req, res) => {
     const finalPath = path.join(path.dirname(draft.filePath), `${Date.now()}-final${path.extname(draft.filePath) || '.pdf'}`);
     fs.copyFileSync(draft.filePath, finalPath);
     await fileStore.putFile(finalPath, null,
-      { clientId: client.clientId, clientName: client.name, docName: 'Final Contract' });
+      { clientId: client.clientId, clientName: client.name, docName: 'Final Contract',
+      signed: true, approved: false });
 
     let final = client.documents.find((d) => d.type === FINAL_TYPE);
     if (final) {
