@@ -1,12 +1,24 @@
 const mongoose = require('mongoose');
 const { getKycFieldDefinitions } = require('../config/kycRequiredFields');
+const { toStoredPath, toAbsolutePath } = require('../config/paths');
+
+// Uploaded files are recorded relative to the uploads root and handed back to
+// application code as real, absolute paths. Doing it here rather than at each
+// of the ~30 places that read filePath means every existing caller keeps
+// working, while what lands in the database stays portable between the
+// machine a file was uploaded on and wherever the app happens to run.
+const filePathField = {
+  type: String,
+  set: toStoredPath,
+  get: toAbsolutePath,
+};
 
 // A prior upload for this same document slot, kept so the full history of
 // what was originally submitted vs. what replaced it stays reconstructable —
 // a corrected re-upload replaces `filePath` on the parent but pushes the
 // version it's replacing here first, it never creates an unrelated document.
 const documentVersionSchema = new mongoose.Schema({
-  filePath:   { type: String },
+  filePath:   filePathField,
   uploadedBy: { type: String },
   date:       { type: String },
   size:       { type: String },
@@ -26,7 +38,7 @@ const documentSchema = new mongoose.Schema({
   templateAvailable: { type: Boolean, default: false },
   signedVersion:     { type: Boolean, default: false },
   missingNote:       { type: String },
-  filePath:          { type: String },
+  filePath:          filePathField,
   expiryDate:        { type: String },
   versions:          [documentVersionSchema],
 }, { timestamps: true });
