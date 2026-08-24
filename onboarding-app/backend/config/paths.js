@@ -63,6 +63,28 @@ const toAbsolutePath = (stored) => {
   return path.join(UPLOADS_ROOT, stored);
 };
 
+// ─── The archive ─────────────────────────────────────────────────────────────
+//
+// A second, permanent copy of every uploaded file, written into a SharePoint
+// library that OneDrive syncs to each person's machine. Two things follow from
+// that: the documents are backed up somewhere the firm already governs, and
+// the database only has to hold a file for as long as it is being worked on.
+// Once a contract is approved and has been downloaded, its copy in the
+// database can go — the archive still has it. See fileStore.purgeSettled().
+//
+// The path differs per user ("C:\Users\<name>\OneDrive - ...") so it is
+// configured per machine, never hardcoded. Unset, archiving is simply off and
+// the app behaves as it did before.
+const ARCHIVE_ROOT = process.env.ARCHIVE_DIR ? path.resolve(process.env.ARCHIVE_DIR) : null;
+
+const archivePathFor = (storedPath) => {
+  if (!ARCHIVE_ROOT || !storedPath) return null;
+  const rel = toStoredPath(storedPath);
+  if (!rel || path.isAbsolute(rel)) return null;
+  return path.join(ARCHIVE_ROOT, rel);
+};
+
 module.exports = {
   UPLOADS_ROOT, ensureUploadsRoot, clientUploadDir, toStoredPath, toAbsolutePath,
+  ARCHIVE_ROOT, archivePathFor,
 };

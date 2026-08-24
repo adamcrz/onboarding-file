@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
-const { toStoredPath, toAbsolutePath } = require('../config/paths');
+const { toStoredPath, toAbsolutePath, ARCHIVE_ROOT, archivePathFor } = require('../config/paths');
 
 const BUCKET = 'uploads';
 
@@ -58,7 +58,34 @@ async function putFile(absolutePath, buffer = null) {
     stream.on('finish', resolve);
     stream.end(data);
   });
+
+  archiveFile(key, data);
   return key;
+}
+
+// The permanent copy, in the OneDrive-synced SharePoint library. Never fatal:
+// the archive being unavailable (OneDrive signed out, the library not synced
+// on this machine, the folder renamed) must not fail an upload that has
+// already been accepted — the file is still in the database, and
+// scripts/archiveFiles.js can catch the archive up afterwards.
+function archiveFile(key, data) {
+  const target = archivePathFor(key);
+  if (!target) return null;
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, data);
+    return target;
+  } catch (err) {
+    console.warn('⚠  Could not write to the archive:', err.message);
+    return null;
+  }
+}
+
+// Whether a file is safely in the archive, which is what makes removing it
+// from the database safe.
+function isArchived(storedPath) {
+  const target = archivePathFor(storedPath);
+  return Boolean(target && fs.existsSync(target));
 }
 
 // Reads a file out of the store. Returns null when it isn't there, so callers
@@ -89,7 +116,16 @@ async function ensureLocal(storedPath) {
   const absolute = toAbsolutePath(storedPath);
   if (fs.existsSync(absolute)) return absolute;
 
-  const data = await getFile(keyFor(absolute));
+  // Database first — it is the fast path and always current. The archive is
+  // the fallback for anything already purged from it, which is how an approved
+  // contract stays downloadable long after it stopped taking up space.
+  let data = await getFile(keyFor(absolute));
+  if (!data) {
+    const archived = archivePathFor(absolute);
+    if (archived && fs.existsSync(archived)) {
+      try { data = fs.readFileSync(archived); } catch (_) { data = null; }
+    }
+  }
   if (!data) return null;
 
   fs.mkdirSync(path.dirname(absolute), { recursive: true });
@@ -119,4 +155,5 @@ async function deleteClientFiles(clientId) {
 
 module.exports = {
   putFile, getFile, ensureLocal, ensureLocalQuiet, deleteFile, deleteClientFiles, keyFor,
+  archiveFile, isArchived, ARCHIVE_ENABLED: Boolean(ARCHIVE_ROOT),
 };

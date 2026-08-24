@@ -1138,6 +1138,13 @@ const downloadDocument = async (req, res) => {
     await fileStore.ensureLocalQuiet(doc.filePath);
     if (!fs.existsSync(doc.filePath)) return res.status(404).json({ error: 'File is missing on disk' });
 
+    // Record that it left the system. An approved document that has been
+    // downloaded is finished business, and its copy in the database can be
+    // released once the archive holds it — see scripts/purgeSettledFiles.js.
+    doc.downloadedAt = new Date();
+    doc.downloadedBy = req.user.role === 'rm' ? 'RM' : req.user.role === 'client' ? 'Client' : 'Compliance';
+    client.save().catch((err) => console.warn('Could not record the download:', err.message));
+
     res.download(doc.filePath, `${doc.name}${path.extname(doc.filePath)}`);
   } catch (err) {
     res.status(500).json({ error: err.message });

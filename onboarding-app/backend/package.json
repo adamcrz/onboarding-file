@@ -16,7 +16,9 @@
     "check-db": "node scripts/checkDatabase.js",
     "migrate-to-host": "node scripts/migrateToHost.js",
     "migrate-file-paths": "node scripts/migrateFilePaths.js",
-    "backfill-files": "node scripts/backfillFileStore.js"
+    "backfill-files": "node scripts/backfillFileStore.js",
+    "archive-files": "node scripts/archiveFiles.js",
+    "purge-files": "node scripts/purgeSettledFiles.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
