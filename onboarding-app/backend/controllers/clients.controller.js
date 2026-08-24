@@ -68,7 +68,7 @@ const createClient = async (req, res) => {
     await client.save();
     // Somewhere obvious to look for this mandate's paperwork from the moment
     // the case exists, rather than only once the first file lands.
-    fileStore.ensureClientArchiveDir(client.clientId);
+    fileStore.ensureClientArchiveDir(client.clientId, client.name);
     res.status(201).json(client);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -453,8 +453,10 @@ const uploadDocument = async (req, res) => {
     }
 
     // Into the shared store as well, so the file exists for every user of this
-    // database rather than only on the machine that received the upload.
-    await fileStore.putFile(req.file.path);
+    // database rather than only on the machine that received the upload. The
+    // names go with it so the archive copy is filed somewhere readable.
+    await fileStore.putFile(req.file.path, null,
+      { clientId: client.clientId, clientName: client.name, docName: doc.name });
 
     let missingNote = '';
     let pendingCorrections = [];
@@ -575,7 +577,8 @@ const replaceDocumentPage = async (req, res) => {
     const uploadedBy = req.user.role === 'rm' ? 'RM' : req.user.role === 'client' ? 'Client' : 'Compliance';
     doc.versions.push({ filePath: doc.filePath, uploadedBy: doc.uploadedBy, date: doc.date, size: doc.size, status: doc.status });
     doc.filePath = splicedPath;
-    await fileStore.putFile(splicedPath);
+    await fileStore.putFile(splicedPath, null,
+      { clientId: client.clientId, clientName: client.name, docName: doc.name });
     doc.uploadedBy = uploadedBy;
     doc.date = new Date().toISOString().slice(0, 10);
     doc.size = (splicedBuffer.length / 1024 / 1024).toFixed(1) + ' MB';
@@ -781,7 +784,8 @@ const uploadContractDraft = async (req, res) => {
         draft.versions.push({ filePath: draft.filePath, uploadedBy: draft.uploadedBy, date: draft.date, size: draft.size, status: draft.status });
       }
       draft.filePath = req.file.path;
-      await fileStore.putFile(req.file.path);
+      await fileStore.putFile(req.file.path, null,
+        { clientId: client.clientId, clientName: client.name, docName: draft.name });
       draft.uploadedBy = uploadedBy;
       draft.date = dateLabel;
       draft.size = sizeLabel;
@@ -879,7 +883,8 @@ const submitContractFinal = async (req, res) => {
     // and all of its history stay exactly as they are.
     const finalPath = path.join(path.dirname(draft.filePath), `${Date.now()}-final${path.extname(draft.filePath) || '.pdf'}`);
     fs.copyFileSync(draft.filePath, finalPath);
-    await fileStore.putFile(finalPath);
+    await fileStore.putFile(finalPath, null,
+      { clientId: client.clientId, clientName: client.name, docName: 'Final Contract' });
 
     let final = client.documents.find((d) => d.type === FINAL_TYPE);
     if (final) {

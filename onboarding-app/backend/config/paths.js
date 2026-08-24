@@ -77,14 +77,63 @@ const toAbsolutePath = (stored) => {
 // the app behaves as it did before.
 const ARCHIVE_ROOT = process.env.ARCHIVE_DIR ? path.resolve(process.env.ARCHIVE_DIR) : null;
 
-const archivePathFor = (storedPath) => {
+// Characters Windows and SharePoint reject in a name, plus trailing dots and
+// spaces, which Explorer silently drops and OneDrive then refuses to sync.
+const safeName = (value, fallback) => {
+  const cleaned = String(value ?? '')
+    .replace(/[\\/:*?"<>|#%{}~&]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '');
+  return cleaned || fallback;
+};
+
+// The timestamp every stored filename begins with, as something a person can
+// read. Keeps successive versions of one document distinct and in order,
+// which a bare document name could not.
+const stampFrom = (storedPath) => {
+  const m = /(?:^|\/)(\d{10,})-/.exec(String(storedPath || ''));
+  const d = m ? new Date(Number(m[1])) : new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}`;
+};
+
+// Where a file goes in the archive.
+//
+// The database keys files by "CLT-0255/1787570430057-2025_Vertragsset DE.docx",
+// which is right for a key — stable, unique, never re-typed — and useless to
+// somebody opening the folder in SharePoint looking for a client's contract.
+// So the archive gets names meant to be read:
+//
+//   CLT-0255 Testfirma Muster AG/
+//     Testfirma Muster AG - Contract Package (2026-08-24 1432).docx
+//
+// The client's name is in the file as well as the folder, so a document that
+// gets dragged somewhere else still says whose it is. The path stays a pure
+// function of the stored key plus the client and document names, so the same
+// file always resolves to the same place — which is what lets the release step
+// verify a copy exists before deleting the one in the database.
+//
+// With no meta (an older caller, or a file whose record is not to hand) it
+// falls back to the stored layout, so nothing ever fails to archive.
+const archivePathFor = (storedPath, meta = null) => {
   if (!ARCHIVE_ROOT || !storedPath) return null;
   const rel = toStoredPath(storedPath);
   if (!rel || path.isAbsolute(rel)) return null;
-  return path.join(ARCHIVE_ROOT, rel);
+
+  if (!meta || !meta.clientName) return path.join(ARCHIVE_ROOT, rel);
+
+  const clientId = meta.clientId || rel.split('/')[0];
+  const folder = safeName(`${clientId} ${meta.clientName}`, clientId);
+  const ext = path.extname(rel) || '';
+  const base = safeName(
+    `${meta.clientName} - ${meta.docName || path.basename(rel, ext)} (${stampFrom(rel)})`,
+    path.basename(rel, ext),
+  );
+  return path.join(ARCHIVE_ROOT, folder, `${base}${ext}`);
 };
 
 module.exports = {
   UPLOADS_ROOT, ensureUploadsRoot, clientUploadDir, toStoredPath, toAbsolutePath,
-  ARCHIVE_ROOT, archivePathFor,
+  ARCHIVE_ROOT, archivePathFor, safeName,
 };

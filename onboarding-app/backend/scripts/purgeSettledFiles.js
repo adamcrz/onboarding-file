@@ -72,7 +72,8 @@ const has = (name) => process.argv.includes(`--${name}`);
       if (!doc.downloadedAt) { skipped.notDownloaded += 1; continue; }
 
       // Checked here, against the real filesystem, right before deleting.
-      if (!fileStore.isArchived(doc.filePath)) {
+      const meta = { clientId: client.clientId, clientName: client.name, docName: doc.name };
+      if (!fileStore.isArchived(doc.filePath, meta)) {
         skipped.notArchived.push(`${client.clientId}: ${doc.name}`);
         continue;
       }
@@ -84,7 +85,7 @@ const has = (name) => process.argv.includes(`--${name}`);
       // Belt and braces: the archived copy must be the same size as the one
       // about to be deleted. A half-synced OneDrive placeholder is exactly the
       // sort of thing that would otherwise pass an existence check.
-      const archived = archivePathFor(doc.filePath);
+      const archived = archivePathFor(doc.filePath, meta);
       const archivedSize = require('fs').statSync(archived).size;
       if (archivedSize !== stored.length) {
         skipped.notArchived.push(`${client.clientId}: ${doc.name} (archive ${archivedSize}B vs stored ${stored.length}B)`);

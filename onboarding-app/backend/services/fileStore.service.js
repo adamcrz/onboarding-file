@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
-const { toStoredPath, toAbsolutePath, ARCHIVE_ROOT, archivePathFor } = require('../config/paths');
+const { toStoredPath, toAbsolutePath, ARCHIVE_ROOT, archivePathFor, safeName } = require('../config/paths');
 
 const BUCKET = 'uploads';
 
@@ -44,7 +44,10 @@ async function findOne(key) {
 // Replaces any previous copy: a corrected re-upload writes a new file at a new
 // path, but a retried upload of the same path must not leave two versions
 // behind for a later read to choose between.
-async function putFile(absolutePath, buffer = null) {
+// `meta` ({ clientId, clientName, docName }) is what lets the archive copy be
+// filed under a name a person can read. Without it the file is still archived,
+// just under its storage key.
+async function putFile(absolutePath, buffer = null, meta = null) {
   const key = keyFor(absolutePath);
   if (!key) return null;
   const data = buffer || fs.readFileSync(toAbsolutePath(absolutePath));
@@ -59,7 +62,7 @@ async function putFile(absolutePath, buffer = null) {
     stream.end(data);
   });
 
-  archiveFile(key, data);
+  archiveFile(key, data, meta);
   return key;
 }
 
@@ -68,8 +71,8 @@ async function putFile(absolutePath, buffer = null) {
 // on this machine, the folder renamed) must not fail an upload that has
 // already been accepted — the file is still in the database, and
 // scripts/archiveFiles.js can catch the archive up afterwards.
-function archiveFile(key, data) {
-  const target = archivePathFor(key);
+function archiveFile(key, data, meta = null) {
+  const target = archivePathFor(key, meta);
   if (!target) return null;
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -83,8 +86,8 @@ function archiveFile(key, data) {
 
 // Whether a file is safely in the archive, which is what makes removing it
 // from the database safe.
-function isArchived(storedPath) {
-  const target = archivePathFor(storedPath);
+function isArchived(storedPath, meta = null) {
+  const target = archivePathFor(storedPath, meta);
   return Boolean(target && fs.existsSync(target));
 }
 
@@ -111,7 +114,7 @@ async function getFile(key) {
 // This is what lets somebody open a contract a colleague uploaded: the record
 // resolves, the bytes arrive from Mongo, and every fs-based code path
 // downstream carries on exactly as before.
-async function ensureLocal(storedPath) {
+async function ensureLocal(storedPath, meta = null) {
   if (!storedPath) return null;
   const absolute = toAbsolutePath(storedPath);
   if (fs.existsSync(absolute)) return absolute;
@@ -121,9 +124,11 @@ async function ensureLocal(storedPath) {
   // contract stays downloadable long after it stopped taking up space.
   let data = await getFile(keyFor(absolute));
   if (!data) {
-    const archived = archivePathFor(absolute);
-    if (archived && fs.existsSync(archived)) {
-      try { data = fs.readFileSync(archived); } catch (_) { data = null; }
+    // Both shapes: the readable one written now, and the key-shaped one used
+    // before the archive was given readable names.
+    for (const candidate of [archivePathFor(absolute, meta), archivePathFor(absolute)]) {
+      if (!candidate || !fs.existsSync(candidate)) continue;
+      try { data = fs.readFileSync(candidate); break; } catch (_) { /* try the next */ }
     }
   }
   if (!data) return null;
@@ -135,8 +140,8 @@ async function ensureLocal(storedPath) {
 
 // Best-effort: a file that cannot be cached locally is not a reason to fail the
 // request that mentioned it.
-async function ensureLocalQuiet(storedPath) {
-  try { return await ensureLocal(storedPath); } catch (_) { return null; }
+async function ensureLocalQuiet(storedPath, meta = null) {
+  try { return await ensureLocal(storedPath, meta); } catch (_) { return null; }
 }
 
 async function deleteFile(storedPath) {
@@ -157,9 +162,11 @@ async function deleteClientFiles(clientId) {
 // there is somewhere obvious to look before any document has been uploaded —
 // an empty folder named after the client reads as "nothing yet", where a
 // missing one reads as "something is wrong".
-function ensureClientArchiveDir(clientId) {
+function ensureClientArchiveDir(clientId, clientName = null) {
   if (!ARCHIVE_ROOT || !clientId) return null;
-  const dir = path.join(ARCHIVE_ROOT, String(clientId));
+  // One definition of what a safe name is, in config/paths.js.
+  const folder = clientName ? safeName(`${clientId} ${clientName}`, String(clientId)) : String(clientId);
+  const dir = path.join(ARCHIVE_ROOT, folder);
   try {
     fs.mkdirSync(dir, { recursive: true });
     return dir;
@@ -189,12 +196,13 @@ async function releaseClientFiles(client) {
       const stored = await getFile(key);
       if (!stored) continue; // already gone from the database
 
-      archiveFile(key, stored);
+      const meta = { clientId: client.clientId, clientName: client.name, docName: doc.name };
+      archiveFile(key, stored, meta);
 
       // Read it back rather than trusting the write: a OneDrive placeholder,
       // a full disk or a permissions problem all fail here instead of costing
       // the only copy of a contract.
-      const archived = archivePathFor(target.filePath);
+      const archived = archivePathFor(target.filePath, meta);
       let verified = false;
       try {
         verified = Boolean(archived) && fs.existsSync(archived)

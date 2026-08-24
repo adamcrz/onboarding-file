@@ -585,6 +585,50 @@ function completeSignIn(data) {
   enterApp(data.user.role);
 }
 
+// Deletes a mandate and everything the app holds for it: the case, its KYC
+// task, its corrections, its notifications and its files in the database.
+//
+// Two confirmations, because there is no undo and the second one is the point
+// where somebody who clicked by accident stops. Typing the case number is not
+// bureaucracy — it is the difference between deleting the mandate you meant
+// and the one you happened to have open.
+async function deleteMandate(clientId) {
+  const client = State.clients.find(c => c.id === clientId);
+  const name = client ? client.name : clientId;
+  const docCount = client ? (client.documents || []).length : 0;
+
+  const warning = [
+    `Delete the mandate for ${name}?`,
+    '',
+    `This removes the case ${clientId}, its KYC task, its corrections,`,
+    `its notifications and its ${docCount} document${docCount === 1 ? '' : 's'} from the app.`,
+    '',
+    'It cannot be undone.',
+    '',
+    'The copies already written to the SharePoint archive are NOT deleted —',
+    'those stay as the permanent record. Remove that folder by hand if this',
+    'was only a test.',
+  ].join('\n');
+  if (!confirm(warning)) return;
+
+  const typed = prompt(`To confirm, type the case number:  ${clientId}`);
+  if (typed === null) return;
+  if (typed.trim().toUpperCase() !== String(clientId).toUpperCase()) {
+    showToast('error', 'That did not match — nothing was deleted.');
+    return;
+  }
+
+  try {
+    await apiFetch('DELETE', `/clients/${encodeURIComponent(clientId)}`);
+    showToast('success', `${name} deleted.`);
+    State.clients = State.clients.filter(c => c.id !== clientId);
+    await Promise.all([refreshClients(), refreshKycTasks(), refreshCorrectionsBadge()]);
+    navigateTo('clients');
+  } catch (err) {
+    showToast('error', err.message || 'Could not delete this mandate.');
+  }
+}
+
 function resetLoginBtn() {
   const btn = document.getElementById('login-btn');
   if (btn) {
@@ -2784,6 +2828,9 @@ function renderClientDetail() {
           <button class="btn-secondary btn-sm" onclick="rejectClientFromDetail('${client.id}')">Reject</button>
         ` : ''}
         ${State.currentRole === 'rm' ? `<button class="btn-secondary btn-sm" onclick="editClientKycFromDetail('${escapeHtml(client.id)}')">Edit KYC</button>` : ''}
+        ${isCompliance(State.currentRole)
+          ? `<button class="btn-danger btn-sm" onclick="deleteMandate('${escapeHtml(client.id)}')" title="Delete this mandate and everything belonging to it">Delete</button>`
+          : ''}
       </div>
     </div>
 

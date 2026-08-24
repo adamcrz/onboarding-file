@@ -27,7 +27,8 @@ async function writeKycExcelDocument(clientOrId, actor = 'System') {
   fs.writeFileSync(filePath, buffer);
   // Generated sheets are documents of the mandate like any other, so they
   // belong in the shared store too.
-  await fileStore.putFile(filePath, buffer);
+  await fileStore.putFile(filePath, buffer,
+    { clientId: client.clientId, clientName: client.name, docName: KYC_DOCUMENT_NAME });
 
   const existing = client.documents.find((d) => d.name === KYC_DOCUMENT_NAME);
   const today = new Date().toISOString().slice(0, 10);
@@ -94,7 +95,8 @@ async function writeMandateRiskExcelDocument(clientOrId, actor = 'System') {
   fs.writeFileSync(filePath, buffer);
   // Generated sheets are documents of the mandate like any other, so they
   // belong in the shared store too.
-  await fileStore.putFile(filePath, buffer);
+  await fileStore.putFile(filePath, buffer,
+    { clientId: client.clientId, clientName: client.name, docName: MANDATE_RISK_DOCUMENT_NAME });
 
   const doc = client.documents.find((d) => d.name === MANDATE_RISK_DOCUMENT_NAME);
   const today = new Date().toISOString().slice(0, 10);

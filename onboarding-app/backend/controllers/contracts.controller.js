@@ -1043,7 +1043,7 @@ exports.sendInvite = async (req, res) => {
     await ensureKycTaskForClient(client, effectiveRmName);
     // Give the mandate its folder in the archive straight away, so the
     // documents have somewhere to land and somewhere to be looked for.
-    fileStore.ensureClientArchiveDir(client.clientId);
+    fileStore.ensureClientArchiveDir(client.clientId, client.name);
 
     // Persist the actual filled contract to disk now, not just a placeholder
     // document entry with no file — this is what KUBE later downloads, adds
@@ -1058,7 +1058,11 @@ exports.sendInvite = async (req, res) => {
         fs.writeFileSync(savedPath, buffer);
         // The generated contract is the first document of the mandate — it has
         // to reach the shared store or nobody else can download it.
-        await fileStore.putFile(savedPath, buffer);
+        await fileStore.putFile(savedPath, buffer, {
+          clientId: client.clientId,
+          clientName: client.name,
+          docName: docEntries[0].name,
+        });
 
         const packageDoc = client.documents.find(d => d.docId === docEntries[0].docId);
         if (packageDoc) {
