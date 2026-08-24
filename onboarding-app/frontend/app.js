@@ -1666,7 +1666,7 @@ async function renderKycTasksPage() {
       <div class="client-info" style="flex:1;cursor:pointer;" title="Open the questionnaire"
            onclick="event.preventDefault();event.stopPropagation();${openRow}">
         <div class="client-name">${escapeHtml(t.clientName || '')}</div>
-        <div class="client-type">${escapeHtml(t.clientEmail || '')} · Kundenberater: ${escapeHtml(t.rmName || '—')}${openItems.length ? ` · ${openItems.length} field${openItems.length === 1 ? '' : 's'} outstanding` : ''}</div>
+        <div class="client-type">${escapeHtml(t.clientId || '—')}${t.clientEmail ? ` · ${escapeHtml(t.clientEmail)}` : ''} · Kundenberater: ${escapeHtml(t.rmName || '—')}${openItems.length ? ` · ${openItems.length} field${openItems.length === 1 ? '' : 's'} outstanding` : ''}</div>
       </div>
       <div class="client-meta" style="display:flex;align-items:center;gap:10px;">${action}</div>`;
 
@@ -2378,7 +2378,7 @@ function renderRMDashboard() {
           <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border-subtle);">
             <div>
               <div style="font-size:13px;font-weight:600;">${escapeHtml(t.clientName)}</div>
-              <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(t.clientEmail)} · Assigned ${t.createdAt}</div>
+              <div style="font-size:11.5px;color:var(--text-muted);">${escapeHtml(t.clientId || '—')}${t.clientEmail ? ` · ${escapeHtml(t.clientEmail)}` : ''} · Assigned ${t.createdAt}</div>
             </div>
             <button class="btn-primary btn-sm" onclick="openKycTask('${t.id}')">Fill KYC Form</button>
           </div>
@@ -2437,8 +2437,11 @@ function renderClientDashboard() {
   const docs     = client.documents    || [];
   const audit    = client.auditTrail   || [];
 
+  // Matched on the case number, not the email address. A mandate prepared
+  // without portal access has no email — a perfectly normal case — and matching
+  // on one then pairs the wrong task with the wrong client, or none at all.
   const pendingKycTask = State.kycTasks.find(t =>
-    kycTaskStillNeedsAttention(t) && t.clientEmail === (client.email || '').toLowerCase()
+    kycTaskStillNeedsAttention(t) && String(t.clientId || '') === String(client.id || client.clientId || '')
   );
 
   const steps = [
@@ -6485,14 +6488,12 @@ function contractPrepCardHTML(s) {
               ? `${escapeHtml(uploaded.stage)}${uploaded.date ? ` · ${escapeHtml(uploaded.date)}` : ''}${uploaded.uploadedBy ? ` by ${escapeHtml(uploaded.uploadedBy)}` : ''}${uploaded.versionCount ? ` · ${uploaded.versionCount} earlier version${uploaded.versionCount === 1 ? '' : 's'}` : ''}`
               : 'Fill in the blank version, then upload it here — signatures and checkboxes are checked on upload',
             warn: contractCorrections.length
-              ? `${contractCorrections.length} item${contractCorrections.length === 1 ? '' : 's'} still missing — download the page below, fix it, and upload it again`
+              ? `${contractCorrections.length} item${contractCorrections.length === 1 ? '' : 's'} still missing — fix the page below, or upload a complete replacement`
               : null,
-            // Same rule as the other documents: while there are open items, the
-            // per-item fields below are the way back in, so the general
-            // "upload a version" field is not shown twice over.
-            extra: contractCorrections.length
-              ? ''
-              : contractDropzoneHTML(s.clientId, s.templateId || '', Boolean(uploaded)),
+            // Same as the other documents: the per-item fields take a fix for
+            // one issue, and the general field stays available for replacing
+            // the whole contract, which is often the easier way to resolve it.
+            extra: contractDropzoneHTML(s.clientId, s.templateId || '', Boolean(uploaded)),
             // Review is download → check by hand → approve or send back.
             actions: uploaded
               ? `<button class="btn-secondary btn-xs" onclick="downloadDoc('${escapeHtml(s.clientId)}','${escapeHtml(uploaded.docId)}')">${downloadIcon()} Download</button>`
@@ -6518,14 +6519,19 @@ function contractPrepCardHTML(s) {
                 + `${d.date && d.date !== '-' ? ` &nbsp;uploaded ${escapeHtml(d.date)}` : ''}`
               : 'Requested in the contract, not provided yet',
             warn: (SHOW_DOCUMENT_CORRECTIONS || d.status === 'info-requested') ? d.missingNote : null,
-            // One upload field per document. Normally that is the row's own
-            // drop field; once something has been flagged, the correction's
-            // field replaces it, because a file dropped there has to go back
-            // against the issue it resolves rather than as a plain re-upload.
-            extra: (correctionsByDoc.has(String(d.docId || d.id))
-              ? ''
-              : documentDropzoneHTML(s.clientId, d.docId || d.id, d.filePath ? 'replacement' : 'document'))
-              + correctionsFor(d.docId || d.id),
+            // Both ways back in, when something has been flagged.
+            //
+            // The correction's own field takes the fix for that specific issue.
+            // But an issue is often easier to resolve by redoing the document
+            // than by patching the page it was raised against, and hiding the
+            // ordinary upload field left no way to do that — the only field on
+            // screen asked for a corrected page, so a whole replacement had
+            // nowhere to go.
+            extra: correctionsFor(d.docId || d.id)
+              + documentDropzoneHTML(s.clientId, d.docId || d.id,
+                  correctionsByDoc.has(String(d.docId || d.id))
+                    ? 'complete replacement document'
+                    : (d.filePath ? 'replacement' : 'document')),
             // Download it, read it, then decide: approve it, or send it back
             // with a reason. Re-uploading happens on the same field above.
             actions: d.filePath
@@ -6941,20 +6947,34 @@ async function renderMandateRisk() {
           </div>
         </div>
       `).join('')}
-      ${readOnly || data.status === 'under_review' ? '' : `
+      ${readOnly ? '' : data.status === 'under_review' ? `
+        ${isComp ? `
+          <!-- Reviewing means reading down the whole questionnaire. Putting the
+               decision only in the banner at the top meant scrolling back up
+               through every question to act on what you had just read. -->
+          <div class="kyc-verify-banner" style="margin-bottom:32px;">
+            <span style="flex:1;">
+              <strong>Finished reviewing?</strong>
+              ${(() => {
+                const answered = data.fields.filter(f => !f.complianceOnly && String(data.answers?.[f.key] ?? '').trim());
+                const decided = answered.filter(f => (data.reviews || {})[f.key]);
+                return decided.length === answered.length && answered.length
+                  ? ` All ${answered.length} answers confirmed.`
+                  : ` ${decided.length} of ${answered.length} answers have a decision — approving accepts the rest as they stand.`;
+              })()}
+            </span>
+            <button type="button" class="btn-success btn-sm" onclick="approveAllMandateRisk('${escapeHtml(ctx.clientId)}')">Approve Mandate Risk</button>
+          </div>
+        ` : `
+          <div style="text-align:right;font-size:12px;color:var(--text-muted);margin-bottom:32px;">
+            <span class="status-badge status-under-review">Under Review by Compliance</span>
+          </div>
+        `}
+      ` : `
         <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-bottom:32px;">
-          ${data.status === 'under_review'
-            ? `<span class="status-badge status-under-review">Under Review by Compliance</span>`
-            : ''}
           <button type="button" class="btn-secondary" onclick="saveMandateRisk(false)">Save</button>
-          ${data.status === 'under_review'
-            ? ''
-            : `<button type="button" class="btn-primary" onclick="saveMandateRisk(true)">Submit for Review</button>`}
+          <button type="button" class="btn-primary" onclick="saveMandateRisk(true)">Submit for Review</button>
         </div>
-        ${isComp && data.status === 'under_review' ? `
-          <div style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:-24px;margin-bottom:32px;">
-            Reviewed in KYC &amp; Mandate Risk Tasks — confirm or send back each answer there.
-          </div>` : ''}
       `}
     </form>
   `;

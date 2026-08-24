@@ -131,6 +131,11 @@ connectDB()
       ? `🔐  Login re-verification: on, every ${reverifyStatus.days} days`
       : `🔓  Login re-verification: off (${reverifyStatus.reason})`);
 
+    // Whichever copy can see the SharePoint archive keeps it up to date — the
+    // hosted instance cannot, so a local one carries anything it produced
+    // across. See services/archiveSync.service.js.
+    require('./services/archiveSync.service').startArchiveSync();
+
     app.listen(PORT, () => {
       console.log(`🚀  Server running — open http://localhost:${PORT} in your browser`);
     });
