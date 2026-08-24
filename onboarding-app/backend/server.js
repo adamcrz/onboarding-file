@@ -16,6 +16,7 @@ const notificationsRoutes = require('./routes/notifications.routes');
 const documentRequirementsRoutes = require('./routes/documentRequirements.routes');
 const mandateRiskSchemaRoutes = require('./routes/mandateRiskSchema.routes');
 const kycSchemaRoutes = require('./routes/kycSchema.routes');
+const contractDraftsRoutes = require('./routes/contractDrafts.routes');
 
 const helmet       = require('helmet');
 const cookieParser = require('cookie-parser');
@@ -59,6 +60,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/document-requirements', documentRequirementsRoutes);
 app.use('/api/mandate-risk-schema', mandateRiskSchemaRoutes);
 app.use('/api/kyc-schema', kycSchemaRoutes);
+app.use('/api/contract-drafts', contractDraftsRoutes);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));

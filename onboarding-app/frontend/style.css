@@ -1046,6 +1046,34 @@ h1, h2, h3, h4, h5, h6, .card-title, .login-title, .stat-value {
    ============================================================ */
 .cb-loading {
   text-align: center; padding: 48px; color: var(--text-muted); font-size: 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+
+/* A spinner on every loading message, rather than bare text. Reading a
+   template means opening a Word document server-side and scanning it for
+   bookmarks, which takes long enough that motionless text reads as a hung
+   screen. Generated from the element itself so no markup has to change. */
+.cb-loading::before {
+  content: '';
+  width: 28px; height: 28px;
+  border: 3px solid var(--border-default);
+  border-top-color: var(--accent-purple-light);
+  border-radius: 50%;
+  animation: cb-spin 0.7s linear infinite;
+}
+
+@keyframes cb-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Anyone who has asked not to see motion gets a pulse instead of a spin —
+   the message still reads as busy without anything rotating. */
+@media (prefers-reduced-motion: reduce) {
+  .cb-loading::before {
+    animation: cb-pulse 1.4s ease-in-out infinite;
+    border-top-color: var(--border-default);
+  }
+  @keyframes cb-pulse { 50% { opacity: 0.35; } }
 }
 
 .cb-lang-toggle {

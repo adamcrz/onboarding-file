@@ -3553,182 +3553,6 @@ function renderAuditPage() {
     </div>
   `;
 }
-/* ============================================================
-   KYC QUESTIONNAIRE — template builder state
-   ============================================================ */
-const KYC_TEMPLATE = {
-  sections: [
-    {
-      id: 'sec_personal', title: '1. Personal Information',
-      fields: [
-        { id: 'f_title',       label: 'Title',                      type: 'select',   required: false, options: ['Mr','Mrs','Ms','Dr','Prof'] },
-        { id: 'f_firstname',   label: 'First Name(s)',               type: 'text',     required: true  },
-        { id: 'f_lastname',    label: 'Last Name',                   type: 'text',     required: true  },
-        { id: 'f_dob',         label: 'Date of Birth',               type: 'date',     required: true  },
-        { id: 'f_nationality', label: 'Nationality',                  type: 'text',     required: true  },
-        { id: 'f_country',     label: 'Country of Residence',         type: 'text',     required: true  },
-        { id: 'f_pob',         label: 'Place of Birth',               type: 'text',     required: false },
-      ]
-    },
-    {
-      id: 'sec_identity', title: '2. Identity Documents',
-      fields: [
-        { id: 'f_passport',        label: 'Passport Number',   type: 'text', required: true  },
-        { id: 'f_passport_expiry', label: 'Passport Expiry',   type: 'date', required: true  },
-        { id: 'f_passport_country',label: 'Issuing Country',   type: 'text', required: false },
-      ]
-    },
-    {
-      id: 'sec_address', title: '3. Residential Address',
-      fields: [
-        { id: 'f_addr1',   label: 'Address Line 1', type: 'text', required: true  },
-        { id: 'f_addr2',   label: 'Address Line 2', type: 'text', required: false },
-        { id: 'f_city',    label: 'City',            type: 'text', required: true  },
-        { id: 'f_zip',     label: 'Postal Code',     type: 'text', required: true  },
-        { id: 'f_ctry',    label: 'Country',         type: 'text', required: true  },
-      ]
-    },
-    {
-      id: 'sec_tax', title: '4. Tax Information',
-      fields: [
-        { id: 'f_tax_country', label: 'Tax Residency Country',         type: 'text', required: true },
-        { id: 'f_tin',         label: 'Tax Identification Number (TIN)', type: 'text', required: true },
-      ]
-    },
-    {
-      id: 'sec_employment', title: '5. Employment & Financial Profile',
-      fields: [
-        { id: 'f_emp_status',  label: 'Employment Status',    type: 'select',   required: true, options: ['Employed','Self-Employed / Director','Retired','Student','Other'] },
-        { id: 'f_occupation',  label: 'Occupation / Job Title', type: 'text',   required: false },
-        { id: 'f_employer',    label: 'Employer / Company',    type: 'text',   required: false },
-        { id: 'f_income',      label: 'Annual Income Range',   type: 'select',   required: true, options: ['< CHF 100K','CHF 100K – 500K','CHF 500K – 1M','> CHF 1M'] },
-      ]
-    },
-    {
-      id: 'sec_wealth', title: '6. Source of Wealth & Assets',
-      fields: [
-        { id: 'f_sow',        label: 'Source of Wealth (description)', type: 'textarea', required: true  },
-        { id: 'f_net_assets', label: 'Estimated Net Assets',            type: 'select',   required: true, options: ['< CHF 500K','CHF 500K – 2M','CHF 2M – 10M','> CHF 10M'] },
-      ]
-    },
-    {
-      id: 'sec_pep', title: '7. PEP & Regulatory Declarations',
-      fields: [
-        { id: 'f_pep',       label: 'Politically Exposed Person (PEP)?', type: 'yesno', required: true },
-        { id: 'f_sanctions', label: 'Subject to any sanctions?',          type: 'yesno', required: true },
-        { id: 'f_adverse',   label: 'Adverse media or legal proceedings?',type: 'yesno', required: true },
-      ]
-    },
-  ],
-  _nextId: 100,
-};
-
-function kycNextId() { return 'k' + (KYC_TEMPLATE._nextId++); }
-
-function kycAddSection() {
-  const title = prompt('Section title:');
-  if (!title || !title.trim()) return;
-  KYC_TEMPLATE.sections.push({ id: kycNextId(), title: title.trim(), fields: [] });
-  renderKycForm();
-}
-
-function kycRemoveSection(id) {
-  if (!confirm('Remove this section and all its fields?')) return;
-  KYC_TEMPLATE.sections = KYC_TEMPLATE.sections.filter(s => s.id !== id);
-  renderKycForm();
-}
-
-function kycUpdateSectionTitle(id, val) {
-  const s = KYC_TEMPLATE.sections.find(s => s.id === id);
-  if (s && val.trim()) s.title = val.trim();
-}
-
-function kycShowAddField(secId) {
-  document.getElementById('kaf-' + secId).style.display = 'block';
-  document.getElementById('kaf-toggle-' + secId).style.display = 'none';
-}
-
-function kycHideAddField(secId) {
-  document.getElementById('kaf-' + secId).style.display = 'none';
-  document.getElementById('kaf-toggle-' + secId).style.display = 'inline-flex';
-}
-
-function kycToggleOpts(secId) {
-  const t = document.getElementById('kaf-type-' + secId)?.value;
-  const wrap = document.getElementById('kaf-opts-' + secId);
-  if (wrap) wrap.style.display = t === 'select' ? 'block' : 'none';
-}
-
-function kycAddField(secId) {
-  const label = document.getElementById('kaf-label-' + secId)?.value?.trim();
-  const type  = document.getElementById('kaf-type-' + secId)?.value;
-  const req   = document.getElementById('kaf-req-' + secId)?.checked;
-  const opts  = document.getElementById('kaf-opts-text-' + secId)?.value?.trim();
-  if (!label) { alert('Please enter a field label.'); return; }
-  const s = KYC_TEMPLATE.sections.find(s => s.id === secId);
-  if (!s) return;
-  const field = { id: kycNextId(), label, type: type || 'text', required: !!req };
-  if (type === 'select' && opts) field.options = opts.split(',').map(o => o.trim()).filter(Boolean);
-  s.fields.push(field);
-  renderKycForm();
-}
-
-function kycRemoveField(secId, fieldId) {
-  const s = KYC_TEMPLATE.sections.find(s => s.id === secId);
-  if (s) s.fields = s.fields.filter(f => f.id !== fieldId);
-  renderKycForm();
-}
-
-function kycSaveTemplate() {
-  showToast('info', 'KYC schemas are managed by the backend and are read-only on this screen.');
-}
-
-function kycViewTemplatePreview() {
-  const overlay = document.createElement('div');
-  overlay.id = 'kyc-preview-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:24px;';
-  const TYPE_LABELS = { text:'Text input', email:'Email', date:'Date picker', number:'Number', select:'Dropdown', textarea:'Long text', yesno:'Yes / No' };
-  overlay.innerHTML = `
-    <div style="background:var(--bg-primary);border-radius:var(--radius-lg);max-width:680px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid var(--border-default);position:sticky;top:0;background:var(--bg-primary);z-index:1;">
-        <div>
-          <div style="font-size:16px;font-weight:700;">KYC Form Preview</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">As seen by the client or RM filling it in</div>
-        </div>
-        <button onclick="document.getElementById('kyc-preview-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">✕</button>
-      </div>
-      <div style="padding:24px;">
-        ${KYC_TEMPLATE.sections.map(sec => `
-          <div style="margin-bottom:28px;">
-            <div style="font-size:14px;font-weight:700;color:var(--accent-purple);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid rgba(139,92,246,0.2);">${escapeHtml(sec.title)}</div>
-            ${sec.fields.length === 0
-              ? `<p style="font-size:12px;color:var(--text-muted);font-style:italic;">No fields in this section.</p>`
-              : sec.fields.map(f => `
-                  <div style="margin-bottom:14px;">
-                    <label style="display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px;">${escapeHtml(f.label)}${f.required?' <span style="color:var(--accent-red);">*</span>':''}</label>
-                    ${f.type === 'select'
-                      ? `<select disabled style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);">${(f.options||[]).map(o=>`<option>${o}</option>`).join('')}<option value="">— select —</option></select>`
-                      : f.type === 'textarea'
-                      ? `<textarea disabled rows="3" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);resize:none;" placeholder="${escapeHtml(f.label)}"></textarea>`
-                      : f.type === 'yesno'
-                      ? `<div style="display:flex;gap:12px;"><label style="font-size:13px;display:flex;align-items:center;gap:5px;"><input type="radio" disabled> Yes</label><label style="font-size:13px;display:flex;align-items:center;gap:5px;"><input type="radio" disabled> No</label></div>`
-                      : `<input disabled type="${escapeHtml(f.type)}" style="width:100%;padding:7px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-secondary);color:var(--text-muted);" placeholder="${escapeHtml(f.label)}">`
-                    }
-                  </div>
-                `).join('')
-            }
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-}
-
-function kycDownloadTemplate() {
-  showToast('info', 'Template download is not available from the read-only schema view.');
-}
 
 /* ============================================================
    PAGE: CONTRACT BUILDING
@@ -3771,6 +3595,9 @@ const CB = {
   clientType: 'individual', formularBookmark: false,
   hasOwnProductsChoice: false, ownProductsChoice: '',
   createClientAccount: true, requiredDocuments: [],
+  // Set once a draft has been saved, so saving again updates it in place
+  // rather than leaving a trail of near-identical drafts.
+  draftId: null,
 };
 
 // Required-document checklist the RM can ask the client to upload, shown on the
@@ -3902,6 +3729,7 @@ async function renderContractBuilding() {
   CB.managementFee = ''; CB.performanceFee = ''; CB.performanceFeeFrequency = 'semiannual'; CB.vorabPct = '';
   CB.clientType = 'individual'; CB.formularBookmark = false;
   CB.createClientAccount = true; CB.requiredDocuments = [...ALWAYS_REQUIRED_DOCUMENTS];
+  CB.draftId = null;
   await cbRenderStep();
 }
 
@@ -3940,8 +3768,13 @@ async function cbStep1() {
     // Falls back to the hardcoded DOCUMENT_CHECKLIST_OPTIONS defined above.
   }
 
+  // Offer unfinished work before offering a new start.
+  let drafts = [];
+  try { drafts = await apiFetch('GET', '/contract-drafts'); } catch (_) { /* a listing failure must not block the builder */ }
+
   const filtered = CB.templates.filter(t => t.lang === CB.lang);
   el.innerHTML = `
+    ${cbDraftsListHTML(drafts)}
     <div class="card">
       <div class="card-header">
         <div>
@@ -4402,6 +4235,9 @@ async function cbStep2() {
         </svg>
         Download Filled
       </button>
+      <button class="btn-secondary" onclick="cbSaveDraft()" title="Keep this contract to finish later">
+        Save Draft
+      </button>
       <button class="btn-primary" onclick="cbSubmit()">
         Send Contract & Invite Client
       </button>
@@ -4754,6 +4590,191 @@ async function cbCreateKycTask(rmName, clientName, clientEmail, clientId) {
   }
 }
 
+/* ── Drafts ──────────────────────────────────────────────────
+   A contract half-filled is easy to lose: the builder is a long form, and
+   before this the only way out of it was to finish or to abandon. Drafts live
+   in the database rather than the browser, so one started on the hosted app
+   can be finished from a local copy, or picked up on another machine.
+   ─────────────────────────────────────────────────────────── */
+
+// Everything needed to put the builder back exactly as it was. The typed
+// values are read from the DOM here rather than from CB, because that is where
+// they actually live until the contract is submitted.
+function cbDraftState() {
+  const values = {};
+  (CB.fields || []).forEach((f) => {
+    const el = document.getElementById(`cb_${f.key}`);
+    if (el) values[f.key] = f.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
+  });
+  return {
+    values,
+    lang: CB.lang,
+    currency: CB.currency,
+    selectedId: CB.selectedId,
+    contractTypeNew: CB.contractTypeNew,
+    uo: CB.uo,
+    mandatsname: CB.mandatsname,
+    person2: CB.person2,
+    kundenberater: CB.kundenberater,
+    kundenberaterEmail: CB.kundenberaterEmail,
+    investmentProfile: CB.investmentProfile,
+    allocations: CB.allocations,
+    includePreciousMetals: CB.includePreciousMetals,
+    preciousMetals: CB.preciousMetals,
+    currencyWeights: CB.currencyWeights,
+    investmentComments: CB.investmentComments,
+    managementFee: CB.managementFee,
+    performanceFee: CB.performanceFee,
+    performanceFeeFrequency: CB.performanceFeeFrequency,
+    vorabPct: CB.vorabPct,
+    clientType: CB.clientType,
+    ownProductsChoice: CB.ownProductsChoice,
+    createClientAccount: CB.createClientAccount,
+    requiredDocuments: CB.requiredDocuments,
+  };
+}
+
+async function cbSaveDraft() {
+  if (!CB.selectedId) { showToast('error', 'Choose a template first.'); return; }
+
+  const state = cbDraftState();
+  // Name it after whoever the contract is for, as far as that has been typed.
+  // "Untitled draft" three times over helps nobody find the right one.
+  const typedName = [state.values.client_first_name, state.values.client_last_name]
+    .filter(Boolean).join(' ').trim();
+  const tpl = CB.templates.find((t) => t.id === CB.selectedId);
+  const name = typedName || CB.mandatsname || `${tpl?.name || CB.selectedId} (no name yet)`;
+
+  const btn = document.querySelector('#cb-body button[onclick="cbSaveDraft()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const res = await apiFetch('POST', '/contract-drafts', {
+      draftId: CB.draftId || undefined,   // same sitting updates in place
+      name,
+      templateId: CB.selectedId,
+      templateName: tpl?.name || CB.selectedId,
+      state,
+    });
+    CB.draftId = res.draftId;
+    showToast('success', `Draft saved as “${name}”. Pick it up from step 1 whenever you like.`);
+  } catch (err) {
+    showToast('error', err.message || 'Could not save the draft.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Draft'; }
+  }
+}
+
+// Shown at the top of step 1, so a half-finished contract is the first thing
+// offered rather than something to remember.
+function cbDraftsListHTML(drafts) {
+  if (!drafts.length) return '';
+  const when = (d) => {
+    const diff = Date.now() - new Date(d).getTime();
+    const mins = Math.round(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs} h ago`;
+    return new Date(d).toLocaleDateString();
+  };
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Continue a draft (${drafts.length})</div>
+          <div class="card-subtitle">Contracts you started and have not sent yet</div>
+        </div>
+      </div>
+      <div class="card-body" style="padding-top:4px;">
+        ${drafts.map((d) => `
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border-subtle);">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;">${escapeHtml(d.name)}</div>
+              <div style="font-size:11px;color:var(--text-muted);">
+                ${escapeHtml(d.templateName || d.templateId || 'No template')} · saved ${escapeHtml(when(d.updatedAt))}${d.ownerName ? ` · ${escapeHtml(d.ownerName)}` : ''}
+              </div>
+            </div>
+            <button class="btn-primary btn-xs" onclick="cbResumeDraft('${escapeHtml(d.draftId)}')">Resume</button>
+            <button class="btn-secondary btn-xs" onclick="cbDeleteDraft('${escapeHtml(d.draftId)}','${escapeHtml(d.name)}')">Delete</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+async function cbResumeDraft(draftId) {
+  try {
+    const draft = await apiFetch('GET', `/contract-drafts/${encodeURIComponent(draftId)}`);
+    const s = draft.state || {};
+
+    // Put the builder back as it was, then let step 2 fetch the template's
+    // fields and fill them from the saved values.
+    Object.assign(CB, {
+      draftId: draft.draftId,
+      lang: s.lang || CB.lang,
+      currency: s.currency || CB.currency,
+      selectedId: s.selectedId || draft.templateId,
+      contractTypeNew: s.contractTypeNew !== false,
+      uo: Boolean(s.uo),
+      mandatsname: s.mandatsname || '',
+      person2: s.person2 || CB.person2,
+      kundenberater: s.kundenberater || CB.kundenberater,
+      kundenberaterEmail: s.kundenberaterEmail || '',
+      investmentProfile: s.investmentProfile || CB.investmentProfile,
+      allocations: s.allocations || CB.allocations,
+      includePreciousMetals: Boolean(s.includePreciousMetals),
+      preciousMetals: s.preciousMetals || CB.preciousMetals,
+      currencyWeights: s.currencyWeights || CB.currencyWeights,
+      investmentComments: s.investmentComments || '',
+      managementFee: s.managementFee || '',
+      performanceFee: s.performanceFee || '',
+      performanceFeeFrequency: s.performanceFeeFrequency || 'semiannual',
+      vorabPct: s.vorabPct || '',
+      clientType: s.clientType || 'individual',
+      ownProductsChoice: s.ownProductsChoice || '',
+      createClientAccount: s.createClientAccount !== false,
+      requiredDocuments: s.requiredDocuments || [...ALWAYS_REQUIRED_DOCUMENTS],
+      // Held until step 2 has rendered its inputs; there is nothing to fill in
+      // before that.
+      _pendingDraftValues: s.values || {},
+    });
+
+    CB.step = 2;
+    await cbStep2();
+    cbApplyDraftValues();
+    showToast('success', 'Draft restored — carry on where you left off.');
+  } catch (err) {
+    showToast('error', err.message || 'Could not open that draft.');
+  }
+}
+
+// Runs after step 2 has built its inputs. Anything the current template no
+// longer has a field for is simply skipped: a draft saved against an older
+// version of a template should reopen, not fail.
+function cbApplyDraftValues() {
+  const values = CB._pendingDraftValues;
+  if (!values) return;
+  Object.entries(values).forEach(([key, value]) => {
+    const el = document.getElementById(`cb_${key}`);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = value === 'true';
+    else el.value = value;
+  });
+  CB._pendingDraftValues = null;
+}
+
+async function cbDeleteDraft(draftId, name) {
+  if (!confirm(`Delete the draft “${decodeEntities(name)}”?\n\nNothing has been sent to anyone, so only the half-filled form is lost.`)) return;
+  try {
+    await apiFetch('DELETE', `/contract-drafts/${encodeURIComponent(draftId)}`);
+    showToast('success', 'Draft deleted.');
+    if (CB.draftId === draftId) CB.draftId = null;
+    await cbStep1();
+  } catch (err) {
+    showToast('error', err.message || 'Could not delete the draft.');
+  }
+}
+
 async function cbSubmit() {
   const valid = cbValidateBeforeSubmit();
   if (!valid) return;
@@ -4769,10 +4790,9 @@ async function cbSubmit() {
       clientName, clientEmail, templateId: CB.selectedId, templateName: tpl?.name || CB.selectedId, fieldValues,
       rmName: CB.kundenberater, createClientAccount: CB.createClientAccount, requiredDocuments: CB.requiredDocuments,
     });
-    // Without the real clientId, the KYC Task can't resolve back to this
-    // client's REQUIRED_KYC_FIELDS and silently falls back to the old
-    // generic KYC_TEMPLATE snapshot — showing a different set of fields
-    // than the client's actual profile (Kunden profile) uses.
+    // Without the real clientId the KYC Task cannot resolve back to this
+    // client, so it cannot render the questionnaire against the client's own
+    // record — the task and the client's profile would show different things.
     await cbCreateKycTask(CB.kundenberater, clientName, clientEmail, res.clientId);
     CB.result = { otp: res.otp, clientName, clientEmail };
     CB.step = 3;
@@ -5104,110 +5124,6 @@ function createCase() {
   setTimeout(() => navigateTo('clients'), 1200);
 }
 
-/* ============================================================
-   PAGE: KYC FORM — TEMPLATE BUILDER
-   ============================================================ */
-function renderKycFormLegacy() {
-  const content = document.getElementById('page-content');
-  const TYPE_LABELS = { text:'Text', email:'Email', date:'Date', number:'Number', select:'Dropdown', textarea:'Long Text', yesno:'Yes / No' };
-
-  content.innerHTML = `
-    <div class="page-header">
-      <h1>KYC Questionnaire Template</h1>
-      <p>Configure the sections and fields that appear in the KYC form sent to clients.</p>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;flex-wrap:wrap;">
-      <div style="font-size:13px;color:var(--text-muted);">${KYC_TEMPLATE.sections.length} section${KYC_TEMPLATE.sections.length!==1?'s':''} · ${KYC_TEMPLATE.sections.reduce((a,s)=>a+s.fields.length,0)} fields total</div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn-secondary btn-sm" onclick="kycViewTemplatePreview()">View Template</button>
-        <button class="btn-secondary btn-sm" onclick="kycDownloadTemplate()">Download</button>
-        <button class="btn-secondary btn-sm" onclick="kycAddSection()">+ Add Section</button>
-        <button class="btn-primary btn-sm" onclick="kycSaveTemplate()">Save Template</button>
-      </div>
-    </div>
-
-    ${KYC_TEMPLATE.sections.map(sec => `
-      <div class="card" style="margin-bottom:12px;">
-        <div class="card-header" style="padding:12px 16px;">
-          <input type="text" value="${sec.title.replace(/"/g,'&quot;')}"
-                 onblur="kycUpdateSectionTitle('${sec.id}', this.value)"
-                 style="font-size:14px;font-weight:600;border:none;background:transparent;color:var(--text-primary);width:100%;max-width:420px;outline:none;padding:2px 4px;border-radius:4px;"
-                 onfocus="this.style.background='var(--bg-secondary)'" onblur2="this.style.background='transparent'">
-          <button class="btn-secondary btn-xs" onclick="kycRemoveSection('${sec.id}')" style="color:var(--accent-red);border-color:var(--accent-red);">Remove Section</button>
-        </div>
-        <div class="card-body" style="padding:0 16px 14px;">
-          ${sec.fields.length === 0
-            ? `<p style="font-size:12px;color:var(--text-muted);padding:10px 0;">No fields yet — add one below.</p>`
-            : `<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
-                <thead>
-                  <tr style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);border-bottom:1px solid var(--border-default);">
-                    <th style="padding:8px 0;text-align:left;">Field Label</th>
-                    <th style="padding:8px 6px;text-align:left;">Type</th>
-                    <th style="padding:8px 6px;text-align:center;">Required</th>
-                    <th style="padding:8px 0;text-align:right;"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${sec.fields.map(f => `
-                    <tr style="border-bottom:1px solid var(--border-subtle);">
-                      <td style="padding:9px 0;font-size:13px;">${escapeHtml(f.label)}${f.options?`<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">(${f.options.join(', ')})</span>`:''}</td>
-                      <td style="padding:9px 6px;"><span style="font-size:11px;padding:2px 7px;border-radius:10px;background:var(--bg-secondary);color:var(--text-secondary);">${TYPE_LABELS[f.type]||f.type}</span></td>
-                      <td style="padding:9px 6px;text-align:center;font-size:12px;">${f.required?'<span style="color:var(--accent-red);">✓</span>':'<span style="color:var(--text-muted);">—</span>'}</td>
-                      <td style="padding:9px 0;text-align:right;">
-                        <button class="btn-secondary btn-xs" onclick="kycRemoveField('${sec.id}','${f.id}')" style="color:var(--text-muted);">✕</button>
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>`
-          }
-
-          <!-- Inline Add Field form -->
-          <div id="kaf-${sec.id}" style="display:none;background:var(--bg-secondary);border-radius:var(--radius-md);padding:12px;margin-top:6px;">
-            <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-bottom:8px;align-items:end;">
-              <div class="form-group" style="margin:0;">
-                <label style="font-size:11px;">Field Label</label>
-                <input type="text" id="kaf-label-${sec.id}" placeholder="e.g. Passport Number" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
-              </div>
-              <div class="form-group" style="margin:0;">
-                <label style="font-size:11px;">Type</label>
-                <select id="kaf-type-${sec.id}" onchange="kycToggleOpts('${sec.id}')" style="padding:6px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
-                  <option value="text">Text</option>
-                  <option value="email">Email</option>
-                  <option value="date">Date</option>
-                  <option value="number">Number</option>
-                  <option value="select">Dropdown</option>
-                  <option value="textarea">Long Text</option>
-                  <option value="yesno">Yes / No</option>
-                </select>
-              </div>
-              <div class="form-group" style="margin:0;">
-                <label style="font-size:11px;">&nbsp;</label>
-                <label style="display:flex;align-items:center;gap:5px;font-size:12px;padding:6px 0;cursor:pointer;white-space:nowrap;">
-                  <input type="checkbox" id="kaf-req-${sec.id}"> Required
-                </label>
-              </div>
-            </div>
-            <div id="kaf-opts-${sec.id}" style="display:none;margin-bottom:8px;">
-              <label style="font-size:11px;color:var(--text-muted);">Options (comma-separated)</label>
-              <input type="text" id="kaf-opts-text-${sec.id}" placeholder="Option A, Option B, Option C" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary);">
-            </div>
-            <div style="display:flex;gap:8px;">
-              <button class="btn-primary btn-sm" onclick="kycAddField('${sec.id}')">Add Field</button>
-              <button class="btn-secondary btn-sm" onclick="kycHideAddField('${sec.id}')">Cancel</button>
-            </div>
-          </div>
-
-          <button id="kaf-toggle-${sec.id}" class="btn-secondary btn-sm" onclick="kycShowAddField('${sec.id}')" style="margin-top:8px;">+ Add Field</button>
-        </div>
-      </div>
-    `).join('')}
-
-    <div style="margin-top:8px;">
-      <button class="btn-secondary" onclick="kycAddSection()">+ Add Section</button>
-    </div>
-  `;
-}
 
 /* ============================================================
    PAGE: KYC SCHEMA
