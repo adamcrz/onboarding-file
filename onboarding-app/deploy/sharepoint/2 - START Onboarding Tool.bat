@@ -73,7 +73,7 @@ if not errorlevel 1 (
 REM --- Already running? -----------------------------------------
 REM Two copies cannot share the port; without this the second one
 REM dies with an error nobody outside IT can read.
-netstat -ano | findstr /r /c:"LISTENING.*:5000 " >nul 2>nul
+netstat -ano | findstr /r /c:":5000 .*LISTENING" >nul 2>nul
 if not errorlevel 1 (
   echo   The tool is already running on this PC.
   echo   Opening it in your browser...
