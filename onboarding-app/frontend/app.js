@@ -4839,6 +4839,19 @@ async function cbSubmit() {
     // client, so it cannot render the questionnaire against the client's own
     // record — the task and the client's profile would show different things.
     await cbCreateKycTask(CB.kundenberater, clientName, clientEmail, res.clientId);
+
+    // The draft was the unsent version of this contract. It has now been sent,
+    // so leaving it in "Continue a draft" invites somebody to pick it up and
+    // send the same mandate twice. Failure here is deliberately silent: the
+    // contract has gone out and the client exists, and a leftover draft is not
+    // worth reporting as an error against work that succeeded.
+    if (CB.draftId) {
+      const sentDraftId = CB.draftId;
+      CB.draftId = null;
+      apiFetch('DELETE', `/contract-drafts/${encodeURIComponent(sentDraftId)}`)
+        .catch(() => { /* tidy-up only */ });
+    }
+
     CB.result = { otp: res.otp, clientName, clientEmail };
     CB.step = 3;
     cbStep3();
