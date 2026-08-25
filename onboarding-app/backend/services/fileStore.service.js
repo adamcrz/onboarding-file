@@ -52,6 +52,26 @@ async function putFile(absolutePath, buffer = null, meta = null) {
   if (!key) return null;
   const data = buffer || fs.readFileSync(toAbsolutePath(absolutePath));
 
+  // SharePoint first, and where it works, that is the only copy.
+  //
+  // The archive is the firm's record; the database is not meant to be a
+  // document store. So a file goes to SharePoint and is read back to prove it
+  // arrived intact — an existence check would be satisfied by a half-written
+  // file or a OneDrive placeholder — and only then is the database left out of
+  // it entirely.
+  const archived = archiveFile(key, data, meta);
+  if (archived && verifyArchived(archived, data)) {
+    // Written before this change, or by an instance that could not see the
+    // archive: now that SharePoint has it, the database copy is redundant.
+    const stale = await findOne(key);
+    if (stale) await bucket().delete(stale._id).catch(() => {});
+    return key;
+  }
+
+  // No archive reachable — the hosted instance, which has no OneDrive, or a
+  // laptop with OneDrive signed out. The file still has to go somewhere it can
+  // be served from, so the database holds it until a machine that *can* see
+  // SharePoint moves it across and clears it (services/archiveSync.service.js).
   const existing = await findOne(key);
   if (existing) await bucket().delete(existing._id).catch(() => {});
 
@@ -61,9 +81,17 @@ async function putFile(absolutePath, buffer = null, meta = null) {
     stream.on('finish', resolve);
     stream.end(data);
   });
-
-  archiveFile(key, data, meta);
   return key;
+}
+
+// Read it back and compare. The archive is about to become the only copy, so
+// "the write did not throw" is not good enough.
+function verifyArchived(target, data) {
+  try {
+    return fs.existsSync(target) && fs.readFileSync(target).equals(data);
+  } catch (_) {
+    return false;
+  }
 }
 
 // The permanent copy, in the OneDrive-synced SharePoint library. Never fatal:
@@ -130,23 +158,64 @@ async function ensureLocal(storedPath, meta = null) {
   const absolute = toAbsolutePath(storedPath);
   if (fs.existsSync(absolute)) return absolute;
 
-  // Database first — it is the fast path and always current. The archive is
-  // the fallback for anything already purged from it, which is how an approved
-  // contract stays downloadable long after it stopped taking up space.
-  let data = await getFile(keyFor(absolute));
-  if (!data) {
-    // Both shapes: the readable one written now, and the key-shaped one used
-    // before the archive was given readable names.
-    for (const candidate of [archivePathFor(absolute, meta), archivePathFor(absolute)]) {
-      if (!candidate || !fs.existsSync(candidate)) continue;
-      try { data = fs.readFileSync(candidate); break; } catch (_) { /* try the next */ }
-    }
+  // SharePoint first — it is where documents live.
+  let data = null;
+  for (const candidate of [archivePathFor(absolute, meta), archivePathFor(absolute)]) {
+    if (!candidate || !fs.existsSync(candidate)) continue;
+    try { data = fs.readFileSync(candidate); break; } catch (_) { /* try the next */ }
   }
+  // Neither computed name found it. That is expected more often than it
+  // sounds: the readable name is built from the client's name, the document's
+  // name and its status, and a caller that does not have those to hand — or a
+  // client renamed since the file was archived — computes a different name for
+  // a file that is sitting right there.
+  //
+  // So fall back to finding it. The timestamp the stored key begins with is
+  // unique per file and is carried into every name the archive uses, which
+  // makes it the one identifier that does not move.
+  if (!data) data = findInArchiveByStamp(keyFor(absolute));
+
+  // Not in the archive, or this machine cannot see it. The database holds a
+  // file only while it is in transit — uploaded somewhere with no OneDrive and
+  // not yet moved across — so this is the staging copy, not the record.
+  if (!data) data = await getFile(keyFor(absolute));
   if (!data) return null;
 
   fs.mkdirSync(path.dirname(absolute), { recursive: true });
   fs.writeFileSync(absolute, data);
   return absolute;
+}
+
+// Finds a file in the archive by the millisecond timestamp its storage key
+// begins with, searching only the folder for its own client.
+//
+// This is what makes the archive readable *and* reliable at once: names are
+// written for people, so they contain things that change, and this is how a
+// file is still found when they do.
+function findInArchiveByStamp(key) {
+  if (!ARCHIVE_ROOT || !key) return null;
+  const m = /^([^/]+)\/(\d{10,})-/.exec(key);
+  if (!m) return null;
+  const [, clientId, stamp] = m;
+
+  // A stored name carries the raw milliseconds; a readable one carries the
+  // same instant formatted. Both are derived from this number.
+  const d = new Date(Number(stamp));
+  const p = (n) => String(n).padStart(2, '0');
+  const readable = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}`;
+
+  try {
+    for (const entry of fs.readdirSync(ARCHIVE_ROOT, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !entry.name.startsWith(clientId)) continue;
+      const dir = path.join(ARCHIVE_ROOT, entry.name);
+      for (const name of fs.readdirSync(dir)) {
+        if (name.includes(stamp) || name.includes(readable)) {
+          try { return fs.readFileSync(path.join(dir, name)); } catch (_) { /* keep looking */ }
+        }
+      }
+    }
+  } catch (_) { /* archive unreadable — the caller falls through to the database */ }
+  return null;
 }
 
 // Best-effort: a file that cannot be cached locally is not a reason to fail the

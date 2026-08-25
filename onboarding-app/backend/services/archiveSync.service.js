@@ -33,7 +33,7 @@ async function syncOnce({ quiet = false } = {}) {
   if (running) return { skipped: 'already running' };
 
   running = true;
-  const result = { copied: 0, bytes: 0, failed: 0 };
+  const result = { copied: 0, bytes: 0, failed: 0, released: 0 };
   try {
     // Required lazily: the store resolves its bucket from the live mongoose
     // connection, which does not exist when this module is first loaded.
@@ -60,9 +60,23 @@ async function syncOnce({ quiet = false } = {}) {
           if (fs.existsSync(dest) && fs.statSync(dest).size === data.length) continue;
 
           try {
-            fileStore.archiveFile(key, data, meta);
+            const written = fileStore.archiveFile(key, data, meta);
+            // Read it back before releasing the database's copy. This is the
+            // moment the archive becomes the only copy, so the check is
+            // against the bytes themselves, not against the write returning.
+            const safe = written
+              && fs.existsSync(written)
+              && fs.readFileSync(written).equals(data);
+            if (!safe) { result.failed += 1; continue; }
+
             result.copied += 1;
             result.bytes += data.length;
+
+            // SharePoint has it, verified. The database is not a document
+            // store — it held this only until a machine that can see the
+            // archive came along, which is now.
+            await fileStore.deleteFile(target.filePath);
+            result.released += 1;
           } catch (_) {
             result.failed += 1;
           }
@@ -77,7 +91,8 @@ async function syncOnce({ quiet = false } = {}) {
   }
 
   if (result.copied && !quiet) {
-    console.log(`📁  Archived ${result.copied} file(s) to SharePoint (${(result.bytes / 1048576).toFixed(2)} MB)`);
+    console.log(`📁  Moved ${result.copied} file(s) to SharePoint (${(result.bytes / 1048576).toFixed(2)} MB)`
+      + `${result.released ? `, released ${result.released} from the database` : ''}`);
   }
   return result;
 }

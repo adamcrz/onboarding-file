@@ -18,7 +18,8 @@
     "migrate-file-paths": "node scripts/migrateFilePaths.js",
     "backfill-files": "node scripts/backfillFileStore.js",
     "archive-files": "node scripts/archiveFiles.js",
-    "purge-files": "node scripts/purgeSettledFiles.js"
+    "purge-files": "node scripts/purgeSettledFiles.js",
+    "move-to-sharepoint": "node scripts/moveFilesToSharePoint.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
