@@ -25,6 +25,7 @@ const FIELD_VALUES = {
   ccy_gbp_min: '0', ccy_gbp_max: '20',
   ccy_aud_min: '5', ccy_aud_max: '25',
   ccy_jpy_min: '0', ccy_jpy_max: '15',
+  ccy_sgd_min: '5', ccy_sgd_max: '35',
   ccy_other_min: '0', ccy_other_max: '10',
 };
 
@@ -32,7 +33,7 @@ const FIELD_VALUES = {
 // after RM feedback that a currency missing from the contract template — not just the
 // Contract Builder UI — silently drops any allocation entered for it.
 for (const [templateId, othersLabel] of [['de-all-in', 'Andere'], ['en-disc-all-in', 'Others']]) {
-  test(`${templateId}: currency table has all 7 currencies, each with its own clean row`, async ({ request }) => {
+  test(`${templateId}: currency table has all 8 currencies, each with its own clean row`, async ({ request }) => {
     const token = await staffToken(request);
     const res = await request.post(`/api/contracts/generate/${templateId}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -42,7 +43,7 @@ for (const [templateId, othersLabel] of [['de-all-in', 'Andere'], ['en-disc-all-
     const buffer = await res.body();
 
     const rows = readTableRows(buffer, 'CHF');
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(8);
 
     const byBookmark = Object.fromEntries(rows.map((r) => [r.bookmarks[0], r]));
     expect(byBookmark.CHF.texts).toEqual(['CHF', '0%', '-', '50%']);
@@ -51,6 +52,10 @@ for (const [templateId, othersLabel] of [['de-all-in', 'Andere'], ['en-disc-all-
     expect(byBookmark.AUD.texts).toEqual(['AUD', '5%', '-', '25%']);
     expect(byBookmark.GBP.texts).toEqual(['GBP', '0%', '-', '20%']);
     expect(byBookmark.JPY.texts).toEqual(['JPY', '0%', '-', '15%']);
+    // SGD was added later than the rest, by cloning the JPY row — see
+    // scripts/addCurrencyRow.js. It has to behave exactly like a row that
+    // shipped with the template.
+    expect(byBookmark.SGD.texts).toEqual(['SGD', '5%', '-', '35%']);
     expect(byBookmark.And.texts).toEqual([othersLabel, '0%', '-', '10%']);
 
     // No row should carry a non-black color (the old broken row used red,

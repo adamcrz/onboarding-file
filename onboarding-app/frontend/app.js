@@ -3605,7 +3605,7 @@ function renderAuditPage() {
 // gets 0–100%, every other listed currency defaults to 0–50%, and the "Other"
 // catch-all row always defaults to 0–30% regardless of mandate currency.
 function defaultCurrencyWeights(mandateCcy) {
-  const keys = ['CHF','USD','EUR','AUD','GBP','JPY'];
+  const keys = ['CHF','USD','EUR','AUD','GBP','JPY','SGD'];
   const base = keys.includes(mandateCcy) ? mandateCcy : 'CHF';
   const weights = { Other: { min: 0, max: 30 } };
   keys.forEach(k => { weights[k] = k === base ? { min: 0, max: 100 } : { min: 0, max: 50 }; });
@@ -4246,6 +4246,7 @@ async function cbStep2() {
               ['ccy_AUD', 'AUD — Australian Dollar', CB.currencyWeights.AUD || {min:0,max:0}],
               ['ccy_GBP', 'GBP — Pound Sterling',    CB.currencyWeights.GBP || {min:0,max:0}],
               ['ccy_JPY', 'JPY — Japanese Yen',      CB.currencyWeights.JPY || {min:0,max:0}],
+              ['ccy_SGD', 'SGD — Singapore Dollar',  CB.currencyWeights.SGD || {min:0,max:0}],
               ['ccy_Other', 'Other',                 CB.currencyWeights.Other || {min:0,max:30}],
             ].map(([id, lbl, vals]) => `
               <tr>
@@ -4262,8 +4263,8 @@ async function cbStep2() {
             `).join('')}
             <tr class="cb-alloc-total" id="ccy-total-row">
               <td style="font-size:13px;font-weight:700;">Total</td>
-              <td style="text-align:right;"><strong id="ccy-total-min">${['CHF','USD','EUR','AUD','GBP','JPY','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.min||0),0)}%</strong></td>
-              <td style="text-align:right;"><strong id="ccy-total-max">${['CHF','USD','EUR','AUD','GBP','JPY','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.max||0),0)}%</strong></td>
+              <td style="text-align:right;"><strong id="ccy-total-min">${['CHF','USD','EUR','AUD','GBP','JPY','SGD','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.min||0),0)}%</strong></td>
+              <td style="text-align:right;"><strong id="ccy-total-max">${['CHF','USD','EUR','AUD','GBP','JPY','SGD','Other'].reduce((a,k)=>a+(CB.currencyWeights[k]?.max||0),0)}%</strong></td>
             </tr>
           </tbody>
         </table>
@@ -4558,8 +4559,8 @@ function cbUpdateAllocTotal() {
 }
 
 function cbUpdateCcyTotal() {
-  const ids  = ['ccy_CHF','ccy_USD','ccy_EUR','ccy_AUD','ccy_GBP','ccy_JPY','ccy_Other'];
-  const keys = ['CHF','USD','EUR','AUD','GBP','JPY','Other'];
+  const ids  = ['ccy_CHF','ccy_USD','ccy_EUR','ccy_AUD','ccy_GBP','ccy_JPY','ccy_SGD','ccy_Other'];
+  const keys = ['CHF','USD','EUR','AUD','GBP','JPY','SGD','Other'];
   const mins = ids.map(id => parseFloat(document.getElementById(`${id}_min`)?.value) || 0);
   const maxs = ids.map(id => parseFloat(document.getElementById(`${id}_max`)?.value) || 0);
   const totalMin = mins.reduce((a,b)=>a+b,0);

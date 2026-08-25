@@ -268,8 +268,13 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   if (fv.kundenberater_email) { map['KundenberaterEmail'] = fv.kundenberater_email; map['RMEmail'] = fv.kundenberater_email; }
 
   // Further instructions — bookmark: Furtherinstructions
-  const comments = fv.investment_comments || '';
-  if (comments) map['Furtherinstructions'] = comments;
+  //
+  // Always written, even when empty. The template's own placeholder inside this
+  // bookmark is the word "Furtherinstructions", and leaving the bookmark alone
+  // left that word sitting in the finished contract as though it were an
+  // instruction. An empty box is the correct default; the same empty-string
+  // blanking is what the currency rows use.
+  map['Furtherinstructions'] = fv.investment_comments || '';
 
   // Asset allocations — bookmarks hold the MAX value; the MIN goes into the hardcoded "0"
   // cell immediately before each bookmark (handled by applyAllocMinToXml below).
@@ -292,6 +297,7 @@ function buildReplacementMap(fieldValues, _fieldDefs) {
   map['GBP'] = ccyActive('ccy_gbp_min','ccy_gbp_max') ? pctVal(fv.ccy_gbp_max) : '';
   map['AUD'] = ccyActive('ccy_aud_min','ccy_aud_max') ? pctVal(fv.ccy_aud_max) : '';
   map['JPY'] = ccyActive('ccy_jpy_min','ccy_jpy_max') ? pctVal(fv.ccy_jpy_max) : '';
+  map['SGD'] = ccyActive('ccy_sgd_min','ccy_sgd_max') ? pctVal(fv.ccy_sgd_max) : '';
   // "Andere"/"Others" row (last row of the currency table) — bookmark: And
   map['And'] = ccyActive('ccy_other_min','ccy_other_max') ? pctVal(fv.ccy_other_max) : '';
 
@@ -427,6 +433,7 @@ function applyAllocMinToXml(xml, fieldValues) {
     { bm: 'GBP', min: fv.ccy_gbp_min, suppress: !ccyActive('ccy_gbp_min','ccy_gbp_max') },
     { bm: 'AUD', min: fv.ccy_aud_min, suppress: !ccyActive('ccy_aud_min','ccy_aud_max') },
     { bm: 'JPY', min: fv.ccy_jpy_min, suppress: !ccyActive('ccy_jpy_min','ccy_jpy_max') },
+    { bm: 'SGD', min: fv.ccy_sgd_min, suppress: !ccyActive('ccy_sgd_min','ccy_sgd_max') },
     { bm: 'And', min: fv.ccy_other_min, suppress: !ccyActive('ccy_other_min','ccy_other_max') },
   ];
 
