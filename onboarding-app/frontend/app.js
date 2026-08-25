@@ -629,6 +629,58 @@ async function deleteMandate(clientId) {
   }
 }
 
+// A second contract for a client already on file — a mandate changing from
+// Advisory to Discretionary, a second portfolio, a replacement contract.
+//
+// Opens the Contract Builder with what is already known about the client
+// filled in, so nobody retypes a name, address and date of birth that the
+// system holds already, and so a typo cannot make the second contract disagree
+// with the first. The existing case is not touched: this prepares a contract,
+// and sending it is a separate, deliberate act.
+async function newContractForClient(clientId) {
+  const client = State.clients.find((c) => c.id === clientId || c.clientId === clientId);
+  if (!client) { showToast('error', 'Could not find that client.'); return; }
+
+  navigateTo('contract-building');
+  // renderContractBuilding resets the builder, so seed it afterwards.
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
+  const kyc = client.kyc || {};
+  CB.prefillForClient = {
+    clientId: client.clientId || client.id,
+    client_first_name: kyc.firstName || '',
+    client_last_name:  kyc.lastName || client.name || '',
+    client_email:      client.email || '',
+    client_dob:        kyc.dateOfBirth || '',
+    client_nationality: kyc.nationality || '',
+    client_address1:   kyc.residentialStreet || '',
+    client_city:       kyc.residentialCity || '',
+    client_country:    kyc.residentialCountry || client.country || '',
+  };
+  // A client already on file has an account; creating a second one for the
+  // same person is never what is wanted here.
+  CB.createClientAccount = false;
+  CB.clientType = ({
+    Individual: 'individual', Corporate: 'company', Domiciliary: 'domiciliary',
+    Foundation: 'foundation', Trust: 'trust',
+  })[client.type] || 'individual';
+
+  showToast('info', `Preparing another contract for ${decodeEntities(client.name)} — their details are filled in.`);
+}
+
+// Applied once step 2 has built its inputs, the same way a resumed draft is.
+// Anything the chosen template has no field for is skipped rather than failing.
+function cbApplyClientPrefill() {
+  const pre = CB.prefillForClient;
+  if (!pre) return;
+  Object.entries(pre).forEach(([key, value]) => {
+    if (key === 'clientId' || !value) return;
+    const el = document.getElementById(`cb_${key}`);
+    if (el && !String(el.value || '').trim()) el.value = value;
+  });
+  CB.prefillForClient = null;
+}
+
 function resetLoginBtn() {
   const btn = document.getElementById('login-btn');
   if (btn) {
@@ -2728,6 +2780,7 @@ function renderClientRows(clients) {
               : `<button class="btn-success btn-xs" onclick="event.stopPropagation();approveClient('${c.id}')">Approve</button>`}
             <button class="btn-secondary btn-xs" onclick="event.stopPropagation();rejectClient('${c.id}')">Reject</button>`;
             })() : ''}
+          <button class="btn-secondary btn-xs" onclick="event.stopPropagation();newContractForClient('${escapeHtml(c.id)}')" title="Prepare another contract for this client">+ Contract</button>
         </div>
       </td>
     </tr>
@@ -2849,6 +2902,7 @@ function renderClientDetail() {
           <button class="btn-secondary btn-sm" onclick="rejectClientFromDetail('${client.id}')">Reject</button>`;
           })() : ''}
         ${State.currentRole === 'rm' ? `<button class="btn-secondary btn-sm" onclick="editClientKycFromDetail('${escapeHtml(client.id)}')">Edit KYC</button>` : ''}
+        <button class="btn-secondary btn-sm" onclick="newContractForClient('${escapeHtml(client.id)}')" title="Prepare another contract for this client">+ New Contract</button>
         ${isCompliance(State.currentRole)
           ? `<button class="btn-danger btn-sm" onclick="deleteMandate('${escapeHtml(client.id)}')" title="Delete this mandate and everything belonging to it">Delete</button>`
           : ''}
@@ -2990,6 +3044,15 @@ async function ensureMandateRiskSchema(onLoad) {
   return State.mandateRiskSchema;
 }
 
+// The mandate-risk answers as a record, laid out exactly like the KYC Details
+// tab beside it: a card per section, a two-column grid of labelled fields, and
+// a status badge on each one. The two questionnaires are the same kind of
+// thing to whoever is reading them, so reading one should not be a different
+// experience from reading the other.
+//
+// Strictly read-only. Answering happens in the questionnaire, deciding happens
+// in KYC & Mandate Risk Tasks, and a third place to act on the same thing would
+// only let the two disagree.
 function renderClientMandateRiskTab(client) {
   const risk = client.mandateRisk || {};
   const answers = risk.answers || {};
@@ -2997,10 +3060,6 @@ function renderClientMandateRiskTab(client) {
   const prefilled = new Set(risk.prefilledKeys || []);
   const fields = State.mandateRiskSchema || [];
   const status = risk.status || 'draft';
-  const meta = status === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
-    : status === 'under_review' ? KYC_CORRECTION_STATUS_META.resubmitted
-    : status === 'saved' ? { label: 'Saved', badge: 'status-neutral' }
-    : KYC_CORRECTION_STATUS_META.pending;
 
   if (!fields.length) {
     return `<div class="card"><div class="card-body"><p class="text-muted">Mandate-risk questions are still loading. Open KYC &amp; Mandate Risk Tasks once, then come back.</p></div></div>`;
@@ -3008,43 +3067,76 @@ function renderClientMandateRiskTab(client) {
 
   const sections = [];
   const byPage = new Map();
-  fields.forEach(f => {
+  fields.forEach((f) => {
     if (!byPage.has(f.page)) { byPage.set(f.page, { page: f.page, fields: [] }); sections.push(byPage.get(f.page)); }
     byPage.get(f.page).fields.push(f);
   });
 
+  // The same banner the KYC tab shows, saying the same things in the same
+  // words, so "under review" means one thing in this client's file.
+  const answerable = fields.filter((f) => !f.complianceOnly);
+  const outstanding = answerable.filter((f) => !String(answers[f.key] ?? '').trim()).length;
+  const banner = status === 'approved' ? `
+    <div class="kyc-verify-banner kyc-verify-banner-approved">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="8,12 11,15 16,9"/></svg>
+      <span class="status-badge status-approved">Approved by Compliance</span>
+    </div>
+  ` : status === 'under_review' ? `
+    <div class="kyc-verify-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span style="flex:1;"><strong>Under Review by Compliance.</strong> ${isCompliance(State.currentRole)
+        ? 'Confirm or send back each answer in KYC &amp; Mandate Risk Tasks, then approve the questionnaire.'
+        : 'Compliance must review every answer before this questionnaire is complete.'}</span>
+    </div>
+  ` : outstanding ? `
+    <div class="kyc-verify-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>${outstanding} question${outstanding === 1 ? '' : 's'} still unanswered.
+        <a href="#" onclick="navigateTo('kyc-tasks');return false;" style="color:inherit;font-weight:600;">Complete via Mandate Risk Tasks →</a>
+      </span>
+    </div>
+  ` : '';
+
   return `
+    ${banner}
     <div class="card" style="margin-bottom:16px;">
       <div class="card-header">
         <div>
           <div class="card-title">Fragebogen zum Mandatsrisiko</div>
           <div class="card-subtitle">Risk rating: <strong class="risk-${escapeHtml(String(client.risk || '').toLowerCase())}">${escapeHtml(client.risk || '—')}</strong>${risk.submittedBy ? ` · submitted by ${escapeHtml(risk.submittedBy)}` : ''}${risk.approvedBy ? ` · approved by ${escapeHtml(risk.approvedBy)}` : ''}</div>
         </div>
-        <span class="status-badge ${meta.badge}">${escapeHtml(meta.label)}</span>
       </div>
     </div>
-    ${sections.map(sec => `
-      <div class="card" style="margin-bottom:12px;">
-        <div class="card-header" style="padding:12px 16px;"><div class="card-title">${escapeHtml(sec.page)}</div></div>
-        <div class="card-body" style="padding:0 16px 14px;">
-          ${sec.fields.map(f => {
-            const value = String(answers[f.key] ?? '').trim();
-            const decision = reviews[f.key] || null;
-            const badge = decision?.status === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
-              : decision?.status === 'flagged' ? KYC_CORRECTION_STATUS_META.needs_correction
-              : value ? { label: 'Saved', badge: 'status-neutral' }
-              : KYC_CORRECTION_STATUS_META.pending;
-            return `
-              <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-subtle);">
-                <div style="flex:1;font-size:13px;">
-                  <div>${escapeHtml(f.label)}${f.affectsRisk ? ` <span style="color:var(--accent-orange);font-size:11px;">(*r)</span>` : ''}</div>
-                  <div style="color:var(--text-secondary);margin-top:2px;">${value ? escapeHtml(value) : '—'}</div>
-                  ${prefilled.has(f.key) && value ? `<div style="font-size:11px;color:var(--text-muted);">Pre-filled from KYC / contract</div>` : ''}
-                  ${decision?.status === 'flagged' && decision.reason ? `<div style="font-size:11px;color:var(--accent-gold);">Compliance: ${escapeHtml(decision.reason)}</div>` : ''}
-                </div>
-                <span class="status-badge ${badge.badge}">${escapeHtml(badge.label)}</span>
-              </div>`;
-          }).join('')}
+    ${sections.map((sec) => `
+      <div class="card" data-risk-page="${escapeHtml(sec.page)}" style="margin-bottom:16px;">
+        <div class="card-header"><div class="card-title">${escapeHtml(sec.page)}</div></div>
+        <div class="card-body">
+          <div class="cb-fields-grid">
+            ${sec.fields.map((f) => {
+              const value = String(answers[f.key] ?? '').trim();
+              const decision = reviews[f.key] || null;
+              const isEmpty = !value;
+              // The same badge vocabulary the KYC fields use, decided the same
+              // way: an unanswered optional question is finished business
+              // ("Not provided"), an unanswered required one is still owed.
+              const isRequired = f.required !== false && !f.complianceOnly;
+              const meta = decision?.status === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
+                : decision?.status === 'flagged' ? KYC_CORRECTION_STATUS_META.needs_correction
+                : isEmpty
+                  ? (isRequired ? KYC_CORRECTION_STATUS_META.pending
+                    : { label: 'Not provided', badge: 'status-neutral' })
+                  : status === 'approved' ? KYC_CORRECTION_STATUS_META.corrected
+                    : status === 'under_review' ? KYC_CORRECTION_STATUS_META.resubmitted
+                      : KYC_CORRECTION_STATUS_META.saved;
+              return `
+                <div class="form-group" data-risk-key="${escapeHtml(f.key)}" data-risk-label="${escapeHtml(f.label)}" data-risk-value="${escapeHtml(value)}" style="margin-bottom:0;">
+                  <label>${escapeHtml(f.label)}${f.affectsRisk ? ` <span style="color:var(--accent-orange);font-size:11px;">(*r)</span>` : ''}${f.complianceOnly ? ` <span style="color:var(--text-muted);font-size:11px;">Compliance</span>` : ''} <span class="status-badge ${meta.badge}" style="margin-left:4px;">${escapeHtml(meta.label)}</span></label>
+                  <div class="kyc-field-readonly ${isEmpty ? 'empty' : ''}">${escapeHtml(value || '—')}</div>
+                  ${prefilled.has(f.key) && value ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Pre-filled from KYC / contract</div>` : ''}
+                  ${decision?.status === 'flagged' && decision.reason ? `<div style="font-size:11px;color:var(--accent-gold);margin-top:3px;">Compliance: ${escapeHtml(decision.reason)}</div>` : ''}
+                </div>`;
+            }).join('')}
+          </div>
         </div>
       </div>
     `).join('')}
@@ -4287,7 +4379,13 @@ async function cbStep2() {
         Send Contract & Invite Client
       </button>
     </div>
-  `; } catch(e) {
+  `;
+
+  // Fill in what is already known — a resumed draft, or an existing client this
+  // contract is being prepared for. Both have to wait until the inputs exist,
+  // which is here.
+  cbApplyClientPrefill();
+  } catch(e) {
     console.error('cbStep2 render error:', e);
     document.getElementById('cb-fields-area').innerHTML =
       `<p style="color:red;padding:16px;font-family:monospace;">Render error: ${e.message}</p>`;
